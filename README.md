@@ -65,6 +65,7 @@ Each category can have its own rules: whether vetoes apply, sound, vibration, an
 
 ## Requirements
 
+- Target device: Google Pixel 10a. Android only; there is no iPhone variant.
 - Android 13 (API 33) or newer
 - Calendar read permission
 - Exact alarm permission (`USE_EXACT_ALARM`), notifications and full-screen notifications for the alarm screen
@@ -78,6 +79,13 @@ Each category can have its own rules: whether vetoes apply, sound, vibration, an
 - [ ] Per-category rules
 - [ ] Text-to-speech for the alarm reason
 - [ ] News readout (RSS / podcast / radio stream)
+
+## Documentation
+
+- [Architecture](docs/architecture.md): modules, planning, re-planning triggers, ringing, direct boot, data model
+- [Screens](docs/screens.md): screens, navigation and notifications
+- [State machines](docs/state_machines.md): planner and alarm state machines with complete transition tables
+- [Open questions](docs/open_questions.md): points the concept leaves open, with proposed defaults
 
 ## License
 
