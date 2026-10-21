@@ -10,10 +10,10 @@ The stock Android alarm clock rings whether or not you have a holiday, are on va
 
 - **Calendar vetoes:** an event in a holiday or vacation calendar disables the alarm for that day.
 - **Name-based vetoes:** events whose title matches a pattern (e.g. `Vacation`, `Urlaub`) disable the alarm. Plain text or regular expressions.
-- **Alarms scheduled from the calendar:** an event whose description starts with `Alarm` becomes an alarm at the event's start time, configured by its description.
+- **All alarms come from the calendar:** an event whose description starts with `Alarm` becomes an alarm at the event's start time, configured by its description. There is no alarm schedule inside the app; regular alarms are recurring calendar events.
 - **Categories with their own rules:** e.g. travel alarms ignore vacation vetoes, weekend alarms are gentler.
 - **Wake-up automation:** after the alarm, speak the reason for the alarm and optionally read the news aloud.
-- **Fail-safe:** if the calendar can't be read or a rule fails, the alarm rings anyway.
+- **Fail-safe:** if the calendar can't be read or a rule fails, the alarms that are already planned ring anyway.
 
 ## How it works
 
@@ -23,13 +23,14 @@ The app reads events from the Android calendar provider (`CalendarContract`). It
 - Subscribed public holiday calendars (iCal/webcal) via [ICSx⁵](https://icsx5.bitfire.at/)
 - Any calendar app that uses the system calendar, such as aCalendar
 
+The calendar provider is a local store on the phone, so planning needs no network access. NextAlarm does not use the Google Clock app, calendar reminders or Google services; it schedules its own alarms.
+
 Planning flow:
 
-1. Collect tomorrow's events from the selected calendars.
-2. Apply veto rules (holiday calendars, title patterns).
-3. Add alarms defined by `Alarm` events.
-4. Fall back to the default alarm schedule if nothing applies.
-5. Schedule exact alarms with `AlarmManager.setAlarmClock()`.
+1. Collect the events of the next 48 hours (rolling window) from the selected calendars.
+2. Take the `Alarm` events as alarms.
+3. Apply veto rules (veto calendars, title patterns). Finer rules, such as deleting a recurring alarm while a vacation event runs in parallel, are left to the calendar app (aCalendar supports this).
+4. Schedule exact alarms with `AlarmManager.setAlarmClock()`.
 
 Planning is re-run whenever calendar data changes, so late edits and sync updates are picked up before the alarm time.
 
@@ -65,8 +66,9 @@ Each category can have its own rules: whether vetoes apply, sound, vibration, an
 
 ## Requirements
 
-- Target device: Google Pixel 10a. Android only; there is no iPhone variant.
-- Android 13 (API 33) or newer
+- Target device: Google Pixel 10a. Android only; there is no iPhone variant and no Wear OS app.
+- Android 17 (API 37) or newer
+- Kotlin and Jetpack Compose; English UI only
 - Calendar read permission
 - Exact alarm permission (`USE_EXACT_ALARM`), notifications and full-screen notifications for the alarm screen
 
@@ -79,6 +81,8 @@ Each category can have its own rules: whether vetoes apply, sound, vibration, an
 - [ ] Per-category rules
 - [ ] Text-to-speech for the alarm reason
 - [ ] News readout (RSS / podcast / radio stream)
+
+There is no public distribution yet. If the app is published later, it will be on F-Droid, so the build uses no proprietary dependencies.
 
 ## Documentation
 

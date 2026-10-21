@@ -12,24 +12,29 @@ Related documents:
 
 | Item           | Value                                                                    |
 |----------------|--------------------------------------------------------------------------|
-| Target device  | Google Pixel 10a (the only device tested against)                        |
-| Platform       | Android only, no iOS variant                                             |
-| `minSdk`       | 33 (Android 13), as stated in the README *(proposal: see Q-P1)*          |
-| `targetSdk`    | latest stable API level shipped to the Pixel 10a                         |
+| Target device  | Google Pixel 10a with Android 17 (the only device tested against)        |
+| Platform       | Android only. No iOS variant, no Wear OS / Pixel Watch companion         |
+| `minSdk`       | 37 (Android 17). No compatibility code for older versions                |
+| `targetSdk`    | 37 (Android 17)                                                          |
 | Language       | Kotlin                                                                   |
-| UI             | Jetpack Compose, Material 3 (dynamic colour) *(proposal)*                |
-| Persistence    | Room (alarm instances, plan), DataStore (settings) *(proposal)*          |
+| UI             | Jetpack Compose. The visual design comes from Claude Design              |
+| UI language    | English only, no translations                                            |
+| Persistence    | Room for all app data (settings, alarm instances, plan), one database in device-protected storage |
+| DI             | Hilt *(proposal, Q-P2)*                                                  |
 | Background     | `AlarmManager` for alarms, WorkManager for re-planning                   |
+| Distribution   | None yet. If published later: F-Droid. Therefore no proprietary dependencies (no Google Play Services, no Firebase) |
 
 ## Design principles
 
 1. **Fail-safe first.** A failure (calendar unreadable, rule error, parse error, crash in planning) must never
-   remove an alarm. It can only add one (the default alarm) or keep an existing one.
-2. **Pure core.** The planner, rule engine, description parser and both state machines are pure Kotlin functions
+   remove an alarm. It can only keep the existing ones.
+2. **Calendar only.** Every alarm comes from an `Alarm` event. The app has no alarm schedule of its own; regular
+   alarms are recurring calendar events. The app never adds alarms, it only skips them (vetoes, user skip).
+3. **Pure core.** The planner, rule engine, description parser and both state machines are pure Kotlin functions
    in the `domain` module with no Android dependencies. They are unit tested on the JVM.
-3. **Self-contained alarms.** Every scheduled alarm stores a snapshot of everything needed to ring
+4. **Self-contained alarms.** Every scheduled alarm stores a snapshot of everything needed to ring
    (time, sound, vibration, reason, category settings). Ringing never depends on the calendar or the settings.
-4. **Explainable plans.** The planner records *why* a day has or has no alarm, and the UI shows it.
+5. **Explainable plans.** The planner records *why* a day has or has no alarm, and the UI shows it.
 
 ## Modules
 
@@ -43,7 +48,7 @@ flowchart LR
     end
     subgraph data[":data (Android)"]
         CAL[CalendarRepository<br/>CalendarContract.Instances]
-        SET[SettingsRepository<br/>DataStore]
+        SET[SettingsRepository<br/>Room, device-protected]
         DB[AlarmRepository<br/>Room, device-protected]
         SCH[AlarmScheduler<br/>AlarmManager.setAlarmClock]
     end
@@ -73,6 +78,29 @@ flowchart LR
 `domain` depends on nothing. `data` and `app` depend on `domain`. Android types never appear in `domain`;
 `data` maps them to domain types (`CalendarEvent`, `Settings`, `AlarmInstance`).
 
+## Calendar source
+
+- The app reads only the Android calendar provider (`CalendarContract`). The provider is a local database on the
+  phone; sync adapters (DAVx⁵, ICSx⁵) and calendar apps such as aCalendar keep their copy of the events there.
+  Planning therefore works without network access, using whatever was synced last.
+- Local calendars (e.g. aCalendar's "phone" calendars, which are never synced) work the same way.
+- The app is independent of Google: it does not read or create alarms in the Google Clock app, does not use calendar
+  reminders (`CalendarContract.Reminders`) and does not need Google Play Services.
+- Once planned, alarms are stored in the app's own database (see [Direct boot](#direct-boot)), so they ring even
+  if the calendar provider becomes unavailable later.
+- The alarm database is not a copy of the calendar. The calendar is the source of truth for which alarms exist;
+  the database only holds state the calendar cannot hold, and it is rebuilt from the calendar by every planning
+  run:
+  - the alarms registered with `AlarmManager` in the 48 h horizon. Android loses them on reboot and offers no API
+    to list them, so they are needed to restore alarms before unlock and to cancel or move them on re-plan;
+  - the state of each alarm (`Scheduled`, `Snoozed`, snooze count, user skip), which must survive process death;
+  - the snapshot needed to ring before unlock, when the calendar provider cannot be read;
+  - the history of past alarms for diagnostics.
+- The database can only be stale before the first unlock after a reboot, when the calendar cannot be read anyway.
+  Every calendar change triggers a re-plan, which brings it back in line.
+- The calendar is the only store for future alarms. The app keeps no copy of alarm events beyond the 48 h
+  planning horizon; they stay in the calendar until a later planning run picks them up.
+
 ## Planning
 
 The planner is a pure function:
@@ -81,23 +109,22 @@ The planner is a pure function:
 fun plan(now: Instant, zone: ZoneId, events: List<CalendarEvent>, settings: Settings, existing: List<AlarmInstance>): Plan
 ```
 
-It produces a `Plan` with one entry per candidate alarm in the planning horizon, including the ones that will
+It produces a `Plan` with one entry per `Alarm` event instance in the planning horizon, including the ones that will
 *not* ring together with the reason (for the UI).
+
+The planning horizon is a rolling window of 48 hours from `now`. Alarms further ahead are picked up by later runs;
+the daily re-planning trigger guarantees that every alarm is planned at least 24 hours in advance.
 
 ```mermaid
 flowchart TD
-    A[Read event instances in horizon<br/>from selected calendars] --> B[Drop cancelled events]
+    A[Read event instances in now .. now + 48 h<br/>from selected calendars] --> B[Drop cancelled events]
     B --> C[Find veto events<br/>veto calendars + title patterns]
     B --> D[Find alarm events<br/>description starts with 'Alarm']
     D --> E[Parse description<br/>errors: use defaults + warning]
     E --> F[Resolve category<br/>calendar or category: line]
-    C --> G{For each day in horizon}
+    C --> G{For each alarm event}
     F --> G
-    G --> H{Alarm events on this day?}
-    H -- yes --> I[Candidates = alarm events]
-    H -- no --> J[Candidates = default schedule for weekday]
-    I --> K{Day vetoed and<br/>category honours vetoes?}
-    J --> K
+    G --> K{Veto event in progress at trigger time<br/>and category honours vetoes?}
     K -- yes --> L[Entry: skipped, with reason]
     K -- no --> M[Entry: scheduled]
     L --> N[Plan]
@@ -109,11 +136,14 @@ flowchart TD
 Notes:
 
 - Events are read via `CalendarContract.Instances`, which expands recurring events.
-- All-day events are stored in UTC by the provider. They are converted to a local date before comparing days.
-- Each plan entry has a stable key (`default:<date>` or `event:<eventId>:<instanceBegin>`), so a re-plan can match
-  entries to existing alarm instances and send `Reschedule` or `Remove` instead of re-creating them.
-- Whether an alarm event replaces or adds to the default alarm, the horizon length and veto semantics for timed
-  events are open (Q-R1 to Q-R5). The flow above shows the proposed defaults.
+- If no `Alarm` event lies in the horizon, the plan is empty and no alarm rings. There is no default schedule.
+- **Veto rule:** an alarm is vetoed if a veto event (an event in a veto calendar, or one whose title matches a veto
+  pattern) is in progress at the alarm's trigger time, i.e. `begin <= triggerAt < end`. All-day events are stored
+  in UTC by the provider; they are converted to local dates and cover those whole days. The app deliberately
+  implements no further veto logic. Finer rules (e.g. a vacation that starts in the afternoon) are handled in the
+  calendar app: aCalendar can delete instances of a recurring event while a parallel event exists.
+- Each plan entry has a stable key (`event:<eventId>:<instanceBegin>`), so a re-plan can match entries to existing
+  alarm instances and send `Reschedule` or `Remove` instead of re-creating them.
 
 ## Re-planning triggers
 
@@ -127,7 +157,7 @@ Planning runs in a unique WorkManager job (`REPLACE` policy), so concurrent trig
 | Device boot / user unlock                 | `LOCKED_BOOT_COMPLETED` (restore alarms), `BOOT_COMPLETED` (re-plan)        |
 | Time or time zone changed                 | `TIME_SET`, `TIMEZONE_CHANGED`                                               |
 | App updated                               | `MY_PACKAGE_REPLACED`                                                        |
-| Day rollover                              | Periodic work, once a day after midnight                                     |
+| Day rollover                              | Periodic work, once a day after midnight (moves the 48 h window forward)     |
 | Pre-alarm check                           | Exact alarm 30 min before each alarm *(proposal, Q-S3)*: picks up late changes that the content trigger delivered late because of Doze |
 | Retry after failure                       | Exponential backoff while in `FailSafe`                                      |
 
@@ -186,7 +216,6 @@ classDiagram
         selectedCalendars: Set~CalendarId~
         vetoCalendars: Set~CalendarId~
         vetoPatterns: List~VetoPattern~
-        defaultSchedule: Map~DayOfWeek, LocalTime?~
         categories: List~Category~
         defaultCategory: CategoryId
     }
@@ -212,7 +241,8 @@ classDiagram
         key: String
         date: LocalDate
         triggerAt: Instant
-        source: Default | CalendarEvent
+        eventId: Long
+        instanceBegin: Instant
         category: CategoryId
         outcome: Scheduled | Skipped(reason)
         warnings: List~String~
