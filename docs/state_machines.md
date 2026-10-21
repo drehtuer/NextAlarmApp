@@ -88,7 +88,7 @@ Notes:
 | `Announcing`  | Speaking the reason for the alarm (TTS).        | Stop ringing, cancel any snooze alarm, start `WakeUpService` with TTS.                    |
 | `NewsPlaying` | Reading/playing the news.                       | Start news playback in `WakeUpService`.                                                   |
 | `Done`        | Finished normally. Terminal.                    | Stop all services, cancel `AlarmManager` alarm, remove notifications.                     |
-| `Cancelled`   | Removed by re-planning or skipped by the user. Terminal. | Cancel `AlarmManager` alarm, remove notifications.                               |
+| `Cancelled`   | Removed by re-planning (event deleted in the calendar). Terminal. | Cancel `AlarmManager` alarm, remove notifications.                               |
 | `Missed`      | Trigger time passed too long ago (device was off). Terminal. | Post a "missed alarm" notification.                                          |
 
 Terminal instances are kept for a few days for the history view and then deleted.
@@ -101,7 +101,6 @@ Terminal instances are kept for a few days for the history view and then deleted
 | `Fire(lateBy)`       | `AlarmManager` alarm, or overdue detection at boot / process start                   |
 | `Snooze`             | User taps "Snooze"                                                                  |
 | `Dismiss`            | User taps "Dismiss" (alarm screen or snooze notification)                           |
-| `Skip`               | User skips an upcoming alarm (home screen or pre-alarm notification)                |
 | `RingTimeout`        | Alarm rang for `ringTimeout` without interaction                                    |
 | `Reschedule(time)`   | Re-planning changed the trigger time                                                |
 | `Remove`             | Re-planning no longer contains this entry                                           |
@@ -125,7 +124,7 @@ stateDiagram-v2
     Scheduled --> Scheduled: Reschedule
     Scheduled --> Ringing: Fire [on time]
     Scheduled --> Missed: Fire [too late]
-    Scheduled --> Cancelled: Skip / Remove
+    Scheduled --> Cancelled: Remove
     Ringing --> Snoozed: Snooze [snooze left]
     Ringing --> Snoozed: RingTimeout [snooze left]
     Ringing --> Done: RingTimeout [no snooze left]
@@ -151,16 +150,16 @@ stateDiagram-v2
 `Create` only exists as the initial transition (`[*] → Scheduled`). On an existing instance it is ignored in
 every state, so it is left out of the table for space.
 
-| State \ Event | `Fire(lateBy)`                        | `Snooze`                      | `Dismiss` | `Skip`        | `RingTimeout`                                  | `Reschedule(t)`              | `Remove`      | `AnnouncementDone` | `NewsDone` | `StopWakeUp` |
-|---------------|---------------------------------------|-------------------------------|-----------|---------------|------------------------------------------------|------------------------------|---------------|--------------------|------------|--------------|
-| `Scheduled`   | [G1] → `Ringing`<br/>[else] → `Missed` | ignore                       | ignore    | → `Cancelled` | ignore                                         | → `Scheduled` (new time)     | → `Cancelled` | ignore             | ignore     | ignore       |
-| `Ringing`     | → `Ringing` (restart service)         | [G2] → `Snoozed`<br/>[else] ignore | [G3]  | ignore        | [G2] → `Snoozed`<br/>[else] → `Done`           | ignore                       | ignore        | ignore             | ignore     | ignore       |
-| `Snoozed`     | [G1] → `Ringing`<br/>[else] → `Missed` | ignore                       | [G3]      | ignore        | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
-| `Announcing`  | ignore                                | ignore                        | ignore    | ignore        | ignore                                         | ignore                       | ignore        | [G4]               | ignore     | → `Done`     |
-| `NewsPlaying` | ignore                                | ignore                        | ignore    | ignore        | ignore                                         | ignore                       | ignore        | ignore             | → `Done`   | → `Done`     |
-| `Done`        | ignore                                | ignore                        | ignore    | ignore        | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
-| `Cancelled`   | ignore                                | ignore                        | ignore    | ignore        | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
-| `Missed`      | ignore                                | ignore                        | ignore    | ignore        | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
+| State \ Event | `Fire(lateBy)`                        | `Snooze`                      | `Dismiss` | `RingTimeout`                                  | `Reschedule(t)`              | `Remove`      | `AnnouncementDone` | `NewsDone` | `StopWakeUp` |
+|---------------|---------------------------------------|-------------------------------|-----------|------------------------------------------------|------------------------------|---------------|--------------------|------------|--------------|
+| `Scheduled`   | [G1] → `Ringing`<br/>[else] → `Missed` | ignore                       | ignore    | ignore                                         | → `Scheduled` (new time)     | → `Cancelled` | ignore             | ignore     | ignore       |
+| `Ringing`     | → `Ringing` (restart service)         | [G2] → `Snoozed`<br/>[else] ignore | [G3]  | [G2] → `Snoozed`<br/>[else] → `Done`           | ignore                       | ignore        | ignore             | ignore     | ignore       |
+| `Snoozed`     | [G1] → `Ringing`<br/>[else] → `Missed` | ignore                       | [G3]      | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
+| `Announcing`  | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | [G4]               | ignore     | → `Done`     |
+| `NewsPlaying` | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | ignore             | → `Done`   | → `Done`     |
+| `Done`        | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
+| `Cancelled`   | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
+| `Missed`      | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
 
 Rationale for the less obvious entries:
 
