@@ -35,7 +35,7 @@ transitions that change something.
 | `Unconfigured` | Onboarding not finished. No alarms are managed.           | none                                                                                                               |
 | `Planning`     | A planning run is in progress.                            | Increment `generation`, cancel any running planning job, start a new one tagged with `generation`.                |
 | `Planned`      | The last planning run succeeded; alarms match the plan.   | Diff plan against alarm instances, send `Create` / `Reschedule` / `Remove` to alarm machines, register `AlarmManager` alarms, schedule pre-alarm checks. |
-| `FailSafe`     | The last planning run failed.                             | Keep all existing alarms. Add default-schedule alarms for the horizon, ignoring vetoes. Show a persistent warning notification. Schedule a retry with backoff. |
+| `FailSafe`     | The last planning run failed.                             | Keep all existing alarm instances (the last successful plan) unchanged. Show a persistent warning notification. Schedule a retry with backoff. No alarms are added: alarms beyond the planned 48 h stay in the calendar, so a failure that lasts longer than the horizon leaves no alarms, and the warning notification says so. |
 
 ### Events
 
