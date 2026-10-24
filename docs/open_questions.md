@@ -26,30 +26,19 @@ relevant document and remove it here.
 | Q-S4 | Should changes after the alarm has started (ringing/snoozed) have any effect? | No; see [state machines](state_machines.md#alarm-state-machine). |
 | Q-S5 | Time zones: is an alarm event in another zone (travel) interpreted in the event's zone or the device's? | The event's absolute start instant; display in device zone. |
 
-## Alarm behaviour
-
-| ID   | Question | Proposed default |
-|------|----------|------------------|
-| Q-A1 | Snooze length and maximum number of snoozes? | 9 min, max 3 (configurable in alarm settings). |
-| Q-A2 | Ring timeout without interaction: auto-snooze or stop? How long? | Ring 5 min, then auto-snooze; after max snoozes stop and mark `Done`. |
-| Q-A3 | Grace period for alarms that fire late (device was off): ring or mark as missed? | Ring if at most 60 min late, else `Missed` + notification. |
-| Q-A4 | An alarm fires while another one is ringing. | Defer the second one by 1 minute. |
-| Q-A5 | Gentle wake-up: volume ramp, maximum volume, vibration first? | Configurable volume ramp duration and maximum volume. |
-| Q-A6 | Any dismiss challenge (math puzzle, shake) to prevent dismissing while asleep? | No. |
-
 ## Wake-up automation
 
 | ID   | Question | Proposed default |
 |------|----------|------------------|
-| Q-W1 | When does the automation start: on dismiss, or only after the user unlocks the phone? | On dismiss. |
 | Q-W2 | TTS language and voice: device default or configurable? What is said besides the event title (time, weather)? | Device default; "Good morning, it is 6:30. Flight to Hamburg, leave at 6:15." |
 | Q-W3 | News: which formats are needed first (RSS read via TTS, podcast episode, radio stream)? Maximum duration? | Latest podcast episode or radio stream, max 15 min. RSS later. |
 | Q-W4 | Audio output for wake-up: alarm stream or media stream? | Media stream, so the volume keys work as expected. |
 
-## UI
+## Philips Hue (after the MVP)
 
 | ID   | Question | Proposed default |
 |------|----------|------------------|
-| Q-U1 | Should there be a home screen widget or quick settings tile (next alarm)? | Not in the first version. |
-| Q-U2 | Upcoming-alarm notification (information only, alarms are changed in the calendar app): wanted? How long before? | Yes, 2 hours before (like the stock clock). |
-| Q-U3 | Export / import of settings (backup, new phone)? | Android Auto Backup for settings; no manual export in the first version. |
+| Q-H1 | Use a scene from the Hue app, or let NextAlarm set colour and brightness itself? | Scene from the Hue app, with NextAlarm's ramp duration and maximum brightness applied on recall. |
+| Q-H2 | When does the light start: at the alarm time, or before it (sunrise effect)? | Configurable lead time, default 0 (start with the alarm). |
+| Q-H3 | What does "stop" do: turn the light off on Dismiss, after the wake-up automation, after a delay, or never? | Leave the light on; optional "turn off after N minutes". |
+| Q-H4 | The bridge limits the transition time of a recall. Is that enough for long ramps (e.g. 30 min), or does the app have to step the brightness itself? | Verify against the bridge; step manually only if needed. |

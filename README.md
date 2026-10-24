@@ -9,7 +9,7 @@ The stock Android alarm clock rings whether or not you have a holiday, are on va
 ## Goals
 
 - **All alarms come from one alarm calendar:** every event in the alarm calendar is an alarm at the event's start time. There is no alarm schedule inside the app; regular alarms are recurring events. To drop an alarm (holiday, vacation), delete it in the calendar app; aCalendar, for example, can delete instances of a recurring event automatically while a parallel event exists.
-- **Wake-up automation:** after the alarm, speak the event title and optionally read the news aloud.
+- **Wake-up automation:** after the alarm is dismissed (no need to unlock the phone), speak the event title and optionally read the news aloud.
 - **Fail-safe:** if the calendar can't be read or planning fails, the alarms that are already planned ring anyway.
 
 ## How it works
@@ -51,6 +51,11 @@ Sound, vibration, snooze and the wake-up automation are configured once in the a
 - [ ] Alarm screen with snooze
 - [ ] Text-to-speech for the event title
 - [ ] News readout (RSS / podcast / radio stream)
+
+Later, after the MVP:
+
+- [ ] Quick settings tile showing the next alarm
+- [ ] Philips Hue: turn on a light or a Hue scene with ramp-up, colour and maximum brightness
 
 There is no public distribution yet. If the app is published later, it will be on F-Droid, so the build uses no proprietary dependencies.
 
