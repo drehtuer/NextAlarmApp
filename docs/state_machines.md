@@ -83,15 +83,19 @@ Notes:
 | State         | Meaning                                         | Entry action                                                                              |
 |---------------|-------------------------------------------------|-------------------------------------------------------------------------------------------|
 | `Scheduled`   | Waiting for its trigger time.                   | Register with `AlarmManager.setAlarmClock()` at `triggerAt`.                              |
-| `Ringing`     | Sound/vibration active, alarm screen shown.     | Start `AlarmService`, post full-screen notification, start ring timeout timer.            |
-| `Snoozed`     | Waiting for the snooze to end.                  | Stop ringing, `snoozeCount += 1`, register alarm at now + `snoozeMinutes`, show snooze notification. |
-| `Announcing`  | Speaking the reason for the alarm (TTS).        | Stop ringing, cancel any snooze alarm, start `WakeUpService` with TTS.                    |
+| `Ringing`     | Sound/vibration active, alarm screen shown.     | Join `AlarmService` (start it if not running): add this alarm to the ringing alarms, post its notification, restart the shared ring timeout. If `lateBy > 1 min`, post a "late alarm" notification. |
+| `Snoozed`     | Waiting for the snooze to end.                  | Leave `AlarmService` (it stops when no alarm rings), `snoozeCount += 1`, register alarm at now + `snoozeMinutes`, show snooze notification. |
+| `Announcing`  | Speaking the event title (TTS).                 | Leave `AlarmService`, cancel any snooze alarm, join `WakeUpService` with TTS.             |
 | `NewsPlaying` | Reading/playing the news.                       | Start news playback in `WakeUpService`.                                                   |
-| `Done`        | Finished normally. Terminal.                    | Stop all services, cancel `AlarmManager` alarm, remove notifications.                     |
+| `Done`        | Finished normally. Terminal.                    | Leave all services, cancel `AlarmManager` alarm, remove notifications.                    |
+| `Unanswered`  | Rang until the timeout twice in a row (once before and once after the automatic snooze). Terminal. | Leave `AlarmService`, cancel `AlarmManager` alarm, post an "alarm not answered" notification. |
 | `Cancelled`   | Removed by re-planning (event deleted in the calendar). Terminal. | Cancel `AlarmManager` alarm, remove notifications.                               |
-| `Missed`      | Trigger time passed too long ago (device was off). Terminal. | Post a "missed alarm" notification.                                          |
+| `Missed`      | Trigger time passed more than 60 min ago (device was off). Terminal. | Post a "missed alarm" notification.                                  |
 
 Terminal instances are kept for a few days for the history view and then deleted.
+
+Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the current snooze was started by
+`RingTimeout`, not by the user) and the snapshot (`snoozeMinutes`, `ringTimeoutMinutes`, `speakReason`, `news`).
 
 ### Events
 
@@ -99,9 +103,9 @@ Terminal instances are kept for a few days for the history view and then deleted
 |----------------------|-------------------------------------------------------------------------------------|
 | `Create`             | Planner commits a new plan entry (only creates the instance in `Scheduled`)          |
 | `Fire(lateBy)`       | `AlarmManager` alarm, or overdue detection at boot / process start                   |
-| `Snooze`             | User taps "Snooze"                                                                  |
-| `Dismiss`            | User taps "Dismiss" (alarm screen or snooze notification)                           |
-| `RingTimeout`        | Alarm rang for `ringTimeout` without interaction                                    |
+| `Snooze`             | User taps "Snooze" on the alarm screen (sent to every ringing alarm)                |
+| `Dismiss`            | User taps "Dismiss" on the alarm screen (sent to every ringing alarm) or on a snooze notification (sent to that alarm) |
+| `RingTimeout`        | The ringing alarms rang for `ringTimeoutMinutes` without interaction (sent to every ringing alarm) |
 | `Reschedule(time)`   | Re-planning changed the trigger time                                                |
 | `Remove`             | Re-planning no longer contains this entry                                           |
 | `AnnouncementDone`   | TTS finished (or failed)                                                            |
@@ -110,11 +114,13 @@ Terminal instances are kept for a few days for the history view and then deleted
 
 Guards:
 
-- **G1 (on time):** `lateBy <= gracePeriod` *(proposal: 60 min, Q-A3)*.
-- **G2 (snooze left):** `snoozeCount < maxSnoozes`.
+- **G1 (on time):** `lateBy <= 60 min`.
+- **G2 (first timeout):** `!autoSnoozed`.
 - **G3 (wake-up routing):** if `speakReason && reason != null` → `Announcing`;
   else if `news != null` → `NewsPlaying`; else → `Done`.
 - **G4 (news):** `news != null` → `NewsPlaying`; else → `Done`.
+
+Transition actions: `Snooze` sets `autoSnoozed = false`; `RingTimeout` → `Snoozed` sets `autoSnoozed = true`.
 
 ### Diagram
 
@@ -125,15 +131,15 @@ stateDiagram-v2
     Scheduled --> Ringing: Fire [on time]
     Scheduled --> Missed: Fire [too late]
     Scheduled --> Cancelled: Remove
-    Ringing --> Snoozed: Snooze [snooze left]
-    Ringing --> Snoozed: RingTimeout [snooze left]
-    Ringing --> Done: RingTimeout [no snooze left]
+    Ringing --> Snoozed: Snooze
+    Ringing --> Snoozed: RingTimeout [first timeout]
+    Ringing --> Unanswered: RingTimeout [after auto-snooze]
     Ringing --> WakeUp: Dismiss
     Snoozed --> Ringing: Fire [on time]
     Snoozed --> Missed: Fire [too late]
     Snoozed --> WakeUp: Dismiss
     state WakeUp <<choice>>
-    WakeUp --> Announcing: speak reason
+    WakeUp --> Announcing: speak title
     WakeUp --> NewsPlaying: news only
     WakeUp --> Done: nothing to do
     Announcing --> NewsPlaying: AnnouncementDone [news]
@@ -141,6 +147,7 @@ stateDiagram-v2
     Announcing --> Done: StopWakeUp
     NewsPlaying --> Done: NewsDone / StopWakeUp
     Done --> [*]
+    Unanswered --> [*]
     Cancelled --> [*]
     Missed --> [*]
 ```
@@ -153,23 +160,28 @@ every state, so it is left out of the table for space.
 | State \ Event | `Fire(lateBy)`                        | `Snooze`                      | `Dismiss` | `RingTimeout`                                  | `Reschedule(t)`              | `Remove`      | `AnnouncementDone` | `NewsDone` | `StopWakeUp` |
 |---------------|---------------------------------------|-------------------------------|-----------|------------------------------------------------|------------------------------|---------------|--------------------|------------|--------------|
 | `Scheduled`   | [G1] → `Ringing`<br/>[else] → `Missed` | ignore                       | ignore    | ignore                                         | → `Scheduled` (new time)     | → `Cancelled` | ignore             | ignore     | ignore       |
-| `Ringing`     | → `Ringing` (restart service)         | [G2] → `Snoozed`<br/>[else] ignore | [G3]  | [G2] → `Snoozed`<br/>[else] → `Done`           | ignore                       | ignore        | ignore             | ignore     | ignore       |
+| `Ringing`     | → `Ringing` (rejoin service)          | → `Snoozed`                   | [G3]      | [G2] → `Snoozed`<br/>[else] → `Unanswered`     | ignore                       | ignore        | ignore             | ignore     | ignore       |
 | `Snoozed`     | [G1] → `Ringing`<br/>[else] → `Missed` | ignore                       | [G3]      | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
 | `Announcing`  | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | [G4]               | ignore     | → `Done`     |
 | `NewsPlaying` | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | ignore             | → `Done`   | → `Done`     |
 | `Done`        | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
+| `Unanswered`  | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
 | `Cancelled`   | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
 | `Missed`      | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
 
 Rationale for the less obvious entries:
 
 - **`Ringing` + `Fire` → `Ringing`:** happens when the process died while ringing and the alarm is recovered at
-  start-up. Re-entering restarts `AlarmService`.
+  start-up. Re-entering joins `AlarmService` again.
 - **`Ringing` / `Snoozed` + `Reschedule` / `Remove` → ignore:** a calendar change never stops an alarm that has
   already started (fail-safe). The user can still dismiss it.
-- **`Ringing` + `Snooze` without snooze left → ignore:** the alarm screen hides the snooze button in that case;
-  a late tap does nothing.
+- **`Ringing` + `Snooze`:** snoozing is unlimited. Only an unanswered alarm ends on its own: the first
+  `RingTimeout` snoozes automatically, a second one in a row gives up (`Unanswered`). A manual snooze resets this.
 - **`Snoozed` + `Dismiss` → [G3]:** dismissing from the snooze notification starts the wake-up automation, the same
   as dismissing a ringing alarm.
-- **`Missed`:** a missed alarm is reported but never rung late (beyond the grace period), because ringing hours
-  later is more harmful than useful.
+- **`Missed`:** a missed alarm is reported but never rung more than 60 minutes late, because ringing hours later is
+  more harmful than useful. An alarm that rings late (up to 60 minutes) also gets a "late alarm" notification.
+- **Several alarms at once:** all alarms use the same sound, so a second alarm that fires while another one rings
+  joins the running `AlarmService` instead of being delayed. It gets its own notification, is listed on the alarm
+  screen and restarts the shared ring timeout. `Snooze`, `Dismiss` and `RingTimeout` are sent to every ringing
+  alarm; each machine transitions on its own (see [Ringing](architecture.md#ringing)).

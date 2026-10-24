@@ -22,6 +22,7 @@ Related documents:
 | Persistence    | Room for all app data (settings, alarm instances, plan), one database in device-protected storage |
 | DI             | Hilt *(proposal, Q-P2)*                                                  |
 | Background     | `AlarmManager` for alarms, WorkManager for re-planning                   |
+| Backup         | None. `android:allowBackup="false"`: the alarms live in the calendar, and the few settings are quickly set again |
 | Distribution   | None yet. If published later: F-Droid. Therefore no proprietary dependencies (no Google Play Services, no Firebase) |
 
 ## Design principles
@@ -169,7 +170,7 @@ sequenceDiagram
     A->>SM: Dismiss
     SM-->>A: Announcing
     A->>S: stop
-    A->>W: start: speak reason (TTS), then news
+    A->>W: start: speak title (TTS), then news
     W->>SM: AnnouncementDone / NewsDone
     SM-->>W: Done
 ```
@@ -180,20 +181,49 @@ sequenceDiagram
   `WakeUpService` uses type `mediaPlayback` with a `MediaSession`, so the news can be controlled from the lock screen.
 - The full-screen intent requires `USE_FULL_SCREEN_INTENT`. Onboarding checks
   `NotificationManager.canUseFullScreenIntent()`; if it is denied, the alarm still rings with a heads-up notification.
-- Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it follows the alarm volume and passes Do Not Disturb.
+- Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it passes Do Not Disturb. The volume ramps up from silent
+  to the configured maximum volume over the configured ramp duration.
+- **Ring timeout and snooze:** an alarm rings for `ringTimeoutMinutes` (default 3) and is then snoozed
+  automatically. If it times out again after that automatic snooze, the app gives up and posts an "alarm not
+  answered" notification. The user can snooze any number of times; the snooze length is `snoozeMinutes`
+  (default 10). Both are configurable.
+- **Dismiss means stop.** There is no dismiss challenge (puzzle, shake). Dismiss stops the sound immediately.
 - **Alarm sound:** the user picks an audio file with the Android file picker (`ACTION_OPEN_DOCUMENT`, MIME types
   `audio/mpeg`, `audio/wav`, `audio/ogg`, `audio/mp4`), i.e. MP3, WAV, OGG and M4A. The app copies the file into
   its device-protected storage, so it can be played before the first unlock and keeps working if the original
   file is moved or deleted. Unsupported or unreadable files are rejected in the picker flow.
-- Only one alarm rings at a time. If an alarm fires while another one is ringing, it is deferred by one minute
-  *(proposal, Q-A4)*.
+- **Several alarms at once:** alarms are never delayed. All alarms use the same sound, so an alarm that fires
+  while another one rings joins the running `AlarmService`: the sound simply continues, the ring timeout restarts,
+  the new alarm gets its own notification and is listed on the alarm screen. Snooze and Dismiss on the alarm screen
+  apply to all ringing alarms, and the wake-up automation speaks all their titles.
+- **Late alarms:** if the phone was off at the alarm time, the alarm is detected as overdue at boot. If it is at
+  most 60 minutes late, it rings and a "late alarm" notification is posted; otherwise it does not ring and a
+  "missed alarm" notification is posted.
+
+### Wake-up automation and the lock screen
+
+The wake-up automation (speak the title, then the news) starts when the alarm is dismissed, not when the phone is
+unlocked. This has consequences, because the phone is usually still locked at that moment:
+
+- The alarm screen and the wake-up screen are shown over the lock screen (`showWhenLocked`, `turnScreenOn`).
+  Dismissing an alarm does not require unlocking; neither does stopping the wake-up automation, which is also
+  possible from the media notification on the lock screen.
+- Unlocking the phone does not stop the automation. It keeps playing until it ends or the user taps Stop.
+- After a reboot during the night (system update), the phone may not have been unlocked since boot
+  ([direct boot](#direct-boot)). `WakeUpService` and the wake-up screen are therefore `directBootAware`, and
+  everything they need (title, news source, TTS settings) is part of the alarm snapshot in device-protected storage.
+- The news needs network access. Wi-Fi usually connects before the first unlock, but if there is no network the
+  news step ends with `NewsDone` (failed) and the automation finishes.
+- The TTS engine is a separate app and may not be available before the first unlock. In that case the announcement
+  is skipped (`AnnouncementDone`, failed) and the automation continues with the news.
 
 ## Direct boot
 
 A Pixel installs system updates by rebooting at night. Until the user unlocks the phone, credential-encrypted
 storage and the calendar provider are not available. To ring anyway:
 
-- `AlarmReceiver`, `AlarmService`, `AlarmActivity` and a `LockedBootReceiver` are `directBootAware`.
+- `AlarmReceiver`, `AlarmService`, `AlarmActivity`, `WakeUpService`, the wake-up screen and a `LockedBootReceiver`
+  are `directBootAware`.
 - The alarm database lives in device-protected storage (`createDeviceProtectedStorageContext()`).
 - On `LOCKED_BOOT_COMPLETED` all alarm instances in `Scheduled` or `Snoozed` are registered again with
   `AlarmManager`; overdue ones receive `Fire(lateBy)`.
@@ -210,8 +240,9 @@ classDiagram
         sound: SoundRef
         vibrate: Boolean
         volumeRampSeconds: Int
+        maxVolume: Float
+        ringTimeoutMinutes: Int
         snoozeMinutes: Int
-        maxSnoozes: Int
         speakReason: Boolean
         news: NewsSource?
     }
@@ -229,6 +260,7 @@ classDiagram
         triggerAt: Instant
         state: AlarmState
         snoozeCount: Int
+        autoSnoozed: Boolean
         snapshot: AlarmSnapshot
     }
     class AlarmSnapshot {
@@ -236,14 +268,35 @@ classDiagram
         sound: SoundRef
         vibrate: Boolean
         volumeRampSeconds: Int
+        maxVolume: Float
+        ringTimeoutMinutes: Int
         snoozeMinutes: Int
-        maxSnoozes: Int
         speakReason: Boolean
         news: NewsSource?
     }
     AlarmInstance "1" *-- "1" AlarmSnapshot
     PlanEntry ..> AlarmInstance : creates / updates
 ```
+
+## Future: Philips Hue (not in the MVP)
+
+Planned later: with an alarm, turn on a Hue light with a ramp-up, a colour and a maximum brightness, and turn it
+off again. Open details are tracked as Q-H1 to Q-H4.
+
+- **Interface:** the Hue bridge's local REST API (CLIP v2, HTTPS in the home network). The app pairs once by asking
+  the user to press the bridge's link button and stores the returned application key. No Hue account, no cloud
+  access and no proprietary SDK are needed, so this stays F-Droid compatible.
+- **Scenes from the Hue app can be used.** Scenes are stored on the bridge, not in the Hue app, so NextAlarm can
+  list them and recall one. A recall can carry a transition duration and a brightness, so the ramp-up and the
+  maximum brightness can come from NextAlarm while the colours come from the scene.
+- **Alternatively NextAlarm controls the lights itself:** select lights or a room and set on/off, colour,
+  brightness and transition duration directly. This needs no preparation in the Hue app.
+- The Hue app's own wake-up automations are not used. They run on the bridge on their own schedule and would not
+  follow the calendar.
+- The bridge runs the transition itself, so the phone only sends one request at the start (and one to stop).
+  The request needs the home network; if the bridge is unreachable, the alarm still rings normally (fail-safe).
+- Like the wake-up automation, this has to work before the first unlock, so the bridge address, key and light
+  settings are stored in device-protected storage.
 
 ## Testing
 
