@@ -1,0 +1,25 @@
+{
+  "name": "NextAlarm (Android)",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "mounts": [
+    "source=nextalarm-gradle-cache,target=/home/vscode/.gradle,type=volume"
+  ],
+  "postCreateCommand": "java -version && sdkmanager --list_installed",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "fwcd.kotlin",
+        "vscjava.vscode-gradle",
+        "bierner.markdown-mermaid",
+        "editorconfig.editorconfig"
+      ]
+    }
+  }
+}
