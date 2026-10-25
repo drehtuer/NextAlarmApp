@@ -65,6 +65,7 @@ There is no public distribution yet. If the app is published later, it will be o
 - [Screens](docs/screens.md): screens, navigation and notifications
 - [State machines](docs/state_machines.md): planner and alarm state machines with complete transition tables
 - [Open questions](docs/open_questions.md): points the concept leaves open, with proposed defaults
+- [Development](docs/development.md): dev container, SDK versions, running on the phone
 
 ## License
 
