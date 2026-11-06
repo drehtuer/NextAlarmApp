@@ -1,0 +1,50 @@
+package de.drehtuer.nextalarm.data
+
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import androidx.test.core.app.ApplicationProvider
+import de.drehtuer.nextalarm.domain.PlannerRecord
+import de.drehtuer.nextalarm.domain.Settings
+import java.time.Instant
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+import kotlinx.coroutines.runBlocking
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowAlarmManager
+
+@RunWith(RobolectricTestRunner::class)
+class DataComponentsTest {
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val components = DataComponents(context)
+
+    @Test
+    fun `the repositories work on one database`() = runBlocking {
+        assertEquals(Settings.DEFAULT, components.settings.load())
+        assertEquals(PlannerRecord.INITIAL, components.planner.load())
+        assertTrue(components.alarms.all().isEmpty())
+    }
+
+    @Test
+    fun `the scheduler registers with the system`() {
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+        val intents = object : AlarmIntents {
+            override fun fire(instanceId: Long): PendingIntent =
+                PendingIntent.getBroadcast(context, 0, Intent("fire"), PendingIntent.FLAG_IMMUTABLE)
+
+            override fun show(instanceId: Long): PendingIntent =
+                PendingIntent.getActivity(context, 0, Intent("show"), PendingIntent.FLAG_IMMUTABLE)
+        }
+        val time = Instant.parse("2026-11-07T05:30:00Z")
+        components.scheduler(intents).schedule(1, time)
+        assertEquals(time.toEpochMilli(), context.getSystemService(AlarmManager::class.java).nextAlarmClock?.triggerTime)
+    }
+
+    @Test
+    fun `the calendar repository is available without opening the database`() {
+        assertTrue(components.calendars is AndroidCalendarRepository)
+    }
+}

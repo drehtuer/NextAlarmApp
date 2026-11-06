@@ -1,5 +1,6 @@
 package de.drehtuer.nextalarm.domain
 
+import java.time.Duration
 import java.time.Instant
 
 /** A calendar on the device that can be chosen as the alarm calendar. */
@@ -32,10 +33,24 @@ interface AlarmRepository {
     suspend fun update(instance: AlarmInstance)
 }
 
+enum class PlanningFailure { NO_CALENDAR, NO_PERMISSION, READ_FAILED, APPLY_FAILED }
+
+/** What the last finished planning run did, for the diagnostics screen. */
+data class PlanningRun(
+    val startedAt: Instant,
+    val duration: Duration,
+    /** How many alarms the run found. Empty if it failed. */
+    val alarmCount: Int?,
+    /** Why the run failed. Empty if it succeeded. */
+    val failure: PlanningFailure?,
+)
+
 /** The persisted state of the planner state machine. */
 data class PlannerRecord(
     val state: PlannerState,
     val generation: Long,
+    val consecutiveFailures: Int = 0,
+    val lastRun: PlanningRun? = null,
 ) {
     companion object {
         val INITIAL = PlannerRecord(PlannerState.Unconfigured, generation = 0)

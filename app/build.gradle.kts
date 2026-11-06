@@ -71,12 +71,14 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.hilt.android)
     implementation(libs.work.runtime)
+    implementation(libs.kotlinx.coroutines.android)
     ksp(libs.hilt.compiler)
 
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.junit4)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.robolectric)
+    testImplementation(libs.work.testing)
     testImplementation(libs.compose.ui.test.junit4)
     // The versions Compose brings in call an InputManager method that no longer exists on API 37.
     testImplementation(libs.androidx.test.core)

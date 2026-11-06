@@ -9,8 +9,11 @@ import de.drehtuer.nextalarm.domain.NewsSource
 import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.PlannerState
+import de.drehtuer.nextalarm.domain.PlanningFailure
+import de.drehtuer.nextalarm.domain.PlanningRun
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.SoundRef
+import java.time.Duration
 import java.time.Instant
 
 // The stored names are part of the database format: changing one needs a migration.
@@ -135,6 +138,30 @@ internal fun SettingsEntity.toDomain() = Settings(
     news = config.news?.toDomain(),
 )
 
-internal fun PlannerRecord.toEntity() = PlannerEntity(state = state.toColumn(), generation = generation)
+internal fun PlanningRun.toColumns() = PlanningRunColumns(
+    startedAtMillis = startedAt.toEpochMilli(),
+    durationMillis = duration.toMillis(),
+    alarmCount = alarmCount,
+    failure = failure?.name,
+)
 
-internal fun PlannerEntity.toDomain() = PlannerRecord(plannerStateFromColumn(state), generation)
+internal fun PlanningRunColumns.toDomain() = PlanningRun(
+    startedAt = Instant.ofEpochMilli(startedAtMillis),
+    duration = Duration.ofMillis(durationMillis),
+    alarmCount = alarmCount,
+    failure = failure?.let(PlanningFailure::valueOf),
+)
+
+internal fun PlannerRecord.toEntity() = PlannerEntity(
+    state = state.toColumn(),
+    generation = generation,
+    consecutiveFailures = consecutiveFailures,
+    lastRun = lastRun?.toColumns(),
+)
+
+internal fun PlannerEntity.toDomain() = PlannerRecord(
+    state = plannerStateFromColumn(state),
+    generation = generation,
+    consecutiveFailures = consecutiveFailures,
+    lastRun = lastRun?.toDomain(),
+)

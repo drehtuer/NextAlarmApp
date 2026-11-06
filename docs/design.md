@@ -278,7 +278,7 @@ Values open the standard Material 3 pickers.
   - `FailSafe` (`errorContainer`, warning icon): "Last check failed" / "Today at 19:58: calendar permission was removed.
     The 4 alarms already planned will still ring, but changes in the calendar are not picked up." The second sentence is
     followed by the matching fix, for example "Allow calendar access again to fix it."
-- **Facts:** label–value rows: "Calendar", "Next check" ("20:13, or when the calendar changes") and "Full-screen alarms".
+- **Facts:** label–value rows: "Calendar", "Next check" ("When the calendar changes, and at least once a day") and "Full-screen alarms".
 - **Buttons:** "Ring a test alarm" (tonal, bell icon) and "Export log" (outlined).
 - **"Past alarms":** one row per alarm with the time ("Thu 07:00"), the title, and an outcome chip:
 
@@ -287,7 +287,7 @@ Values open the standard Material 3 pickers.
 | `Done` | "Dismissed", or "Dismissed after 2 snoozes" | `successContainer`, check icon |
 | `Done`, rang late | "Rang 7 min late (phone was off)" | `secondaryContainer`, clock icon |
 | `Unanswered` | "Not answered (rang twice)" | `secondaryContainer`, warning icon |
-| `Cancelled` | "Event deleted before it rang" | `surfaceVariant`, cross icon |
+| `Cancelled` | "Event moved or deleted before it rang" | `surfaceVariant`, cross icon |
 | `Missed` | "Missed: phone was off" | `errorContainer`, cross icon |
 
 ### 8 Alarm screen (night)

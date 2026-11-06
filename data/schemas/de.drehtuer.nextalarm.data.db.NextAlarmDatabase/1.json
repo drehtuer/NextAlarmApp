@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "e15e5876353abfb521bba1dbf6dd5a2d",
+    "identityHash": "51466d0a0027f4c8305877fdd71bf3a6",
     "entities": [
       {
         "tableName": "alarm_instance",
@@ -203,7 +203,7 @@
       },
       {
         "tableName": "planner",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `state` TEXT NOT NULL, `generation` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `state` TEXT NOT NULL, `generation` INTEGER NOT NULL, `consecutiveFailures` INTEGER NOT NULL, `lastRun_startedAtMillis` INTEGER, `lastRun_durationMillis` INTEGER, `lastRun_alarmCount` INTEGER, `lastRun_failure` TEXT, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -222,6 +222,32 @@
             "columnName": "generation",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "consecutiveFailures",
+            "columnName": "consecutiveFailures",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastRun.startedAtMillis",
+            "columnName": "lastRun_startedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastRun.durationMillis",
+            "columnName": "lastRun_durationMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastRun.alarmCount",
+            "columnName": "lastRun_alarmCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastRun.failure",
+            "columnName": "lastRun_failure",
+            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
@@ -234,7 +260,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e15e5876353abfb521bba1dbf6dd5a2d')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '51466d0a0027f4c8305877fdd71bf3a6')"
     ]
   }
 }

@@ -16,6 +16,7 @@ dependencies {
     testImplementation(libs.junit5.jupiter)
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlin.reflect)
+    testImplementation(libs.kotlinx.coroutines.core)
     testRuntimeOnly(libs.junit5.launcher)
 }
 

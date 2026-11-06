@@ -179,13 +179,20 @@ Planning runs in a unique WorkManager job (`REPLACE` policy), so concurrent trig
 
 | Trigger                                   | Mechanism                                                                    |
 |-------------------------------------------|------------------------------------------------------------------------------|
-| Calendar data changed (sync, edit)        | WorkManager content-URI trigger on `CalendarContract.CONTENT_URI`, re-armed after each run |
+| Calendar data changed (sync, edit)        | WorkManager content-URI trigger on `CalendarContract.CONTENT_URI`, re-armed at the start of each run, before it reads the calendar |
 | Settings changed in the app               | Direct call from the UI (alarm calendar or alarm settings changed)           |
 | Device boot / user unlock                 | `LOCKED_BOOT_COMPLETED` (restore alarms), `BOOT_COMPLETED` (re-plan)        |
 | Time or time zone changed                 | `TIME_SET`, `TIMEZONE_CHANGED`                                               |
 | App updated                               | `MY_PACKAGE_REPLACED`                                                        |
 | Day rollover                              | Periodic work, once a day after midnight (moves the 48 h window forward)     |
-| Retry after failure                       | Exponential backoff while in `FailSafe`                                      |
+| Retry after failure                       | Exponential backoff while in `FailSafe`: one minute, doubling, up to one hour |
+
+`PlannerEngine` and `AlarmEngine` in `domain` run the state machines against the repositories, so this logic is tested
+on the JVM. `app` only adds WorkManager workers and a broadcast receiver. A planning run reads the calendar first and
+applies the result only if it is still the current run. A failed read or a failed apply leads to `FailSafe` and keeps
+the planned alarms; a run replaced by a newer one is not a failure. Every successful run registers all waiting alarms
+with `AlarmManager` again, which also repairs an alarm whose registration a replaced run interrupted. The planner record
+keeps the last run's time, duration, alarm count and failure reason for the diagnostics screen.
 
 There is no pre-alarm check. If Doze delays the content-URI trigger, an edit made shortly before an alarm may not be
 picked up in time, and the alarm rings as last planned.

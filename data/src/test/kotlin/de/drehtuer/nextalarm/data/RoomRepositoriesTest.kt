@@ -9,8 +9,11 @@ import de.drehtuer.nextalarm.domain.AlarmState
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.PlannerState
+import de.drehtuer.nextalarm.domain.PlanningFailure
+import de.drehtuer.nextalarm.domain.PlanningRun
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.SoundRef
+import java.time.Duration
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -76,6 +79,27 @@ class RoomRepositoriesTest {
         assertEquals(PlannerRecord(PlannerState.Planning, 3), planner.load())
         planner.save(PlannerRecord(PlannerState.FailSafe, 4))
         assertEquals(PlannerRecord(PlannerState.FailSafe, 4), planner.load())
+    }
+
+    @Test
+    fun `the planner keeps the details of a successful and a failed run`() = runBlocking {
+        val succeeded = PlannerRecord(
+            state = PlannerState.Planned,
+            generation = 2,
+            consecutiveFailures = 0,
+            lastRun = PlanningRun(time, Duration.ofMillis(400), alarmCount = 4, failure = null),
+        )
+        planner.save(succeeded)
+        assertEquals(succeeded, planner.load())
+
+        val failed = PlannerRecord(
+            state = PlannerState.FailSafe,
+            generation = 3,
+            consecutiveFailures = 2,
+            lastRun = PlanningRun(time, Duration.ofMillis(10), alarmCount = null, failure = PlanningFailure.NO_PERMISSION),
+        )
+        planner.save(failed)
+        assertEquals(failed, planner.load())
     }
 
     @Test

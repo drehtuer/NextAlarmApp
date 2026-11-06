@@ -4,7 +4,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 **Last updated:** 2026-11-06
 
-**Summary:** Phases 0 to 2 are merged (#5), with 100% line and branch coverage in SonarCloud. The app is still a placeholder screen with no alarm functions. It installs and runs on the Pixel 10a. Phase 3 is implemented on the branch `impl/data` and tested on the JVM, but not merged.
+**Summary:** Phases 0 to 3 are merged, and the design is delivered in [design.md](design.md). Phase 4 is implemented on the branch `impl/planning` and tested on the JVM, but not merged. The app still shows a placeholder screen, and alarms cannot ring until Phase 6.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -59,19 +59,19 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 | Step | Topic                                   | Status        | Notes |
 |------|-----------------------------------------|---------------|-------|
-| 3.1  | Room database                           | `In progress` | Not merged. |
-| 3.2  | `SettingsRepository`, `AlarmRepository` | `In progress` | Not merged. |
-| 3.3  | `CalendarRepository`                    | `In progress` | Not merged. Only tested against a fake provider; not yet run on real calendars. |
-| 3.4  | `AlarmScheduler`                        | `In progress` | Not merged. |
-| 3.5  | Alarm sound storage                     | `In progress` | Not merged. |
+| 3.1  | Room database                           | `Done`        | Merged in #7. |
+| 3.2  | `SettingsRepository`, `AlarmRepository` | `Done`        | Merged in #7. |
+| 3.3  | `CalendarRepository`                    | `Done`        | Merged in #7. Only tested against a fake provider; not yet run on real calendars. |
+| 3.4  | `AlarmScheduler`                        | `Done`        | Merged in #7. |
+| 3.5  | Alarm sound storage                     | `Done`        | Merged in #7. |
 
 ## Phase 4: Planning pipeline
 
 | Step | Topic              | Status        | Notes |
 |------|--------------------|---------------|-------|
-| 4.1  | `PlanWorker`       | `Not started` |       |
-| 4.2  | Worker triggers    | `Not started` |       |
-| 4.3  | Broadcast triggers | `Not started` |       |
+| 4.1  | `PlanWorker`       | `In progress` | Not merged. |
+| 4.2  | Worker triggers    | `In progress` | Not merged. |
+| 4.3  | Broadcast triggers | `In progress` | Not merged. |
 
 ## Phase 5: Setup and home screens
 
