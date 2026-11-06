@@ -43,7 +43,7 @@ is planned for later.
 | 3  | Settings                  | Entry point to all configuration.                                                                                               | — |
 | 4  | Alarm calendar            | List of device calendars; choose exactly one as the alarm calendar.                                                             | Change sends `ReplanRequested` |
 | 5  | Alarm settings            | Applies to every alarm: sound (audio file chosen with the Android file picker: MP3, WAV, OGG, M4A), vibration, volume ramp duration, maximum volume, ring timeout (default 3 min), snooze length (default 10 min), speak title, news source. | Change sends `ReplanRequested` |
-| 6  | News source               | RSS feed, podcast feed or radio stream URL; maximum duration; test playback.                                                    | — |
+| 6  | News source               | RSS feed or podcast feed URL; maximum duration (default 15 min); test playback.                                                 | — |
 | 7  | Diagnostics & history     | Planner state, last planning run and error, list of past alarms with final state (`Done`, `Missed`, ...), test alarm, export log. | read-only; test alarm creates an instance |
 | 8  | Alarm screen              | Full-screen, over lock screen: time and the titles of all ringing alarms. Buttons: Snooze, Dismiss (both act on all ringing alarms; no challenge). | Sends `Snooze`, `Dismiss` |
 | 9  | Wake-up screen            | Shows the event title and what is playing; Stop button. Also controllable via media notification.                               | Sends `StopWakeUp` |

@@ -31,6 +31,34 @@ The versions are build arguments at the top of `.devcontainer/Dockerfile`. The a
 names and SHA-1 checksums are listed in Google's repository index
 `https://dl.google.com/android/repository/repository2-3.xml`. After changing them, rebuild the container.
 
+## Building and testing
+
+| Command                            | What it does                                                        |
+|------------------------------------|---------------------------------------------------------------------|
+| `./gradlew :app:assembleDebug`     | Builds the debug APK.                                               |
+| `./gradlew coverageReports`        | Runs the unit tests of all modules and writes their coverage reports. |
+
+The coverage reports are JaCoCo XML and HTML files, written to `domain/build/reports/jacoco/test/` and to
+`build/reports/coverage/test/debug/` in `app` and `data`. They contain line and branch coverage.
+
+Robolectric downloads its Android runtime from Maven Central into `~/.m2/repository` on the first run. Maven Central
+sometimes answers this download with HTTP 429; if a test fails with `Failed to fetch maven artifact`, run it again later.
+
+## Continuous integration and SonarCloud
+
+[`.github/workflows/build.yml`](../.github/workflows/build.yml) runs on every pull request and on every push to
+`main`. It builds the app, runs the unit tests with coverage and sends the analysis to
+[SonarCloud](https://sonarcloud.io/project/overview?id=drehtuer_NextAlarmApp), which shows the line and branch coverage.
+
+SonarCloud can only import coverage from a CI analysis, so this needs two settings outside the repository:
+
+1. In SonarCloud, turn off **Automatic Analysis** under **Administration → Analysis Method**. It cannot run alongside
+   a CI analysis.
+2. In SonarCloud, generate a token under **My Account → Security**, and store it in GitHub as the repository secret
+   `SONAR_TOKEN` under **Settings → Secrets and variables → Actions**.
+
+The SDK versions in the workflow must match those in `.devcontainer/Dockerfile`.
+
 ## Running on the Pixel 10a
 
 The container has no emulator (no hardware acceleration under WSL/Docker) and no USB access. Most code is tested
