@@ -77,7 +77,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 | Step | Topic                     | Status        | Notes |
 |------|---------------------------|---------------|-------|
-| 5.1  | Visual design, navigation | `Not started` |       |
+| 5.1  | Visual design, navigation | `In progress` | App icon added: adaptive launcher icon with a monochrome layer, and the notification icon `ic_stat_alarm`. Theme and navigation still to do. |
 | 5.2  | Onboarding                | `Not started` |       |
 | 5.3  | Alarm calendar selection  | `Not started` |       |
 | 5.4  | Home                      | `Not started` |       |
