@@ -70,54 +70,65 @@ fun transition(
     state: AlarmState,
     event: AlarmEvent,
     context: AlarmContext,
-): Transition<AlarmState, AlarmAction> {
-    val ignore = Transition<AlarmState, AlarmAction>(state)
-    return when (state) {
-        AlarmState.Scheduled -> when (event) {
-            is AlarmEvent.Fire -> fire(event, wasRinging = false)
-            is AlarmEvent.Refresh -> Transition(state, listOf(AlarmAction.ReplaceSnapshot(event.snapshot)))
-            AlarmEvent.Remove -> enterCancelled()
-            AlarmEvent.Create, AlarmEvent.Snooze, AlarmEvent.Dismiss, AlarmEvent.RingTimeout,
-            AlarmEvent.AnnouncementDone, AlarmEvent.NewsDone, AlarmEvent.StopWakeUp,
-            -> ignore
-        }
-        AlarmState.Ringing -> when (event) {
-            is AlarmEvent.Fire -> fire(event, wasRinging = true)
-            AlarmEvent.Snooze -> enterSnoozed(context, autoSnoozed = false)
-            AlarmEvent.Dismiss -> startWakeUp(context.snapshot)
-            AlarmEvent.RingTimeout ->
-                if (!context.autoSnoozed) enterSnoozed(context, autoSnoozed = true) else enterUnanswered()
-            AlarmEvent.Create, is AlarmEvent.Refresh, AlarmEvent.Remove,
-            AlarmEvent.AnnouncementDone, AlarmEvent.NewsDone, AlarmEvent.StopWakeUp,
-            -> ignore
-        }
-        AlarmState.Snoozed -> when (event) {
-            is AlarmEvent.Fire -> fire(event, wasRinging = false)
-            AlarmEvent.Dismiss -> startWakeUp(context.snapshot)
-            AlarmEvent.Create, AlarmEvent.Snooze, AlarmEvent.RingTimeout, is AlarmEvent.Refresh, AlarmEvent.Remove,
-            AlarmEvent.AnnouncementDone, AlarmEvent.NewsDone, AlarmEvent.StopWakeUp,
-            -> ignore
-        }
-        AlarmState.Announcing -> when (event) {
-            AlarmEvent.AnnouncementDone -> if (context.snapshot.news != null) enterNewsPlaying() else enterDone()
-            AlarmEvent.StopWakeUp -> enterDone()
-            AlarmEvent.Create, is AlarmEvent.Fire, AlarmEvent.Snooze, AlarmEvent.Dismiss, AlarmEvent.RingTimeout,
-            is AlarmEvent.Refresh, AlarmEvent.Remove, AlarmEvent.NewsDone,
-            -> ignore
-        }
-        AlarmState.NewsPlaying -> when (event) {
-            AlarmEvent.NewsDone, AlarmEvent.StopWakeUp -> enterDone()
-            AlarmEvent.Create, is AlarmEvent.Fire, AlarmEvent.Snooze, AlarmEvent.Dismiss, AlarmEvent.RingTimeout,
-            is AlarmEvent.Refresh, AlarmEvent.Remove, AlarmEvent.AnnouncementDone,
-            -> ignore
-        }
-        AlarmState.Done, AlarmState.Unanswered, AlarmState.Cancelled, AlarmState.Missed -> when (event) {
-            AlarmEvent.Create, is AlarmEvent.Fire, AlarmEvent.Snooze, AlarmEvent.Dismiss, AlarmEvent.RingTimeout,
-            is AlarmEvent.Refresh, AlarmEvent.Remove, AlarmEvent.AnnouncementDone, AlarmEvent.NewsDone,
-            AlarmEvent.StopWakeUp,
-            -> ignore
-        }
-    }
+): Transition<AlarmState, AlarmAction> = when (state) {
+    AlarmState.Scheduled -> fromScheduled(event)
+    AlarmState.Ringing -> fromRinging(event, context)
+    AlarmState.Snoozed -> fromSnoozed(event, context)
+    AlarmState.Announcing -> fromAnnouncing(event, context)
+    AlarmState.NewsPlaying -> fromNewsPlaying(event)
+    AlarmState.Done, AlarmState.Unanswered, AlarmState.Cancelled, AlarmState.Missed -> fromTerminal(state, event)
+}
+
+private fun ignore(state: AlarmState) = Transition<AlarmState, AlarmAction>(state)
+
+private fun fromScheduled(event: AlarmEvent): Transition<AlarmState, AlarmAction> = when (event) {
+    is AlarmEvent.Fire -> fire(event, wasRinging = false)
+    is AlarmEvent.Refresh -> Transition(AlarmState.Scheduled, listOf(AlarmAction.ReplaceSnapshot(event.snapshot)))
+    AlarmEvent.Remove -> enterCancelled()
+    AlarmEvent.Create, AlarmEvent.Snooze, AlarmEvent.Dismiss, AlarmEvent.RingTimeout,
+    AlarmEvent.AnnouncementDone, AlarmEvent.NewsDone, AlarmEvent.StopWakeUp,
+    -> ignore(AlarmState.Scheduled)
+}
+
+private fun fromRinging(event: AlarmEvent, context: AlarmContext): Transition<AlarmState, AlarmAction> = when (event) {
+    is AlarmEvent.Fire -> fire(event, wasRinging = true)
+    AlarmEvent.Snooze -> enterSnoozed(context, autoSnoozed = false)
+    AlarmEvent.Dismiss -> startWakeUp(context.snapshot)
+    AlarmEvent.RingTimeout ->
+        if (!context.autoSnoozed) enterSnoozed(context, autoSnoozed = true) else enterUnanswered()
+    AlarmEvent.Create, is AlarmEvent.Refresh, AlarmEvent.Remove,
+    AlarmEvent.AnnouncementDone, AlarmEvent.NewsDone, AlarmEvent.StopWakeUp,
+    -> ignore(AlarmState.Ringing)
+}
+
+private fun fromSnoozed(event: AlarmEvent, context: AlarmContext): Transition<AlarmState, AlarmAction> = when (event) {
+    is AlarmEvent.Fire -> fire(event, wasRinging = false)
+    AlarmEvent.Dismiss -> startWakeUp(context.snapshot)
+    AlarmEvent.Create, AlarmEvent.Snooze, AlarmEvent.RingTimeout, is AlarmEvent.Refresh, AlarmEvent.Remove,
+    AlarmEvent.AnnouncementDone, AlarmEvent.NewsDone, AlarmEvent.StopWakeUp,
+    -> ignore(AlarmState.Snoozed)
+}
+
+private fun fromAnnouncing(event: AlarmEvent, context: AlarmContext): Transition<AlarmState, AlarmAction> = when (event) {
+    AlarmEvent.AnnouncementDone -> if (context.snapshot.news != null) enterNewsPlaying() else enterDone()
+    AlarmEvent.StopWakeUp -> enterDone()
+    AlarmEvent.Create, is AlarmEvent.Fire, AlarmEvent.Snooze, AlarmEvent.Dismiss, AlarmEvent.RingTimeout,
+    is AlarmEvent.Refresh, AlarmEvent.Remove, AlarmEvent.NewsDone,
+    -> ignore(AlarmState.Announcing)
+}
+
+private fun fromNewsPlaying(event: AlarmEvent): Transition<AlarmState, AlarmAction> = when (event) {
+    AlarmEvent.NewsDone, AlarmEvent.StopWakeUp -> enterDone()
+    AlarmEvent.Create, is AlarmEvent.Fire, AlarmEvent.Snooze, AlarmEvent.Dismiss, AlarmEvent.RingTimeout,
+    is AlarmEvent.Refresh, AlarmEvent.Remove, AlarmEvent.AnnouncementDone,
+    -> ignore(AlarmState.NewsPlaying)
+}
+
+private fun fromTerminal(state: AlarmState, event: AlarmEvent): Transition<AlarmState, AlarmAction> = when (event) {
+    AlarmEvent.Create, is AlarmEvent.Fire, AlarmEvent.Snooze, AlarmEvent.Dismiss, AlarmEvent.RingTimeout,
+    is AlarmEvent.Refresh, AlarmEvent.Remove, AlarmEvent.AnnouncementDone, AlarmEvent.NewsDone,
+    AlarmEvent.StopWakeUp,
+    -> ignore(state)
 }
 
 /** Guard G1, and the late notification for an alarm that was not already ringing. */

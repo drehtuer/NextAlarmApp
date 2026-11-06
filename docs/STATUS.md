@@ -4,7 +4,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 **Last updated:** 2026-11-06
 
-**Summary:** Phases 0 to 2 and step 1.4 are implemented on the branch `impl/foundation`, with all unit tests passing, but not merged. The SonarCloud analysis has not run yet. Next is Phase 3.
+**Summary:** Phases 0 to 2 and step 1.4 are implemented on the branch `impl/foundation`, with all unit tests passing, but not merged. Next is Phase 3.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -37,7 +37,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | 1.1  | Gradle and modules    | `In progress` | Not merged. |
 | 1.2  | Build configuration   | `In progress` | Not merged. |
 | 1.3  | Test setup            | `In progress` | Not merged. |
-| 1.4  | Coverage, CI, SonarCloud | `In progress` | Needs `SONAR_TOKEN`; first scan not run yet. |
+| 1.4  | Coverage, CI, SonarCloud | `In progress` | Not merged. |
 
 ## Phase 2: Domain
 

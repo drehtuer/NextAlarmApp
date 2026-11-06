@@ -44,6 +44,18 @@ The coverage reports are JaCoCo XML and HTML files, written to `domain/build/rep
 Robolectric downloads its Android runtime from Maven Central into `~/.m2/repository` on the first run. Maven Central
 sometimes answers this download with HTTP 429; if a test fails with `Failed to fetch maven artifact`, run it again later.
 
+### Updating dependencies
+
+Gradle checks every dependency against the checksums in `gradle/verification-metadata.xml`, and the build fails on
+one it does not know. After adding or updating a dependency, including a version in `gradle/libs.versions.toml`,
+regenerate the file and review the change. Use an empty Gradle cache, because artifacts that are already cached can
+be missed, and the build then fails on a clean machine such as CI:
+
+```bash
+GRADLE_USER_HOME=$(mktemp -d) ./gradlew --write-verification-metadata sha256 --no-configuration-cache \
+    clean coverageReports :app:assembleDebug sonarResolver
+```
+
 ## Continuous integration and SonarCloud
 
 [`.github/workflows/build.yml`](../.github/workflows/build.yml) runs on every pull request and on every push to
