@@ -31,7 +31,6 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -104,15 +103,21 @@ class AppViewModelTest {
         }
     }
 
+    private fun load(): AppState {
+        viewModel.startWatching()
+        val state = awaitState { it.loaded }
+        viewModel.stopWatching()
+        return state
+    }
+
     @Test
     fun `the state starts unloaded`() {
         assertFalse(viewModel.state.value.loaded)
     }
 
     @Test
-    fun `a new install is not set up, and has no selected calendar`() = runBlocking {
-        viewModel.refresh()
-        val state = viewModel.state.value
+    fun `a new install is not set up, and has no selected calendar`() {
+        val state = load()
         assertTrue(state.loaded)
         assertFalse(state.setupDone)
         assertNull(state.selectedCalendar)
@@ -124,24 +129,27 @@ class AppViewModelTest {
         val at = NOW.plus(Duration.ofHours(10))
         data.settings.save(Settings.DEFAULT.copy(alarmCalendar = CALENDAR.id))
         data.alarms.create(AlarmKey.forEvent(1, at), at, Settings.DEFAULT.snapshotFor("Flight"))
-        viewModel.refresh()
-        val state = viewModel.state.value
+        val state = load()
         assertEquals(CALENDAR.id, state.selectedCalendar)
         assertEquals("Flight", state.home.hero?.title)
         assertEquals("From the calendar “NextAlarm” (DAVx⁵).", state.home.footer)
     }
 
     @Test
-    fun `without calendar access there is nothing to list`() = runBlocking {
+    fun `without calendar access there is nothing to list`() {
         calendars.result = { throw SecurityException("no permission") }
-        viewModel.refresh()
-        assertEquals(emptyList(), viewModel.state.value.calendars)
+        assertEquals(emptyList(), load().calendars)
     }
 
     @Test
-    fun `a cancelled read stays cancelled`() = runBlocking<Unit> {
+    fun `a cancelled read does not count as an empty list`() {
         calendars.result = { throw CancellationException("gone") }
-        assertFailsWith<CancellationException> { viewModel.refresh() }
+        viewModel.startWatching()
+        settle()
+        Thread.sleep(SETTLE_MILLIS)
+        settle()
+        viewModel.stopWatching()
+        assertFalse(viewModel.state.value.loaded)
     }
 
     @Test
@@ -198,6 +206,7 @@ class AppViewModelTest {
     private companion object {
         const val WAIT_MILLIS = 10_000L
         const val POLL_MILLIS = 10L
+        const val SETTLE_MILLIS = 200L
 
         val NO_INTENTS = object : AlarmIntents {
             override fun fire(instanceId: Long) = throw UnsupportedOperationException()

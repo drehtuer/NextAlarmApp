@@ -74,7 +74,7 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         watching = emptyList()
     }
 
-    suspend fun refresh() {
+    private suspend fun refresh() {
         val settings = ports.settings.load()
         val record: PlannerRecord = ports.planner.load()
         val calendars = readCalendars()

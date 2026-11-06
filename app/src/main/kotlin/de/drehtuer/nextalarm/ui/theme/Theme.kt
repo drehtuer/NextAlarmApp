@@ -138,3 +138,9 @@ fun NextAlarmTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable (
         )
     }
 }
+
+/** Screens 8 and 9: always night, whatever the system setting. */
+@Composable
+fun NightTheme(content: @Composable () -> Unit) {
+    TODO("Step 6.3: $content")
+}

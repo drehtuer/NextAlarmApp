@@ -4,7 +4,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 **Last updated:** 2026-11-07
 
-**Summary:** Phases 0 to 4 are merged. Phase 5 is implemented on the branch `impl/screens`, but not merged: the app has its theme, onboarding, calendar selection and home. Alarms are planned, but cannot ring until Phase 6.
+**Summary:** Phases 0 to 5 are merged. Work continues as a stack of unmerged pull requests, starting with Phase 6.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -79,22 +79,22 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 | Step | Topic                     | Status        | Notes |
 |------|---------------------------|---------------|-------|
-| 5.1  | Visual design, navigation | `In progress` | App icon added: adaptive launcher icon with a monochrome layer, and the notification icon `ic_stat_alarm`. Theme and navigation still to do. |
-| 5.2  | Onboarding                | `In progress` | Not merged. |
-| 5.3  | Alarm calendar selection  | `In progress` | Not merged. |
-| 5.4  | Home                      | `In progress` | Not merged. The fail-safe banner's "See what went wrong" button comes with step 8.4. |
-| 5.5  | Basic notifications       | `In progress` | Not merged. "Open diagnostics" comes with step 8.4; tapping the warning opens the app. |
+| 5.1  | Visual design, navigation | `Done`        | App icon added: adaptive launcher icon with a monochrome layer, and the notification icon `ic_stat_alarm`. Theme and navigation still to do. |
+| 5.2  | Onboarding                | `Done`        | Merged in #11. |
+| 5.3  | Alarm calendar selection  | `Done`        | Merged in #11. |
+| 5.4  | Home                      | `Done`        | Merged in #11. The fail-safe banner's "See what went wrong" button comes with step 8.4. |
+| 5.5  | Basic notifications       | `Done`        | Merged in #11. "Open diagnostics" comes with step 8.4; tapping the warning opens the app. |
 
 ## Phase 6: Ringing
 
 | Step | Topic                  | Status        | Notes |
 |------|------------------------|---------------|-------|
-| 6.1  | `AlarmReceiver`        | `Not started` |       |
-| 6.2  | `AlarmService`         | `Not started` |       |
-| 6.3  | Alarm screen           | `Not started` |       |
-| 6.4  | Snooze and timeout     | `Not started` |       |
-| 6.5  | Direct boot, recovery  | `Not started` |       |
-| 6.6  | Late and missed alarms | `Not started` |       |
+| 6.1  | `AlarmReceiver`        | `In progress` | Not merged. |
+| 6.2  | `AlarmService`         | `In progress` | Not merged. |
+| 6.3  | Alarm screen           | `In progress` | Not merged. |
+| 6.4  | Snooze and timeout     | `In progress` | Not merged. |
+| 6.5  | Direct boot, recovery  | `In progress` | Not merged. |
+| 6.6  | Late and missed alarms | `In progress` | Not merged. |
 
 ## Phase 7: Wake-up automation
 
