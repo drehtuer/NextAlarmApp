@@ -80,6 +80,15 @@ wireless debugging:
 1. On the phone: **Settings → System → Developer options → Wireless debugging**, then **Pair device with pairing
    code**.
 2. In the container: `adb pair <ip>:<pairing-port>` and enter the code.
-3. Then `adb connect <ip>:<port>` with the port shown on the Wireless debugging screen.
+3. Then `adb connect <ip>:<port>` with the port shown on the Wireless debugging screen. This port changes whenever
+   wireless debugging restarts.
 
-The phone and the development machine must be in the same network.
+The phone and the development machine must be in the same network. `adb` on the development machine works as well, if
+it is installed there.
+
+To install and start the debug build:
+
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -W -n de.drehtuer.nextalarm/.MainActivity
+```

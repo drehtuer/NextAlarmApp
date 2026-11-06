@@ -4,7 +4,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 **Last updated:** 2026-11-06
 
-**Summary:** Phases 0 to 2 and step 1.4 are implemented on the branch `impl/foundation`, with all unit tests passing, but not merged. Next is Phase 3.
+**Summary:** Phases 0 to 2 are merged (#5), with 100% line and branch coverage in SonarCloud. The app is still a placeholder screen with no alarm functions. It installs and runs on the Pixel 10a. Next is Phase 3.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -20,34 +20,40 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | Concept and architecture documents        | `Done` | Later decisions are updated as they come. |
 | [Dev container](development.md)           | `Done` | Merged in #4.                           |
 
+## Device checks
+
+| Date       | Device                          | What was checked                                                       | Result |
+|------------|---------------------------------|------------------------------------------------------------------------|--------|
+| 2026-11-06 | Pixel 10a, Android 17 (API 37)  | Debug build from #5: install, launch, stays running, no crash or ANR. No alarm functions exist yet. | Pass   |
+
 ## Phase 0: Settle the concept gaps
 
 | Step | Topic              | Status        | Notes |
 |------|--------------------|---------------|-------|
-| 0.1  | Moved events       | `In progress` | Moved event = `Remove` + `Create`; `Reschedule` removed. |
-| 0.2  | Snapshot updates   | `In progress` | New event `Refresh(snapshot)`. |
-| 0.3  | Recovery           | `In progress` | Recovery sweep in architecture.md. |
-| 0.4  | Test alarm         | `In progress` | Key `test:<id>`, left out of the diff. |
-| 0.5  | Events in progress | `In progress` | Horizon applied in the planner; device check in 9.2. |
+| 0.1  | Moved events       | `Done`        | Moved event = `Remove` + `Create`; `Reschedule` removed. |
+| 0.2  | Snapshot updates   | `Done`        | New event `Refresh(snapshot)`. |
+| 0.3  | Recovery           | `Done`        | Recovery sweep in architecture.md. |
+| 0.4  | Test alarm         | `Done`        | Key `test:<id>`, left out of the diff. |
+| 0.5  | Events in progress | `Done`        | Horizon applied in the planner; device check in 9.2. |
 
 ## Phase 1: Project setup
 
 | Step | Topic                 | Status        | Notes |
 |------|-----------------------|---------------|-------|
-| 1.1  | Gradle and modules    | `In progress` | Not merged. |
-| 1.2  | Build configuration   | `In progress` | Not merged. |
-| 1.3  | Test setup            | `In progress` | Not merged. |
-| 1.4  | Coverage, CI, SonarCloud | `In progress` | Not merged. |
+| 1.1  | Gradle and modules    | `Done`        | Merged in #5. |
+| 1.2  | Build configuration   | `Done`        | Merged in #5. |
+| 1.3  | Test setup            | `Done`        | Merged in #5. |
+| 1.4  | Coverage, CI, SonarCloud | `Done`        | Merged in #5. |
 
 ## Phase 2: Domain
 
 | Step | Topic                 | Status        | Notes |
 |------|-----------------------|---------------|-------|
-| 2.1  | Domain types          | `In progress` | Not merged. |
-| 2.2  | Planner               | `In progress` | Not merged. |
-| 2.3  | Plan diff             | `In progress` | Not merged. |
-| 2.4  | Planner state machine | `In progress` | Not merged. |
-| 2.5  | Alarm state machine   | `In progress` | Not merged. |
+| 2.1  | Domain types          | `Done`        | Merged in #5. |
+| 2.2  | Planner               | `Done`        | Merged in #5. |
+| 2.3  | Plan diff             | `Done`        | Merged in #5. |
+| 2.4  | Planner state machine | `Done`        | Merged in #5. |
+| 2.5  | Alarm state machine   | `Done`        | Merged in #5. |
 
 ## Phase 3: Data
 
