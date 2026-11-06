@@ -1,6 +1,6 @@
 # Architecture
 
-Status: initial draft. Decisions marked *(proposal)* are open and tracked in [open_questions.md](open_questions.md).
+Status: initial draft. Open points are tracked in [open_questions.md](open_questions.md).
 
 Related documents:
 
@@ -20,7 +20,7 @@ Related documents:
 | UI             | Jetpack Compose. The visual design comes from Claude Design              |
 | UI language    | English only, no translations                                            |
 | Persistence    | Room for all app data (settings, alarm instances, plan), one database in device-protected storage |
-| DI             | Hilt *(proposal, Q-P2)*                                                  |
+| DI             | Hilt                                                                     |
 | Background     | `AlarmManager` for alarms, WorkManager for re-planning                   |
 | Backup         | None. `android:allowBackup="false"`: the alarms live in the calendar, and the few settings are quickly set again |
 | Distribution   | None yet. If published later: F-Droid. Therefore no proprietary dependencies (no Google Play Services, no Firebase) |
@@ -86,6 +86,8 @@ flowchart LR
   calendars are never read.
 - The app is independent of Google: it does not read or create alarms in the Google Clock app, does not use calendar
   reminders (`CalendarContract.Reminders`) and does not need Google Play Services.
+- The app does not check whether a sync adapter synced recently, and there is no automatic warning about stale
+  calendars. Newly synced events simply show up in the 48 h preview on the home screen.
 - Once planned, alarms are stored in the app's own database (see [Direct boot](#direct-boot)), so they ring even
   if the calendar provider becomes unavailable later.
 - The alarm database is not a copy of the calendar. The calendar is the source of truth for which alarms exist;
@@ -106,21 +108,23 @@ flowchart LR
 The planner is a pure function:
 
 ```kotlin
-fun plan(now: Instant, zone: ZoneId, events: List<CalendarEvent>, settings: Settings, existing: List<AlarmInstance>): Plan
+fun plan(now: Instant, events: List<CalendarEvent>, settings: Settings): Plan
+fun diff(plan: Plan, existing: List<AlarmInstance>, now: Instant): List<PlanCommand>
 ```
 
 `events` are the event instances of the alarm calendar. The planner produces a `Plan` with one entry per event
-instance in the planning horizon.
+instance in the planning horizon. `diff` compares it with the existing alarm instances and returns what to send to
+the alarm state machines.
 
 The planning horizon is a rolling window of 48 hours from `now`. Alarms further ahead are picked up by later runs;
 the daily re-planning trigger guarantees that every alarm is planned at least 24 hours in advance.
 
 ```mermaid
 flowchart TD
-    A[Read event instances in now .. now + 48 h<br/>from the alarm calendar] --> B[Drop cancelled events]
-    B --> N[Plan: one entry per event instance<br/>trigger = start, reason = title]
+    A[Read event instances in now .. now + 48 h<br/>from the alarm calendar] --> B[Drop cancelled and all-day events]
+    B --> N[Plan: one entry per event instance<br/>trigger = start in UTC, reason = title]
     N --> O[Diff against existing alarm instances]
-    O --> P[Create / Reschedule / Remove events<br/>to alarm state machines]
+    O --> P[Create / Refresh / Remove events<br/>to alarm state machines]
 ```
 
 Notes:
@@ -128,12 +132,36 @@ Notes:
 - Events are read via `CalendarContract.Instances`, which expands recurring events.
 - Every event instance in the horizon becomes an alarm at its start time. The title is the alarm's reason; the
   description and all other fields are ignored. All-day events have no wake-up time and are ignored
-  silently.
+  silently. Cancelled events (`STATUS_CANCELED`) are ignored as well.
+- **UTC basis.** An alarm's trigger is the event's absolute start time in UTC (`Instances.BEGIN`). The device time
+  zone is only used to display times. A time zone change therefore never moves an alarm: an event at 07:00 in
+  `Europe/Berlin` rings at 01:00 local time in New York. To wake up at 07:00 after travelling, the user moves the
+  event in the calendar app.
+- **Close events are not merged.** Every event instance gets its own alarm, even if two of them are only seconds
+  apart or start at the same time (see "Several alarms at once" under [Ringing](#ringing)).
 - If no event lies in the horizon, the plan is empty and no alarm rings. There is no default schedule.
 - **No vetoes.** Holidays and vacations are handled in the calendar app by deleting the alarm event or the affected
   instances of a recurring one (aCalendar can do this automatically while a parallel event exists).
-- Each plan entry has a stable key (`event:<eventId>:<instanceBegin>`), so a re-plan can match entries to existing
-  alarm instances and send `Reschedule` or `Remove` instead of re-creating them.
+- **The horizon is applied to the start time.** The planner keeps only instances with `now <= start < now + 48 h`,
+  whatever the calendar query returns. The Android documentation does not say whether `Instances` also returns events
+  that started earlier and are still running; the planner is correct either way.
+- Each plan entry has a stable key (`event:<eventId>:<instanceBegin>`). A moved event therefore gets a new key and
+  is a new alarm. A recurring instance has no other stable identity, because moving a single instance creates a new
+  exception event in the provider.
+
+The diff decides per key:
+
+| Existing instance with this key                  | In the plan                                   | Not in the plan                         |
+|--------------------------------------------------|-----------------------------------------------|-----------------------------------------|
+| None                                             | `Create`                                      | —                                       |
+| `Scheduled`, trigger in the future               | `Refresh` if the snapshot differs, else nothing | `Remove`                              |
+| `Scheduled`, trigger reached                     | Cannot happen (outside the horizon)           | Nothing: overdue, it receives `Fire`    |
+| `Ringing`, `Snoozed`, `Announcing`, `NewsPlaying` | Nothing: changes have no effect once started | Nothing                                 |
+| `Done`, `Unanswered`, `Missed`                   | Nothing: never rings twice, e.g. if the clock is set back | Nothing                     |
+| `Cancelled`                                      | `Create`: the event was restored              | Nothing                                 |
+
+Alarm instances that do not come from the calendar, which is only the test alarm (key `test:<id>`), are left out of
+the diff.
 
 ## Re-planning triggers
 
@@ -148,8 +176,10 @@ Planning runs in a unique WorkManager job (`REPLACE` policy), so concurrent trig
 | Time or time zone changed                 | `TIME_SET`, `TIMEZONE_CHANGED`                                               |
 | App updated                               | `MY_PACKAGE_REPLACED`                                                        |
 | Day rollover                              | Periodic work, once a day after midnight (moves the 48 h window forward)     |
-| Pre-alarm check                           | Exact alarm 30 min before each alarm *(proposal, Q-S3)*: picks up late changes that the content trigger delivered late because of Doze |
 | Retry after failure                       | Exponential backoff while in `FailSafe`                                      |
+
+There is no pre-alarm check. If Doze delays the content-URI trigger, an edit made shortly before an alarm may not be
+picked up in time, and the alarm rings as last planned.
 
 ## Ringing
 
@@ -205,6 +235,12 @@ sequenceDiagram
 The wake-up automation (speak the title, then the news) starts when the alarm is dismissed, not when the phone is
 unlocked. This has consequences, because the phone is usually still locked at that moment:
 
+- The title is spoken with Android's `TextToSpeech` API, using the device's default engine, language and voice.
+  Only the event title is spoken; nothing is added to it.
+- The news source is an RSS feed, read aloud with `TextToSpeech`, or a podcast feed, of which the latest episode is
+  played. Both stop at a configurable maximum duration (default 15 minutes).
+- All wake-up audio, speech and news alike, uses the media stream (`USAGE_MEDIA`), so the volume keys work as
+  expected. Unlike the alarm sound, it follows the media volume and is subject to Do Not Disturb.
 - The alarm screen and the wake-up screen are shown over the lock screen (`showWhenLocked`, `turnScreenOn`).
   Dismissing an alarm does not require unlocking; neither does stopping the wake-up automation, which is also
   possible from the media notification on the lock screen.
@@ -215,7 +251,8 @@ unlocked. This has consequences, because the phone is usually still locked at th
 - The news needs network access. Wi-Fi usually connects before the first unlock, but if there is no network the
   news step ends with `NewsDone` (failed) and the automation finishes.
 - The TTS engine is a separate app and may not be available before the first unlock. In that case the announcement
-  is skipped (`AnnouncementDone`, failed) and the automation continues with the news.
+  is skipped (`AnnouncementDone`, failed) and the automation continues with the news. An RSS feed needs TTS too, so
+  its news step ends with `NewsDone` (failed); a podcast episode still plays.
 
 ## Direct boot
 
@@ -225,11 +262,25 @@ storage and the calendar provider are not available. To ring anyway:
 - `AlarmReceiver`, `AlarmService`, `AlarmActivity`, `WakeUpService`, the wake-up screen and a `LockedBootReceiver`
   are `directBootAware`.
 - The alarm database lives in device-protected storage (`createDeviceProtectedStorageContext()`).
-- On `LOCKED_BOOT_COMPLETED` all alarm instances in `Scheduled` or `Snoozed` are registered again with
-  `AlarmManager`; overdue ones receive `Fire(lateBy)`.
+- On `LOCKED_BOOT_COMPLETED` the [recovery sweep](#recovery) runs.
 - The chosen alarm sound is a copy in device-protected storage (see [Ringing](#ringing)). A fallback sound is
   bundled with the app and used if no sound was chosen or the copy cannot be played.
 - Re-planning only starts after `BOOT_COMPLETED` (user unlocked).
+
+## Recovery
+
+A reboot or crash can interrupt an alarm at any point. The recovery sweep runs on `LOCKED_BOOT_COMPLETED` and at every
+process start. The services run in the app's process, so at process start nothing is playing yet, and the persisted
+state says what should be. `AlarmService` is sticky, so Android restarts the process after a crash during ringing.
+
+| Persisted state             | Sweep                                                                                 |
+|-----------------------------|---------------------------------------------------------------------------------------|
+| `Scheduled`, `Snoozed`      | Trigger in the future: register with `AlarmManager` again. Trigger reached: `Fire(lateBy)`. |
+| `Ringing`                   | `Fire(lateBy)`: rings again, or becomes `Missed` if more than 60 minutes late.        |
+| `Announcing`, `NewsPlaying` | `StopWakeUp`: an interrupted wake-up automation is not resumed.                       |
+| Terminal states             | Nothing.                                                                              |
+
+Running the sweep twice is harmless, because every event is defined in every state.
 
 ## Data model
 
@@ -248,11 +299,8 @@ classDiagram
     }
     class PlanEntry {
         key: String
-        date: LocalDate
         triggerAt: Instant
-        eventId: Long
-        instanceBegin: Instant
-        title: String
+        snapshot: AlarmSnapshot
     }
     class AlarmInstance {
         id: Long
@@ -275,25 +323,30 @@ classDiagram
         news: NewsSource?
     }
     AlarmInstance "1" *-- "1" AlarmSnapshot
+    PlanEntry "1" *-- "1" AlarmSnapshot
     PlanEntry ..> AlarmInstance : creates / updates
 ```
 
 ## Future: Philips Hue (not in the MVP)
 
-Planned later: with an alarm, turn on a Hue light with a ramp-up, a colour and a maximum brightness, and turn it
-off again. Open details are tracked as Q-H1 to Q-H4.
+Planned later: with an alarm, recall a Hue scene with a ramp-up and a maximum brightness. Open details are tracked
+as Q-H4 and Q-H5.
 
 - **Interface:** the Hue bridge's local REST API (CLIP v2, HTTPS in the home network). The app pairs once by asking
   the user to press the bridge's link button and stores the returned application key. No Hue account, no cloud
   access and no proprietary SDK are needed, so this stays F-Droid compatible.
-- **Scenes from the Hue app can be used.** Scenes are stored on the bridge, not in the Hue app, so NextAlarm can
-  list them and recall one. A recall can carry a transition duration and a brightness, so the ramp-up and the
-  maximum brightness can come from NextAlarm while the colours come from the scene.
-- **Alternatively NextAlarm controls the lights itself:** select lights or a room and set on/off, colour,
-  brightness and transition duration directly. This needs no preparation in the Hue app.
+- **Scenes come from the Hue app.** Scenes are stored on the bridge, not in the Hue app, so NextAlarm can list them
+  and recall one. A recall can carry a transition duration and a brightness, so the ramp-up and the maximum
+  brightness come from NextAlarm while the colours come from the scene. NextAlarm does not set colours itself.
+- **Lead time:** the scene can start before the alarm, for a sunrise effect. The lead time is configurable; at the
+  default of 0 the scene starts with the alarm. A lead time needs its own exact alarm before the actual one.
+- **The light is never turned off automatically.** Neither Dismiss nor the end of the wake-up automation changes it.
+  To turn the light off at a set time, the user adds a second, silent alarm that turns it off and does nothing else.
+  How such an alarm is marked is tracked as Q-H5.
 - The Hue app's own wake-up automations are not used. They run on the bridge on their own schedule and would not
   follow the calendar.
-- The bridge runs the transition itself, so the phone only sends one request at the start (and one to stop).
+- The bridge runs the transition itself, so the phone only sends one request at the start. Whether the bridge's
+  limit on the transition time is enough for long ramps is tested during implementation (Q-H4).
   The request needs the home network; if the bridge is unreachable, the alarm still rings normally (fail-safe).
 - Like the wake-up automation, this has to work before the first unlock, so the bridge address, key and light
   settings are stored in device-protected storage.

@@ -4,7 +4,7 @@
 
 The stock Android alarm clock rings whether or not you have a holiday, are on vacation, or need to get up early for a flight. NextAlarm takes its alarms from a dedicated alarm calendar instead: alarms are set, moved and deleted in your calendar app, and the app rings them.
 
-**Status:** concept / early planning. No code yet.
+**Status:** early implementation. See [STATUS](docs/STATUS.md).
 
 ## Goals
 
@@ -28,13 +28,13 @@ Planning flow:
 2. Every event is an alarm. There are no veto rules and no description format.
 3. Schedule exact alarms with `AlarmManager.setAlarmClock()`.
 
-Planning is re-run whenever calendar data changes, so late edits and sync updates are picked up before the alarm time.
+Planning is re-run whenever calendar data changes, so edits and sync updates are picked up automatically.
 
 ## Setting an alarm
 
-Create an event in the alarm calendar at the desired wake-up time. The event title (e.g. `Flight to Hamburg, leave at 6:15`) is shown on the alarm screen and spoken after the alarm. The description and all other event fields are ignored.
+Create an event in the alarm calendar at the desired wake-up time. The event title (e.g. `Flight to Hamburg, leave at 6:15`) is shown on the alarm screen and spoken after the alarm. The description and all other event fields are ignored. Alarms ring at the event's absolute start time, so travelling doesn't move them: an event at 07:00 Berlin time rings at 01:00 local time in New York. The app shows times in the phone's time zone.
 
-Sound, vibration, snooze and the wake-up automation are configured once in the app and apply to every alarm. The alarm sound is an audio file (MP3, WAV, OGG or M4A) chosen with the Android file picker. All-day events in the alarm calendar are ignored.
+Sound, vibration, snooze and the wake-up automation are configured once in the app and apply to every alarm. The alarm sound is an audio file (MP3, WAV, OGG or M4A) chosen with the Android file picker. All-day and cancelled events in the alarm calendar are ignored. Events are never merged, even if they are seconds apart.
 
 ## Requirements
 
@@ -50,12 +50,12 @@ Sound, vibration, snooze and the wake-up automation are configured once in the a
 - [ ] Exact alarm scheduling, rescheduling after reboot and time zone changes
 - [ ] Alarm screen with snooze
 - [ ] Text-to-speech for the event title
-- [ ] News readout (RSS / podcast / radio stream)
+- [ ] News readout (RSS / podcast)
 
 Later, after the MVP:
 
 - [ ] Quick settings tile showing the next alarm
-- [ ] Philips Hue: turn on a light or a Hue scene with ramp-up, colour and maximum brightness
+- [ ] Philips Hue: recall a scene from the Hue app with ramp-up, maximum brightness and a lead time for a sunrise effect
 
 There is no public distribution yet. If the app is published later, it will be on F-Droid, so the build uses no proprietary dependencies.
 
@@ -66,6 +66,8 @@ There is no public distribution yet. If the app is published later, it will be o
 - [State machines](docs/state_machines.md): planner and alarm state machines with complete transition tables
 - [Open questions](docs/open_questions.md): points the concept leaves open, with proposed defaults
 - [Development](docs/development.md): dev container, SDK versions, running on the phone
+- [TODO](docs/TODO.md): the implementation steps, in order
+- [Status](docs/STATUS.md): the implementation status of each step
 
 ## License
 

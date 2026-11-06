@@ -20,8 +20,8 @@ transitions that change something.
 - An entry **"ignore"** is a defined transition: the state stays the same, no action runs, and the event is
   logged at debug level. It is used for events that are stale or not meaningful in that state.
 - Guards (`[condition]`) always come with an `else` branch, so a guarded transition is also total.
-- In code, `transition` is a nested `when` over sealed `State` and `Event` types **without `else` branches**.
-  Adding a state or event fails compilation until every pair is handled.
+- In code, `transition` is a `when` over the sealed `State` type, with a `when` over the sealed `Event` type for each
+  state, all **without `else` branches**. Adding a state or event fails compilation until every pair is handled.
 - A parameterised unit test iterates over all (state, event) pairs and checks the result against these tables.
 - States are persisted. After process death the state is read back and the machine continues; there is no
   implicit "unknown" state.
@@ -34,7 +34,7 @@ transitions that change something.
 |----------------|-----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
 | `Unconfigured` | Onboarding not finished. No alarms are managed.           | none                                                                                                               |
 | `Planning`     | A planning run is in progress.                            | Increment `generation`, cancel any running planning job, start a new one tagged with `generation`.                |
-| `Planned`      | The last planning run succeeded; alarms match the plan.   | Diff plan against alarm instances, send `Create` / `Reschedule` / `Remove` to alarm machines, register `AlarmManager` alarms, schedule pre-alarm checks. |
+| `Planned`      | The last planning run succeeded; alarms match the plan.   | Diff plan against alarm instances, send `Create` / `Refresh` / `Remove` to alarm machines, register `AlarmManager` alarms. Remove the fail-safe warning if it is shown. |
 | `FailSafe`     | The last planning run failed.                             | Keep all existing alarm instances (the last successful plan) unchanged. Show a persistent warning notification. Schedule a retry with backoff. No alarms are added: alarms beyond the planned 48 h stay in the calendar, so a failure that lasts longer than the horizon leaves no alarms, and the warning notification says so. |
 
 ### Events
@@ -83,14 +83,14 @@ Notes:
 | State         | Meaning                                         | Entry action                                                                              |
 |---------------|-------------------------------------------------|-------------------------------------------------------------------------------------------|
 | `Scheduled`   | Waiting for its trigger time.                   | Register with `AlarmManager.setAlarmClock()` at `triggerAt`.                              |
-| `Ringing`     | Sound/vibration active, alarm screen shown.     | Join `AlarmService` (start it if not running): add this alarm to the ringing alarms, post its notification, restart the shared ring timeout. If `lateBy > 1 min`, post a "late alarm" notification. |
-| `Snoozed`     | Waiting for the snooze to end.                  | Leave `AlarmService` (it stops when no alarm rings), `snoozeCount += 1`, register alarm at now + `snoozeMinutes`, show snooze notification. |
+| `Ringing`     | Sound/vibration active, alarm screen shown.     | Join `AlarmService` (start it if not running): add this alarm to the ringing alarms, post its notification, restart the shared ring timeout. If `lateBy > 1 min` and the alarm was not already ringing, post a "late alarm" notification. |
+| `Snoozed`     | Waiting for the snooze to end.                  | Leave `AlarmService` (it stops when no alarm rings), `snoozeCount += 1`, set `triggerAt` to now + `snoozeMinutes` and register the alarm there, show snooze notification. |
 | `Announcing`  | Speaking the event title (TTS).                 | Leave `AlarmService`, cancel any snooze alarm, join `WakeUpService` with TTS.             |
-| `NewsPlaying` | Reading/playing the news.                       | Start news playback in `WakeUpService`.                                                   |
+| `NewsPlaying` | Reading/playing the news.                       | Leave `AlarmService`, cancel any snooze alarm, start news playback in `WakeUpService`.    |
 | `Done`        | Finished normally. Terminal.                    | Leave all services, cancel `AlarmManager` alarm, remove notifications.                    |
 | `Unanswered`  | Rang until the timeout twice in a row (once before and once after the automatic snooze). Terminal. | Leave `AlarmService`, cancel `AlarmManager` alarm, post an "alarm not answered" notification. |
 | `Cancelled`   | Removed by re-planning (event deleted in the calendar). Terminal. | Cancel `AlarmManager` alarm, remove notifications.                               |
-| `Missed`      | Trigger time passed more than 60 min ago (device was off). Terminal. | Post a "missed alarm" notification.                                  |
+| `Missed`      | Trigger time passed more than 60 min ago (device was off). Terminal. | Leave `AlarmService`, remove notifications, post a "missed alarm" notification. |
 
 Terminal instances are kept for a few days for the history view and then deleted.
 
@@ -102,15 +102,15 @@ Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the cur
 | Event                | Source                                                                              |
 |----------------------|-------------------------------------------------------------------------------------|
 | `Create`             | Planner commits a new plan entry (only creates the instance in `Scheduled`)          |
-| `Fire(lateBy)`       | `AlarmManager` alarm, or overdue detection at boot / process start                   |
+| `Fire(lateBy)`       | `AlarmManager` alarm, or the [recovery sweep](architecture.md#recovery) at boot / process start |
 | `Snooze`             | User taps "Snooze" on the alarm screen (sent to every ringing alarm)                |
 | `Dismiss`            | User taps "Dismiss" on the alarm screen (sent to every ringing alarm) or on a snooze notification (sent to that alarm) |
 | `RingTimeout`        | The ringing alarms rang for `ringTimeoutMinutes` without interaction (sent to every ringing alarm) |
-| `Reschedule(time)`   | Re-planning changed the trigger time                                                |
+| `Refresh(snapshot)`  | Re-planning found a different snapshot (event title or settings changed)            |
 | `Remove`             | Re-planning no longer contains this entry                                           |
 | `AnnouncementDone`   | TTS finished (or failed)                                                            |
 | `NewsDone`           | News finished (or failed, e.g. no network)                                          |
-| `StopWakeUp`         | User stops the wake-up automation                                                   |
+| `StopWakeUp`         | User stops the wake-up automation, or the recovery sweep ends an interrupted one     |
 
 Guards:
 
@@ -127,10 +127,12 @@ Transition actions: `Snooze` sets `autoSnoozed = false`; `RingTimeout` → `Snoo
 ```mermaid
 stateDiagram-v2
     [*] --> Scheduled: Create
-    Scheduled --> Scheduled: Reschedule
+    Scheduled --> Scheduled: Refresh
     Scheduled --> Ringing: Fire [on time]
     Scheduled --> Missed: Fire [too late]
     Scheduled --> Cancelled: Remove
+    Ringing --> Ringing: Fire [on time]
+    Ringing --> Missed: Fire [too late]
     Ringing --> Snoozed: Snooze
     Ringing --> Snoozed: RingTimeout [first timeout]
     Ringing --> Unanswered: RingTimeout [after auto-snooze]
@@ -157,10 +159,10 @@ stateDiagram-v2
 `Create` only exists as the initial transition (`[*] → Scheduled`). On an existing instance it is ignored in
 every state, so it is left out of the table for space.
 
-| State \ Event | `Fire(lateBy)`                        | `Snooze`                      | `Dismiss` | `RingTimeout`                                  | `Reschedule(t)`              | `Remove`      | `AnnouncementDone` | `NewsDone` | `StopWakeUp` |
+| State \ Event | `Fire(lateBy)`                        | `Snooze`                      | `Dismiss` | `RingTimeout`                                  | `Refresh(s)`                 | `Remove`      | `AnnouncementDone` | `NewsDone` | `StopWakeUp` |
 |---------------|---------------------------------------|-------------------------------|-----------|------------------------------------------------|------------------------------|---------------|--------------------|------------|--------------|
-| `Scheduled`   | [G1] → `Ringing`<br/>[else] → `Missed` | ignore                       | ignore    | ignore                                         | → `Scheduled` (new time)     | → `Cancelled` | ignore             | ignore     | ignore       |
-| `Ringing`     | → `Ringing` (rejoin service)          | → `Snoozed`                   | [G3]      | [G2] → `Snoozed`<br/>[else] → `Unanswered`     | ignore                       | ignore        | ignore             | ignore     | ignore       |
+| `Scheduled`   | [G1] → `Ringing`<br/>[else] → `Missed` | ignore                       | ignore    | ignore                                         | → `Scheduled` (new snapshot, not registered again) | → `Cancelled` | ignore             | ignore     | ignore       |
+| `Ringing`     | [G1] → `Ringing` (rejoin service)<br/>[else] → `Missed` | → `Snoozed`  | [G3]      | [G2] → `Snoozed`<br/>[else] → `Unanswered`     | ignore                       | ignore        | ignore             | ignore     | ignore       |
 | `Snoozed`     | [G1] → `Ringing`<br/>[else] → `Missed` | ignore                       | [G3]      | ignore                                         | ignore                       | ignore        | ignore             | ignore     | ignore       |
 | `Announcing`  | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | [G4]               | ignore     | → `Done`     |
 | `NewsPlaying` | ignore                                | ignore                        | ignore    | ignore                                         | ignore                       | ignore        | ignore             | → `Done`   | → `Done`     |
@@ -171,10 +173,16 @@ every state, so it is left out of the table for space.
 
 Rationale for the less obvious entries:
 
-- **`Ringing` + `Fire` → `Ringing`:** happens when the process died while ringing and the alarm is recovered at
-  start-up. Re-entering joins `AlarmService` again.
-- **`Ringing` / `Snoozed` + `Reschedule` / `Remove` → ignore:** a calendar change never stops an alarm that has
-  already started (fail-safe). The user can still dismiss it.
+- **`Ringing` + `Fire`:** happens when the process died or the phone rebooted while ringing and the
+  [recovery sweep](architecture.md#recovery) picks the alarm up. Re-entering joins `AlarmService` again and does not
+  post a "late alarm" notification. If the phone stayed off for more than 60 minutes, the alarm becomes `Missed`
+  like any other late alarm.
+- **`Scheduled` + `Refresh`:** only the snapshot changes. The time cannot change, because it is part of the alarm's
+  key: a moved event is a new alarm (`Remove` + `Create`, see [Planning](architecture.md#planning)).
+- **`Ringing` / `Snoozed` + `Refresh` / `Remove` → ignore:** changes have no effect once an alarm has started,
+  and this includes the snooze phase and the wake-up automation. A calendar change never stops a started alarm
+  (fail-safe). The user can still dismiss it. If the event was moved, the started alarm carries on and the new time
+  is an additional alarm.
 - **`Ringing` + `Snooze`:** snoozing is unlimited. Only an unanswered alarm ends on its own: the first
   `RingTimeout` snoozes automatically, a second one in a row gives up (`Unanswered`). A manual snooze resets this.
 - **`Snoozed` + `Dismiss` → [G3]:** dismissing from the snooze notification starts the wake-up automation, the same
