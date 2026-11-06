@@ -2,9 +2,9 @@
 
 The progress of each step in [TODO.md](TODO.md). Update this file in the same change that starts or finishes a step.
 
-**Last updated:** 2026-11-06
+**Last updated:** 2026-11-07
 
-**Summary:** Phases 0 to 3 are merged, and the design is delivered in [design.md](design.md). Phase 4 is implemented on the branch `impl/planning` and tested on the JVM, but not merged. The app still shows a placeholder screen, and alarms cannot ring until Phase 6.
+**Summary:** Phases 0 to 4 are merged. Phase 5 is implemented on the branch `impl/screens`, but not merged: the app has its theme, onboarding, calendar selection and home. Alarms are planned, but cannot ring until Phase 6.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -25,6 +25,8 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | Date       | Device                          | What was checked                                                       | Result |
 |------------|---------------------------------|------------------------------------------------------------------------|--------|
 | 2026-11-06 | Pixel 10a, Android 17 (API 37)  | Debug build from #5: install, launch, stays running, no crash or ANR. No alarm functions exist yet. | Pass   |
+| 2026-11-07 | Pixel 10a, Android 17 (API 37)  | Phase 5 build: onboarding, including permissions, DAVx⁵ calendars listed, a planning run on a real DAVx⁵ calendar, and the empty state on home. | Pass   |
+| Postponed  | Pixel 10a, Android 17 (API 37)  | Phase 5 build with a timed event to test with: events on home, moved and deleted events, the next alarm notification. | Open   |
 
 ## Phase 0: Settle the concept gaps
 
@@ -69,19 +71,19 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 | Step | Topic              | Status        | Notes |
 |------|--------------------|---------------|-------|
-| 4.1  | `PlanWorker`       | `In progress` | Not merged. |
-| 4.2  | Worker triggers    | `In progress` | Not merged. |
-| 4.3  | Broadcast triggers | `In progress` | Not merged. |
+| 4.1  | `PlanWorker`       | `Done`        | Merged in #10. |
+| 4.2  | Worker triggers    | `Done`        | Merged in #10. |
+| 4.3  | Broadcast triggers | `Done`        | Merged in #10. |
 
 ## Phase 5: Setup and home screens
 
 | Step | Topic                     | Status        | Notes |
 |------|---------------------------|---------------|-------|
 | 5.1  | Visual design, navigation | `In progress` | App icon added: adaptive launcher icon with a monochrome layer, and the notification icon `ic_stat_alarm`. Theme and navigation still to do. |
-| 5.2  | Onboarding                | `Not started` |       |
-| 5.3  | Alarm calendar selection  | `Not started` |       |
-| 5.4  | Home                      | `Not started` |       |
-| 5.5  | Basic notifications       | `Not started` |       |
+| 5.2  | Onboarding                | `In progress` | Not merged. |
+| 5.3  | Alarm calendar selection  | `In progress` | Not merged. |
+| 5.4  | Home                      | `In progress` | Not merged. The fail-safe banner's "See what went wrong" button comes with step 8.4. |
+| 5.5  | Basic notifications       | `In progress` | Not merged. "Open diagnostics" comes with step 8.4; tapping the warning opens the app. |
 
 ## Phase 6: Ringing
 
@@ -109,7 +111,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 | Step | Topic                   | Status        | Notes |
 |------|-------------------------|---------------|-------|
-| 8.1  | Settings                | `Not started` |       |
+| 8.1  | Settings                | `In progress` | Added early, because home leads there: calendar, setup and About. The two other rows come with 8.2 and 8.4. |
 | 8.2  | Alarm settings          | `Not started` |       |
 | 8.3  | News source             | `Not started` |       |
 | 8.4  | Diagnostics and history | `Not started` |       |

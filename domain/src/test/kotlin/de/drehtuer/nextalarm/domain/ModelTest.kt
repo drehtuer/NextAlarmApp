@@ -49,7 +49,7 @@ class ModelTest {
 
     @Test
     fun `a device calendar keeps its fields`() {
-        val calendar = DeviceCalendar(CalendarId(3), "Alarms", "me@example.org")
+        val calendar = DeviceCalendar(CalendarId(3), "Alarms", "me@example.org", "LOCAL", 5)
         assertEquals(3, calendar.id.value)
         assertEquals("Alarms", calendar.name)
         assertEquals("me@example.org", calendar.accountName)

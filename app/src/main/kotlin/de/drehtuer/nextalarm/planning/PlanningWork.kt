@@ -9,7 +9,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import de.drehtuer.nextalarm.domain.PlannerEffects
 import de.drehtuer.nextalarm.domain.delayUntilAfterMidnight
 import java.time.Duration
 import java.time.Instant
@@ -19,14 +18,14 @@ import java.time.ZoneId
 class PlanningWork(
     private val workManager: WorkManager,
     private val now: () -> Instant = Instant::now,
-) : PlannerEffects {
+) {
 
-    override fun cancelPlanningJob() {
+    fun cancelPlanningJob() {
         workManager.cancelUniqueWork(PLAN_WORK)
     }
 
     /** A unique job: a newer run replaces a running one, so concurrent triggers collapse into one. */
-    override fun startPlanningJob(generation: Long) {
+    fun startPlanningJob(generation: Long) {
         val request = OneTimeWorkRequestBuilder<PlanWorker>()
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setInputData(Data.Builder().putLong(PlanWorker.KEY_GENERATION, generation).build())
@@ -34,15 +33,10 @@ class PlanningWork(
         workManager.enqueueUniqueWork(PLAN_WORK, ExistingWorkPolicy.REPLACE, request)
     }
 
-    override fun scheduleRetry(delay: Duration) {
+    fun scheduleRetry(delay: Duration) {
         val request = OneTimeWorkRequestBuilder<ReplanWorker>().setInitialDelay(delay).build()
         workManager.enqueueUniqueWork(RETRY_WORK, ExistingWorkPolicy.REPLACE, request)
     }
-
-    // The warning notification comes with step 5.5. Until then, the planner state records the failure.
-    override fun showFailSafeWarning() = Unit
-
-    override fun removeFailSafeWarning() = Unit
 
     /** Asks for a re-plan as soon as possible. */
     fun requestReplan() {

@@ -99,6 +99,10 @@ class FakePlannerEffects : PlannerEffects {
     override fun removeFailSafeWarning() {
         calls += "removeWarning"
     }
+
+    override fun showNextAlarm(alarm: AlarmInstance?) {
+        calls += "nextAlarm:${alarm?.id}"
+    }
 }
 
 /** Counts how the lock is used. Tests run on one coroutine, so it does not have to exclude anyone. */

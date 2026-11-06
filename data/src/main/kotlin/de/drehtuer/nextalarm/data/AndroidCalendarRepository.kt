@@ -26,12 +26,20 @@ class AndroidCalendarRepository(
 ) : CalendarRepository {
 
     override suspend fun calendars(): List<DeviceCalendar> = withContext(ioDispatcher) {
-        val projection = arrayOf(Calendars._ID, Calendars.CALENDAR_DISPLAY_NAME, Calendars.ACCOUNT_NAME)
+        val projection = arrayOf(
+            Calendars._ID,
+            Calendars.CALENDAR_DISPLAY_NAME,
+            Calendars.ACCOUNT_NAME,
+            Calendars.ACCOUNT_TYPE,
+            Calendars.CALENDAR_COLOR,
+        )
         query(Calendars.CONTENT_URI, projection, null, null) { cursor ->
             DeviceCalendar(
                 id = CalendarId(cursor.getLong(0)),
                 name = cursor.getString(1).orEmpty(),
                 accountName = cursor.getStringOrNull(2),
+                accountType = cursor.getStringOrNull(3),
+                color = if (cursor.isNull(4)) null else cursor.getInt(4),
             )
         }
     }

@@ -111,12 +111,6 @@ class PlanningTest {
     }
 
     @Test
-    fun `the warning calls do nothing until the notification exists`() {
-        planning.showFailSafeWarning()
-        planning.removeFailSafeWarning()
-    }
-
-    @Test
     fun `the calendar trigger watches the calendar provider`() {
         planning.armTriggers()
         val triggers = work(PlanningWork.CALENDAR_WORK).constraints.contentUriTriggers

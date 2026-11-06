@@ -11,6 +11,9 @@ interface PlannerEffects {
     fun scheduleRetry(delay: Duration)
     fun showFailSafeWarning()
     fun removeFailSafeWarning()
+
+    /** Shows the next alarm, or removes the notification if there is none. */
+    fun showNextAlarm(alarm: AlarmInstance?)
 }
 
 /** Lets only one caller at a time work on the planner state. */
@@ -100,6 +103,7 @@ class PlannerEngine(
         )
         planner.save(updated)
         perform(result, updated)
+        effects.showNextAlarm(nextAlarm(alarms.all(), now()))
     }
 
     private suspend fun finishFailed(generation: Long, failure: PlanningFailure, startedAt: Instant) {
