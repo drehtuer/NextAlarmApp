@@ -50,6 +50,15 @@ data class PlannerEntity(
     @PrimaryKey val id: Int = SINGLE_ROW_ID,
     @ColumnInfo(name = "state") val state: String,
     val generation: Long,
+    val consecutiveFailures: Int,
+    @Embedded(prefix = "lastRun_") val lastRun: PlanningRunColumns?,
+)
+
+data class PlanningRunColumns(
+    val startedAtMillis: Long,
+    val durationMillis: Long,
+    val alarmCount: Int?,
+    val failure: String?,
 )
 
 internal const val SINGLE_ROW_ID = 0
