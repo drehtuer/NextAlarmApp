@@ -83,7 +83,7 @@ These come before ringing, so that the app can be configured on the phone from t
 
 | Step | Work | Specification |
 |------|------|---------------|
-| 5.1  | Get the visual design from Claude Design; set up the Compose theme and navigation. | [Screens](screens.md) |
+| 5.1  | Get the visual design from Claude Design; set up the Compose theme and navigation. The Compose and window themes must match, and screens must keep clear of the system bars, because Android 17 draws apps edge to edge. Add the app icon. | [Screens](screens.md) |
 | 5.2  | Onboarding and permissions (screen 1), sends `SetupCompleted`. | [Screen list](screens.md#screen-list) |
 | 5.3  | Alarm calendar selection (screen 4), sends `ReplanRequested`. | [Screen list](screens.md#screen-list) |
 | 5.4  | Home with the 48 h preview, empty state and `FailSafe` banner (screen 2); times shown in the device time zone. | [Screen list](screens.md#screen-list) |
