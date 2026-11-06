@@ -8,6 +8,9 @@ data class DeviceCalendar(
     val id: CalendarId,
     val name: String,
     val accountName: String?,
+    val accountType: String?,
+    /** The calendar's own colour, as an ARGB value. */
+    val color: Int?,
 )
 
 /** Reads the calendar provider. A failed read throws, so that it can never be mistaken for "no alarms". */

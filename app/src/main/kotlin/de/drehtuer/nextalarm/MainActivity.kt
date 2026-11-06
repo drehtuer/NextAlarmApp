@@ -3,19 +3,45 @@ package de.drehtuer.nextalarm
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import dagger.hilt.android.AndroidEntryPoint
+import de.drehtuer.nextalarm.ui.AppViewModel
+import de.drehtuer.nextalarm.ui.NextAlarmApp
+import de.drehtuer.nextalarm.ui.theme.NextAlarmTheme
 
-/** A placeholder screen. The real screens come with Phase 5 of the implementation steps. */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private val viewModel: AppViewModel by viewModels()
+    private val resumeCount = mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
-            MaterialTheme {
-                Text("NextAlarm")
+            val state by viewModel.state.collectAsState()
+            NextAlarmTheme {
+                NextAlarmApp(
+                    state = state,
+                    resumeCount = resumeCount.intValue,
+                    onSelectCalendar = viewModel::chooseCalendar,
+                    onCompleteSetup = viewModel::completeSetup,
+                )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumeCount.intValue++
+        viewModel.startWatching()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        viewModel.stopWatching()
     }
 }

@@ -17,6 +17,7 @@ import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.PlannerEngine
 import de.drehtuer.nextalarm.domain.PlannerLock
+import de.drehtuer.nextalarm.ui.AppPorts
 import java.time.Instant
 import javax.inject.Singleton
 import kotlinx.coroutines.sync.Mutex
@@ -73,8 +74,23 @@ object PlanningModule {
         calendars = data.calendars,
         alarms = data.alarms,
         alarmEngine = AlarmEngine(data.alarms, data.scheduler(AppAlarmIntents(context)), NO_ALARM_EFFECTS, Instant::now),
-        effects = planning,
+        effects = AppPlannerEffects(planning, AppNotifications(context)),
         lock = MutexPlannerLock(),
         now = Instant::now,
+    )
+
+    @Provides
+    @Singleton
+    fun appPorts(
+        @ApplicationContext context: Context,
+        data: DataComponents,
+        engine: PlannerEngine,
+    ) = AppPorts(
+        settings = data.settings,
+        planner = data.planner,
+        alarms = data.alarms,
+        calendars = data.calendars,
+        engine = engine,
+        planningChanges = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(PlanningWork.PLAN_WORK),
     )
 }

@@ -161,6 +161,11 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
      ring. Allow it in the app settings under Permissions."
    - Full-screen alarms denied (`secondaryContainer`): "Alarms will still ring, but only as a notification at the top of
      the screen. Snooze and Dismiss are then small buttons in that notification."
+   - Notifications denied (`errorContainer`): "Notifications were denied, so a ringing alarm can't show its screen or its
+     Snooze and Dismiss buttons. Allow them in the app settings under Notifications."
+
+   Calendar access and notifications are required to continue, because a full-screen alarm is itself delivered as a
+   notification. Full-screen alarms are optional.
 
    The main button is "Continue".
 3. **Calendar.** Title "Choose the alarm calendar". Lead "Every timed event in it will ring. Use a calendar just for
@@ -180,7 +185,7 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
   - The relative day: "Today · in 2 h 30 min", "Tomorrow, Saturday · in 10 h" or "Rings again in 10 min".
   - The title, at most three lines.
 - **Day groups:** a `labelLarge` header in `primary`, followed by one `surfaceContainer` list with 16 dp corners and
-  `outlineVariant` dividers. Each row is the time (72 dp wide) and the title, at most two lines. A snoozed row adds a
+  `outlineVariant` dividers. Each row is the time (100 dp wide, so that a time with seconds fits) and the title, at most two lines. A snoozed row adds a
   `primaryContainer` chip: "Snoozed until 06:10".
 - **Event without a title:** show "No title" in italics in `onSurfaceVariant`.
 - **Empty state** (`surfaceContainer` card, calendar icon):

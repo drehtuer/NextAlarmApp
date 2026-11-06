@@ -77,7 +77,14 @@ class PlannerEngineTest {
         assertEquals(PlannerState.Planned, planner.record.state)
         assertEquals(0, planner.record.consecutiveFailures)
         assertEquals(PlanningRun(NOW, Duration.ZERO, 2, null), planner.record.lastRun)
-        assertEquals(listOf("removeWarning"), effects.calls)
+        assertEquals(listOf("removeWarning", "nextAlarm:1"), effects.calls)
+    }
+
+    @Test
+    fun `a run that finds nothing removes the next alarm notification`() = runBlocking {
+        planning()
+        engine.runPlanning(1)
+        assertEquals(listOf("removeWarning", "nextAlarm:null"), effects.calls)
     }
 
     @Test

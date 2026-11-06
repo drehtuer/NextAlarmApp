@@ -131,14 +131,14 @@ class AndroidCalendarRepositoryTest {
 
     @Test
     fun `calendars are listed, with or without name and account`() = runBlocking {
-        provider.result = MatrixCursor(arrayOf("_id", "calendar_displayName", "account_name")).apply {
-            addRow(arrayOf<Any?>(1L, "Alarms", "me@example.org"))
-            addRow(arrayOf<Any?>(2L, null, null))
+        provider.result = MatrixCursor(arrayOf("_id", "calendar_displayName", "account_name", "account_type", "calendar_color")).apply {
+            addRow(arrayOf<Any?>(1L, "Alarms", "me@example.org", "bitfire.at.davdroid", 123))
+            addRow(arrayOf<Any?>(2L, null, null, null, null))
         }
         assertEquals(
             listOf(
-                DeviceCalendar(CalendarId(1), "Alarms", "me@example.org"),
-                DeviceCalendar(CalendarId(2), "", null),
+                DeviceCalendar(CalendarId(1), "Alarms", "me@example.org", "bitfire.at.davdroid", 123),
+                DeviceCalendar(CalendarId(2), "", null, null, null),
             ),
             repository.calendars(),
         )
