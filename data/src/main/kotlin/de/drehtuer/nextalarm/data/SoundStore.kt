@@ -9,6 +9,8 @@ import de.drehtuer.nextalarm.domain.SoundRef
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import kotlin.io.path.deleteIfExists
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -27,8 +29,8 @@ fun interface AudioProbe {
     fun isPlayable(file: File): Boolean
 }
 
-object MediaMetadataAudioProbe : AudioProbe {
-    override fun isPlayable(file: File): Boolean = try {
+val MEDIA_METADATA_AUDIO_PROBE = AudioProbe { file ->
+    try {
         MediaMetadataRetriever().use {
             it.setDataSource(file.path)
             it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes"
@@ -58,12 +60,13 @@ sealed interface SoundSource {
  */
 class SoundStore(
     private val context: Context,
-    private val probe: AudioProbe = MediaMetadataAudioProbe,
+    private val probe: AudioProbe = MEDIA_METADATA_AUDIO_PROBE,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val resolver = context.contentResolver
     private val directory = File(context.createDeviceProtectedStorageContext().filesDir, "sounds")
 
-    suspend fun import(uri: Uri): SoundImportResult = withContext(Dispatchers.IO) {
+    suspend fun import(uri: Uri): SoundImportResult = withContext(ioDispatcher) {
         if (resolver.getType(uri) !in SUPPORTED_SOUND_MIME_TYPES) {
             return@withContext SoundImportResult.Rejected(SoundImportResult.Reason.UNSUPPORTED_TYPE)
         }
@@ -77,7 +80,7 @@ class SoundStore(
         if (rejection == null) {
             SoundImportResult.Imported(SoundRef.File(file.name))
         } else {
-            file.delete()
+            removeQuietly(file)
             SoundImportResult.Rejected(rejection)
         }
     }
@@ -94,11 +97,20 @@ class SoundStore(
 
     /** Deletes the app's copy of a sound that is no longer selected. The user's original is not affected. */
     fun delete(sound: SoundRef) {
-        (sound as? SoundRef.File)?.let { File(directory, it.name).delete() }
+        storedFile(sound)?.let(::removeQuietly)
     }
 
     private fun storedFile(sound: SoundRef): File? =
         (sound as? SoundRef.File)?.let { File(directory, it.name) }?.takeIf { it.isFile }
+
+    /** A copy that cannot be deleted only takes up space, so it must not get in the way of choosing a sound. */
+    private fun removeQuietly(file: File) {
+        try {
+            file.toPath().deleteIfExists()
+        } catch (_: IOException) {
+            // Nothing else can be done about it here.
+        }
+    }
 
     private fun copy(uri: Uri, target: File): Boolean = try {
         val input = resolver.openInputStream(uri)

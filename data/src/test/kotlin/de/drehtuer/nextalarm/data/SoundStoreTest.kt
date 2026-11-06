@@ -59,7 +59,7 @@ class SoundStoreTest {
         Settings.System.putString(context.contentResolver, Settings.System.ALARM_ALERT, systemAlarm.toString())
     }
 
-    private fun store(playable: Boolean = true) = SoundStore(context) { playable }
+    private fun store(playable: Boolean = true) = SoundStore(context, probe = { playable })
 
     private fun picked(content: String = "audio data") =
         File.createTempFile("picked", null, context.cacheDir).apply { writeText(content) }
@@ -206,17 +206,17 @@ class SoundStoreTest {
         ShadowMediaMetadataRetriever.addMetadata(
             DataSource.toDataSource("/song"), MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO, "yes",
         )
-        assertTrue(MediaMetadataAudioProbe.isPlayable(File("/song")))
+        assertTrue(MEDIA_METADATA_AUDIO_PROBE.isPlayable(File("/song")))
     }
 
     @Test
     fun `the probe refuses a file without audio`() {
-        assertFalse(MediaMetadataAudioProbe.isPlayable(File("/silent")))
+        assertFalse(MEDIA_METADATA_AUDIO_PROBE.isPlayable(File("/silent")))
     }
 
     @Test
     fun `the probe refuses a file that cannot be read`() {
         ShadowMediaMetadataRetriever.addException(DataSource.toDataSource("/broken"), IllegalArgumentException("bad"))
-        assertFalse(MediaMetadataAudioProbe.isPlayable(File("/broken")))
+        assertFalse(MEDIA_METADATA_AUDIO_PROBE.isPlayable(File("/broken")))
     }
 }

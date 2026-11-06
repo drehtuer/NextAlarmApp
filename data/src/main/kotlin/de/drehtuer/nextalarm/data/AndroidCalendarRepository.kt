@@ -12,6 +12,7 @@ import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.CalendarRepository
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import java.time.Instant
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -19,9 +20,12 @@ import kotlinx.coroutines.withContext
  * Reads the calendar provider. It queries the instances URI directly, because `Instances.query()` only returns
  * calendars marked as visible: hiding the alarm calendar in a calendar app must not silence its alarms.
  */
-class AndroidCalendarRepository(private val resolver: ContentResolver) : CalendarRepository {
+class AndroidCalendarRepository(
+    private val resolver: ContentResolver,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) : CalendarRepository {
 
-    override suspend fun calendars(): List<DeviceCalendar> = withContext(Dispatchers.IO) {
+    override suspend fun calendars(): List<DeviceCalendar> = withContext(ioDispatcher) {
         val projection = arrayOf(Calendars._ID, Calendars.CALENDAR_DISPLAY_NAME, Calendars.ACCOUNT_NAME)
         query(Calendars.CONTENT_URI, projection, null, null) { cursor ->
             DeviceCalendar(
@@ -33,7 +37,7 @@ class AndroidCalendarRepository(private val resolver: ContentResolver) : Calenda
     }
 
     override suspend fun events(calendar: CalendarId, from: Instant, to: Instant): List<CalendarEvent> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             val uri = Instances.CONTENT_URI.buildUpon().also {
                 ContentUris.appendId(it, from.toEpochMilli())
                 ContentUris.appendId(it, to.toEpochMilli())
