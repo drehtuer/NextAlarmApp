@@ -4,6 +4,7 @@
     <application
         android:name=".NextAlarmApplication"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="NextAlarm"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
