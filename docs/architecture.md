@@ -74,7 +74,8 @@ flowchart LR
 ```
 
 `domain` depends on nothing. `data` and `app` depend on `domain`. Android types never appear in `domain`;
-`data` maps them to domain types (`CalendarEvent`, `Settings`, `AlarmInstance`).
+`data` maps them to domain types (`CalendarEvent`, `Settings`, `AlarmInstance`). The repository and scheduler
+interfaces are declared in `domain` and implemented in `data`, so that the code using them can be tested on the JVM.
 
 ## Calendar source
 
@@ -129,7 +130,15 @@ flowchart TD
 
 Notes:
 
-- Events are read via `CalendarContract.Instances`, which expands recurring events.
+- Events are read via `CalendarContract.Instances`, which expands recurring events. The app queries the instances
+  URI directly with a selection on the calendar id, because `Instances.query()` only returns calendars marked as
+  visible: hiding the alarm calendar in a calendar app must not silence its alarms. Its alarms still appear in the
+  48 h preview on the home screen.
+- An empty result is valid. If the calendar has no events in the horizon, the planned alarms that have not started
+  are removed. The app does not try to tell this apart from a sync problem: missing alarms show in the 48 h preview,
+  and sync problems show in the sync app (DAVx⁵, ICSx⁵).
+- A failed read is different from an empty result. If the provider returns no result or the calendar permission was
+  revoked, the run ends with `PlanFailed` and the planned alarms stay (fail-safe).
 - Every event instance in the horizon becomes an alarm at its start time. The title is the alarm's reason; the
   description and all other fields are ignored. All-day events have no wake-up time and are ignored
   silently. Cancelled events (`STATUS_CANCELED`) are ignored as well.
@@ -211,17 +220,24 @@ sequenceDiagram
   `WakeUpService` uses type `mediaPlayback` with a `MediaSession`, so the news can be controlled from the lock screen.
 - The full-screen intent requires `USE_FULL_SCREEN_INTENT`. Onboarding checks
   `NotificationManager.canUseFullScreenIntent()`; if it is denied, the alarm still rings with a heads-up notification.
-- Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it passes Do Not Disturb. The volume ramps up from silent
-  to the configured maximum volume over the configured ramp duration.
+- Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it passes Do Not Disturb. Without a ramp (the default) the
+  alarm plays at full level straight away; with one, the volume ramps up from silent over the configured duration. A
+  maximum volume is optional: without one (the default), the app leaves the system's alarm volume as it is.
 - **Ring timeout and snooze:** an alarm rings for `ringTimeoutMinutes` (default 3) and is then snoozed
   automatically. If it times out again after that automatic snooze, the app gives up and posts an "alarm not
   answered" notification. The user can snooze any number of times; the snooze length is `snoozeMinutes`
   (default 10). Both are configurable.
 - **Dismiss means stop.** There is no dismiss challenge (puzzle, shake). Dismiss stops the sound immediately.
-- **Alarm sound:** the user picks an audio file with the Android file picker (`ACTION_OPEN_DOCUMENT`, MIME types
-  `audio/mpeg`, `audio/wav`, `audio/ogg`, `audio/mp4`), i.e. MP3, WAV, OGG and M4A. The app copies the file into
+- **Alarm sound:** by default, the phone's default alarm sound. The system setting is read when the alarm rings, so
+  changing it there applies straight away. Alternatively the user picks an audio file with the Android file picker
+  (`ACTION_OPEN_DOCUMENT`, MIME types
+  `audio/mpeg`, `audio/wav`, `audio/x-wav`, `audio/ogg`, `audio/mp4`, `audio/x-m4a`), i.e. MP3, WAV, OGG and M4A. The app copies the file into
   its device-protected storage, so it can be played before the first unlock and keeps working if the original
-  file is moved or deleted. Unsupported or unreadable files are rejected in the picker flow.
+  file is moved or deleted. Unsupported or unreadable files are rejected in the picker flow. The
+  copy lives as long as the file is selected: unselecting or replacing the sound deletes it. The user's original is
+  never changed. A snoozed alarm whose copy was deleted this way rings with the next sound in the order below.
+- **If a sound cannot be played**, the next one is used: the picked file, then the phone's default alarm sound, then
+  a sound bundled with the app. An alarm therefore always rings, also if the phone's default is set to silent.
 - **Several alarms at once:** alarms are never delayed. All alarms use the same sound, so an alarm that fires
   while another one rings joins the running `AlarmService`: the sound simply continues, the ring timeout restarts,
   the new alarm gets its own notification and is listed on the alarm screen. Snooze and Dismiss on the alarm screen
@@ -263,8 +279,8 @@ storage and the calendar provider are not available. To ring anyway:
   are `directBootAware`.
 - The alarm database lives in device-protected storage (`createDeviceProtectedStorageContext()`).
 - On `LOCKED_BOOT_COMPLETED` the [recovery sweep](#recovery) runs.
-- The chosen alarm sound is a copy in device-protected storage (see [Ringing](#ringing)). A fallback sound is
-  bundled with the app and used if no sound was chosen or the copy cannot be played.
+- The chosen alarm sound is a copy in device-protected storage (see [Ringing](#ringing)). The phone's default
+  alarm sound may not be readable before the first unlock; the bundled sound is then played instead.
 - Re-planning only starts after `BOOT_COMPLETED` (user unlocked).
 
 ## Recovery
@@ -291,7 +307,7 @@ classDiagram
         sound: SoundRef
         vibrate: Boolean
         volumeRampSeconds: Int
-        maxVolume: Float
+        maxVolume: Float?
         ringTimeoutMinutes: Int
         snoozeMinutes: Int
         speakReason: Boolean
@@ -316,7 +332,7 @@ classDiagram
         sound: SoundRef
         vibrate: Boolean
         volumeRampSeconds: Int
-        maxVolume: Float
+        maxVolume: Float?
         ringTimeoutMinutes: Int
         snoozeMinutes: Int
         speakReason: Boolean
@@ -326,6 +342,11 @@ classDiagram
     PlanEntry "1" *-- "1" AlarmSnapshot
     PlanEntry ..> AlarmInstance : creates / updates
 ```
+
+Until the user changes them, the settings are: no alarm calendar, the phone's default alarm sound, no vibration, no volume ramp, the
+system's alarm volume left as it is, a ring timeout of 3 minutes, a snooze of 10 minutes, no spoken title and no news.
+
+Every version of the database schema is kept in `data/schemas/`, as the basis for migrations.
 
 ## Future: Philips Hue (not in the MVP)
 

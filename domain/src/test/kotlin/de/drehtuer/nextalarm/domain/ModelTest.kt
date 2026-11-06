@@ -23,6 +23,39 @@ class ModelTest {
     }
 
     @Test
+    fun `the default settings change nothing and add nothing`() {
+        val defaults = Settings.DEFAULT
+        assertNull(defaults.alarmCalendar)
+        assertEquals(SoundRef.SystemDefault, defaults.sound)
+        assertFalse(defaults.vibrate)
+        assertEquals(0, defaults.volumeRampSeconds)
+        assertNull(defaults.maxVolume)
+        assertFalse(defaults.speakReason)
+        assertNull(defaults.news)
+    }
+
+    @Test
+    fun `a volume is optional, and can be at either limit`() {
+        assertNull(settings().copy(maxVolume = null).maxVolume)
+        assertEquals(0f, settings().copy(maxVolume = 0f).maxVolume)
+        assertEquals(1f, settings().copy(maxVolume = 1f).maxVolume)
+    }
+
+    @Test
+    fun `the initial planner record is unconfigured`() {
+        assertEquals(PlannerState.Unconfigured, PlannerRecord.INITIAL.state)
+        assertEquals(0, PlannerRecord.INITIAL.generation)
+    }
+
+    @Test
+    fun `a device calendar keeps its fields`() {
+        val calendar = DeviceCalendar(CalendarId(3), "Alarms", "me@example.org")
+        assertEquals(3, calendar.id.value)
+        assertEquals("Alarms", calendar.name)
+        assertEquals("me@example.org", calendar.accountName)
+    }
+
+    @Test
     fun `settings reject values out of range`() {
         assertFailsWith<IllegalArgumentException> { settings().copy(ringTimeoutMinutes = 0) }
         assertFailsWith<IllegalArgumentException> { settings().copy(snoozeMinutes = 0) }

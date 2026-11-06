@@ -5,9 +5,9 @@ import java.time.Instant
 @JvmInline
 value class CalendarId(val value: Long)
 
-/** The alarm sound: a copy of the file the user picked, or the sound bundled with the app. */
+/** The alarm sound: the phone's default alarm sound, or a copy of the file the user picked. */
 sealed interface SoundRef {
-    data object Fallback : SoundRef
+    data object SystemDefault : SoundRef
     data class File(val name: String) : SoundRef
 }
 
@@ -41,7 +41,8 @@ data class Settings(
     val sound: SoundRef,
     val vibrate: Boolean,
     val volumeRampSeconds: Int,
-    val maxVolume: Float,
+    /** Between 0 and 1. Without a value, the system's alarm volume is left as it is. */
+    val maxVolume: Float?,
     val ringTimeoutMinutes: Int = DEFAULT_RING_TIMEOUT_MINUTES,
     val snoozeMinutes: Int = DEFAULT_SNOOZE_MINUTES,
     val speakReason: Boolean,
@@ -49,7 +50,7 @@ data class Settings(
 ) {
     init {
         require(volumeRampSeconds >= 0) { "volumeRampSeconds must not be negative: $volumeRampSeconds" }
-        require(maxVolume in 0f..1f) { "maxVolume must be between 0 and 1: $maxVolume" }
+        require(maxVolume == null || maxVolume in 0f..1f) { "maxVolume must be between 0 and 1: $maxVolume" }
         require(ringTimeoutMinutes > 0) { "ringTimeoutMinutes must be positive: $ringTimeoutMinutes" }
         require(snoozeMinutes > 0) { "snoozeMinutes must be positive: $snoozeMinutes" }
     }
@@ -57,6 +58,17 @@ data class Settings(
     companion object {
         const val DEFAULT_RING_TIMEOUT_MINUTES = 3
         const val DEFAULT_SNOOZE_MINUTES = 10
+
+        /** The settings before the user has changed anything. See docs/architecture.md#data-model. */
+        val DEFAULT = Settings(
+            alarmCalendar = null,
+            sound = SoundRef.SystemDefault,
+            vibrate = false,
+            volumeRampSeconds = 0,
+            maxVolume = null,
+            speakReason = false,
+            news = null,
+        )
     }
 }
 
@@ -66,7 +78,7 @@ data class AlarmSnapshot(
     val sound: SoundRef,
     val vibrate: Boolean,
     val volumeRampSeconds: Int,
-    val maxVolume: Float,
+    val maxVolume: Float?,
     val ringTimeoutMinutes: Int,
     val snoozeMinutes: Int,
     val speakReason: Boolean,

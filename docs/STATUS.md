@@ -4,7 +4,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 **Last updated:** 2026-11-06
 
-**Summary:** Phases 0 to 2 are merged (#5), with 100% line and branch coverage in SonarCloud. The app is still a placeholder screen with no alarm functions. It installs and runs on the Pixel 10a. Next is Phase 3.
+**Summary:** Phases 0 to 2 are merged (#5), with 100% line and branch coverage in SonarCloud. The app is still a placeholder screen with no alarm functions. It installs and runs on the Pixel 10a. Phase 3 is implemented on the branch `impl/data` and tested on the JVM, but not merged.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -59,11 +59,11 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 | Step | Topic                                   | Status        | Notes |
 |------|-----------------------------------------|---------------|-------|
-| 3.1  | Room database                           | `Not started` |       |
-| 3.2  | `SettingsRepository`, `AlarmRepository` | `Not started` |       |
-| 3.3  | `CalendarRepository`                    | `Not started` |       |
-| 3.4  | `AlarmScheduler`                        | `Not started` |       |
-| 3.5  | Alarm sound storage                     | `Not started` |       |
+| 3.1  | Room database                           | `In progress` | Not merged. |
+| 3.2  | `SettingsRepository`, `AlarmRepository` | `In progress` | Not merged. |
+| 3.3  | `CalendarRepository`                    | `In progress` | Not merged. Only tested against a fake provider; not yet run on real calendars. |
+| 3.4  | `AlarmScheduler`                        | `In progress` | Not merged. |
+| 3.5  | Alarm sound storage                     | `In progress` | Not merged. |
 
 ## Phase 4: Planning pipeline
 

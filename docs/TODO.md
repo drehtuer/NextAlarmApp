@@ -67,7 +67,7 @@ into the relevant document.
 | 3.2  | `SettingsRepository` and `AlarmRepository`, including persisted state machine states. | [Modules](architecture.md#modules) |
 | 3.3  | `CalendarRepository`: list the device calendars and read event instances of the alarm calendar only. | [Calendar source](architecture.md#calendar-source) |
 | 3.4  | `AlarmScheduler`: register and cancel alarms with `setAlarmClock()`, behind an interface. | [Ringing](architecture.md#ringing) |
-| 3.5  | Alarm sound storage: copy the picked file into device-protected storage, reject unusable files, bundle the fallback sound. | [Ringing](architecture.md#ringing) |
+| 3.5  | Alarm sound storage: copy the picked file into device-protected storage, reject unusable files, bundle the fallback sound, use the phone's default alarm sound by default. | [Ringing](architecture.md#ringing) |
 
 ## Phase 4: Planning pipeline
 
@@ -116,7 +116,7 @@ These come before ringing, so that the app can be configured on the phone from t
 | Step | Work | Specification |
 |------|------|---------------|
 | 8.1  | Settings entry point (screen 3). | [Screen list](screens.md#screen-list) |
-| 8.2  | Alarm settings (screen 5), including the file picker for the sound. | [Screen list](screens.md#screen-list) |
+| 8.2  | Alarm settings (screen 5), including the file picker for the sound. When the sound is unselected or replaced, save the settings first, then delete the old copy. | [Screen list](screens.md#screen-list) |
 | 8.3  | News source (screen 6), including test playback. | [Screen list](screens.md#screen-list) |
 | 8.4  | Diagnostics and history (screen 7): planner state, past alarms, test alarm, log export. | [Screen list](screens.md#screen-list) |
 | 8.5  | Delete terminal alarm instances after a few days. | [Alarm state machine](state_machines.md#alarm-state-machine) |
@@ -129,7 +129,7 @@ Run on the Pixel 10a with [wireless debugging](development.md#running-on-the-pix
 |------|------|
 | 9.1  | Instrumented tests for ringing, full-screen intent and direct boot. |
 | 9.2  | Calendar sources: a local aCalendar calendar, a CalDAV calendar via DAVx⁵, a subscribed calendar via ICSx⁵. Also check whether `Instances` returns events that started before the query range. |
-| 9.3  | Reliability: reboot before the alarm without unlocking, phone off at the alarm time, Doze, revoked calendar permission. |
+| 9.3  | Reliability: reboot before the alarm without unlocking (also check which sound plays), phone off at the alarm time, Doze, revoked calendar permission. |
 | 9.4  | Sound and wake-up: Do Not Disturb, the alarm rings with the phone locked, no network, TTS unavailable before the first unlock. |
 | 9.5  | Everyday use over several real mornings. |
 
