@@ -34,7 +34,7 @@ Planning is re-run whenever calendar data changes, so edits and sync updates are
 
 Create an event in the alarm calendar at the desired wake-up time. The event title (e.g. `Flight to Hamburg, leave at 6:15`) is shown on the alarm screen and spoken after the alarm. The description and all other event fields are ignored. Alarms ring at the event's absolute start time, so travelling doesn't move them: an event at 07:00 Berlin time rings at 01:00 local time in New York. The app shows times in the phone's time zone.
 
-Sound, vibration, snooze and the wake-up automation are configured once in the app and apply to every alarm. The alarm sound is an audio file (MP3, WAV, OGG or M4A) chosen with the Android file picker. All-day and cancelled events in the alarm calendar are ignored. Events are never merged, even if they are seconds apart.
+Sound, vibration, snooze and the wake-up automation are configured once in the app and apply to every alarm. The alarm sound is the phone's default alarm sound, or an audio file (MP3, WAV, OGG or M4A) chosen with the Android file picker. All-day and cancelled events in the alarm calendar are ignored. Events are never merged, even if they are seconds apart.
 
 ## Requirements
 

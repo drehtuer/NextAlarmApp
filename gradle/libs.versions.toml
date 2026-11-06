@@ -5,6 +5,7 @@ ksp = "2.3.12"
 hilt = "2.60.1"
 room = "2.8.5"
 work = "2.12.0"
+coroutines = "1.8.1"
 activity = "1.13.0"
 composeBom = "2026.09.00"
 junit4 = "4.13.2"
@@ -27,6 +28,7 @@ hilt-compiler = { module = "com.google.dagger:hilt-android-compiler", version.re
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 work-runtime = { module = "androidx.work:work-runtime", version.ref = "work" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 junit4 = { module = "junit:junit", version.ref = "junit4" }
 junit5-bom = { module = "org.junit:junit-bom", version.ref = "junit5" }
 junit5-jupiter = { module = "org.junit.jupiter:junit-jupiter" }

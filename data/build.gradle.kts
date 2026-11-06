@@ -41,6 +41,11 @@ kotlin {
     }
 }
 
+// The schema of every database version is kept in the repository, as the basis for migrations.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 // Robolectric loads classes without a code source; JaCoCo skips those unless told otherwise.
 tasks.withType<Test>().configureEach {
     // Robolectric reads FileDescriptor internals through SharedSecrets, which Java 21 blocks by default.
@@ -54,6 +59,7 @@ tasks.withType<Test>().configureEach {
 dependencies {
     implementation(project(":domain"))
     implementation(libs.room.runtime)
+    implementation(libs.kotlinx.coroutines.android)
     ksp(libs.room.compiler)
 
     testImplementation(libs.junit4)
