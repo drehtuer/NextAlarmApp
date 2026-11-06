@@ -25,7 +25,8 @@ flowchart TD
     SnoozeN --> Wake
 ```
 
-The UI is English only. The visual design comes from Claude Design; this document only defines content and flow.
+The UI is English only. This document defines content and flow; the visual design, every value and the wording are in
+[Design](design.md).
 
 Screens 8 and 9 are separate activities that can be shown over the lock screen, also before the first unlock after
 a reboot. They are reached from notifications, not from the in-app navigation. Neither requires unlocking the
@@ -40,9 +41,9 @@ is planned for later.
 |----|---------------------------|---------------------------------------------------------------------------------------------------------------------------------|--------------------|
 | 1  | Onboarding & permissions  | Explain the app: every event in the alarm calendar is an alarm, regular alarms are recurring events, alarms are deleted in the calendar app. Request calendar read, notifications, full-screen intent. Choose the alarm calendar (same as 4). | Sends `SetupCompleted` |
 | 2  | Home                      | Next alarm prominently; list of the alarms in the next 48 hours with time and event title ("06:30 Flight to Hamburg"). Empty state when the alarm calendar has no event in the window. Banner when in `FailSafe`. Read-only: alarms are changed in the calendar app. | Shows planner state |
-| 3  | Settings                  | Entry point to all configuration.                                                                                               | — |
+| 3  | Settings                  | Entry point to all configuration. Always ends with an About section: the release version and a link to the source code on GitHub. | — |
 | 4  | Alarm calendar            | List of device calendars; choose exactly one as the alarm calendar.                                                             | Change sends `ReplanRequested` |
-| 5  | Alarm settings            | Applies to every alarm: sound (the phone's default alarm sound, or an audio file chosen with the Android file picker: MP3, WAV, OGG, M4A; unselecting a file deletes the app's copy), vibration, volume ramp duration, maximum volume (optional: without one, the system's alarm volume is left as it is), ring timeout (default 3 min), snooze length (default 10 min), speak title, news source. | Change sends `ReplanRequested` |
+| 5  | Alarm settings            | Applies to every alarm: sound (the phone's default alarm sound, or an audio file chosen with the Android file picker: MP3, WAV, OGG, M4A; unselecting a file deletes the app's copy), vibration, volume ramp duration, maximum volume (optional: without one, the system's alarm volume is left as it is), ring timeout (default 3 min), snooze length (default 10 min), speak title, news source. Shows a hint when the phone's alarm volume is very low. | Change sends `ReplanRequested` |
 | 6  | News source               | RSS feed or podcast feed URL; maximum duration (default 15 min); test playback.                                                 | — |
 | 7  | Diagnostics & history     | Planner state, last planning run and error, list of past alarms with final state (`Done`, `Missed`, ...), test alarm, export log. | read-only; test alarm creates an instance |
 | 8  | Alarm screen              | Full-screen, over lock screen: time and the titles of all ringing alarms. Buttons: Snooze, Dismiss (both act on all ringing alarms; no challenge). | Sends `Snooze`, `Dismiss` |
