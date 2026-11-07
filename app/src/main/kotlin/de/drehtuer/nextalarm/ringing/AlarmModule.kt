@@ -20,6 +20,7 @@ import de.drehtuer.nextalarm.domain.FallbackSound
 import de.drehtuer.nextalarm.domain.ForegroundGate
 import de.drehtuer.nextalarm.domain.GatedPodcast
 import de.drehtuer.nextalarm.domain.GatedSpeech
+import de.drehtuer.nextalarm.domain.NewsFetcher
 import de.drehtuer.nextalarm.domain.RingAudio
 import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.SoundWorker
@@ -93,6 +94,10 @@ object AlarmModule {
 
     @Provides
     @Singleton
+    fun engineCalls(scope: CoroutineScope, engine: Lazy<AlarmEngine>) = EngineCalls(scope, engine)
+
+    @Provides
+    @Singleton
     fun ringer(
         @ApplicationContext context: Context,
         data: DataComponents,
@@ -100,8 +105,7 @@ object AlarmModule {
         changes: RingingChanges,
         notifications: AlarmNotifications,
         worker: SoundWorker,
-        scope: CoroutineScope,
-        engine: Lazy<AlarmEngine>,
+        engine: EngineCalls,
     ) = AlarmRinger(
         sound = FallbackSound(
             data.sounds::sources,
@@ -123,7 +127,7 @@ object AlarmModule {
             CallWatch(AndroidPhoneCalls(context), ::logAudioProblem),
             ::logAudioProblem,
         ),
-        onTimeout = { ids -> scope.launch { engine.get().ringTimedOut(ids) } },
+        onTimeout = engine::ringTimedOut,
         onChanged = { alarms ->
             foreground.ringingChanged(alarms)
             changes.report(alarms)
@@ -169,8 +173,7 @@ object AlarmModule {
 
     @Provides
     @Singleton
-    fun wakeUpMedia(@ApplicationContext context: Context, scope: CoroutineScope, engine: Lazy<AlarmEngine>) =
-        WakeUpMedia(context) { scope.launch { engine.get().stopWakeUp() } }
+    fun wakeUpMedia(@ApplicationContext context: Context, engine: EngineCalls) = WakeUpMedia(context, onStop = engine::stopWakeUp)
 
     @Provides
     @Singleton
@@ -196,28 +199,31 @@ object AlarmModule {
     @Singleton
     fun wakeUpChanges() = WakeUpChanges()
 
-    /** Effects run under the engine's lock, so what the automation reports has to go through a coroutine of its own. */
+    @Provides
+    @Singleton
+    fun newsFetcher(scope: CoroutineScope, data: DataComponents): NewsFetcher = ScopedNewsFetcher(scope, data.feeds)
+
+    /** Effects run under the engine's lock, so what the automation reports goes through [EngineCalls]. */
     @Provides
     @Singleton
     fun wakeUpDirector(
         @ApplicationContext context: Context,
-        data: DataComponents,
         foreground: WakeUpForeground,
         gate: ForegroundGate,
         focus: AudioFocusHold,
         changes: WakeUpChanges,
-        scope: CoroutineScope,
-        engine: Lazy<AlarmEngine>,
+        news: NewsFetcher,
+        engine: EngineCalls,
     ) = WakeUpDirector(
         speech = GatedSpeech(TextToSpeechOutput(context), gate),
         podcast = GatedPodcast(MediaPlayerPodcastOutput(context), gate),
-        feeds = ScopedNewsFetcher(scope, data.feeds),
+        feeds = news,
         timers = HandlerRingTimers(),
         wakeLock = AndroidRingWakeLock(context, "NextAlarm:wakeup"),
         focus = focus,
         calls = CallWatch(AndroidPhoneCalls(context), ::logAudioProblem),
         now = Instant::now,
-        report = { id, event -> scope.launch { engine.get().handle(id, event) } },
+        report = engine::handle,
         onChanged = { status ->
             foreground.changed(status)
             changes.report(status)
