@@ -22,14 +22,14 @@ private const val MAX_RAW_TEXT = 32_000
 private const val MAX_TITLE = 500
 private const val MAX_SUMMARY = 3_000
 private const val MAX_NAME = 200
-private const val LEXICAL_HANDLER = "http://xml.org/sax/properties/lexical-handler"
+private const val LEXICAL_HANDLER = "http://xml.org/sax/properties/lexical-handler" // NOSONAR: an XML namespace name, which is never connected to.
 
-private const val ATOM = "http://www.w3.org/2005/Atom"
-private const val RSS_1 = "http://purl.org/rss/1.0/"
-private const val RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
-private const val ITUNES = "http://www.itunes.com/dtds/podcast-1.0.dtd"
-private const val CONTENT = "http://purl.org/rss/1.0/modules/content/"
-private const val DUBLIN_CORE = "http://purl.org/dc/elements/1.1/"
+private const val ATOM = "http://www.w3.org/2005/Atom" // NOSONAR: an XML namespace name, which is never connected to.
+private const val RSS_1 = "http://purl.org/rss/1.0/" // NOSONAR: an XML namespace name, which is never connected to.
+private const val RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#" // NOSONAR: an XML namespace name, which is never connected to.
+private const val ITUNES = "http://www.itunes.com/dtds/podcast-1.0.dtd" // NOSONAR: an XML namespace name, which is never connected to.
+private const val CONTENT = "http://purl.org/rss/1.0/modules/content/" // NOSONAR: an XML namespace name, which is never connected to.
+private const val DUBLIN_CORE = "http://purl.org/dc/elements/1.1/" // NOSONAR: an XML namespace name, which is never connected to.
 private const val SECONDS_PER_PART = 60L
 private const val MAX_DURATION_PARTS = 3
 
@@ -41,10 +41,10 @@ private val FEED_LEVEL = setOf("channel", "feed")
 /** Features that are not known to every parser. What decides is [HostileXmlGuard], which works on all of them. */
 private val STRICT_FEATURES = listOf(
     XMLConstants.FEATURE_SECURE_PROCESSING to true,
-    "http://apache.org/xml/features/disallow-doctype-decl" to true,
-    "http://xml.org/sax/features/external-general-entities" to false,
-    "http://xml.org/sax/features/external-parameter-entities" to false,
-    "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false,
+    "http://apache.org/xml/features/disallow-doctype-decl" to true, // NOSONAR: an XML namespace name, which is never connected to.
+    "http://xml.org/sax/features/external-general-entities" to false, // NOSONAR: an XML namespace name, which is never connected to.
+    "http://xml.org/sax/features/external-parameter-entities" to false, // NOSONAR: an XML namespace name, which is never connected to.
+    "http://apache.org/xml/features/nonvalidating/load-external-dtd" to false, // NOSONAR: an XML namespace name, which is never connected to.
 )
 
 /**

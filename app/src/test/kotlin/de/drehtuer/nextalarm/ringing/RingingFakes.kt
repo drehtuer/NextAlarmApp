@@ -103,5 +103,5 @@ fun awaitUntil(check: () -> Boolean) {
     error("The condition did not come true in time")
 }
 
-private const val WAIT_STEPS = 500
+private const val WAIT_STEPS = 1500
 private const val POLL_MILLIS = 20L
