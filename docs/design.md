@@ -288,6 +288,39 @@ Details decided while building this screen:
   - An `errorContainer` banner reads: "**Test failed.** The server answered “404 Not Found”. Check the address, then try
     again. Until it works, alarms skip the news."
 
+Details decided while building this screen:
+
+- **Detection** starts 0.8 seconds after the typing has paused, for anything that is an http or https address. An address
+  that gives no feed is not complained about, as it may still be being typed. Only "Test playback" shows the failed state.
+- **Saving:** a feed that was found, by detection or by a test, is stored at once and asks for a new plan. A broken
+  address is never stored. A feed with nothing in it to read or play counts as broken. A failed test leaves what is
+  stored alone, so the end of the banner depends on it. If a different feed is stored, it reads "Until it works, alarms
+  keep using tagesschau.de." instead, as those alarms do not skip the news.
+- **The other reasons in the banner**, each followed by "Check the address, then try again." and the end above:
+  - Not a web address: "This isn't a web address: it has to start with https:// or http://."
+  - No message from the server: "The server answered “500”."
+  - No connection: "The server can't be reached, or the phone has no connection."
+  - Too large: "The answer is too large to be read as a feed."
+  - Not a feed: "The answer isn't a feed NextAlarm can read."
+  - Nothing in it: "The feed has nothing in it to play."
+- **A feed that won't play** keeps its card and the helper text of a found feed, and the field no error border. It stays
+  stored, as the failure can be the phone's. The banner reads, followed by the end above:
+  - RSS: "The feed was found, but the phone couldn't read it aloud. Check its text-to-speech settings, then try again."
+  - Podcast: "The podcast was found, but its latest episode wouldn't play. Check the connection, then try again."
+- **The stepper** goes from 5 to 60 min in steps of 5, the default of 15 being one of them. A stored value between two
+  steps goes to the next step. It is disabled while a test runs, which keeps the limit it started with. A change counts
+  for the stored feed at once. Without one, it is kept for the feed that is found next.
+- **The detail line:** "12 headlines today" counts the entries of today, or all of them ("12 headlines") if there are none
+  of today or the feed has no dates. A podcast shows what its feed gives of "Deutschlandfunk · today, 18 min", with
+  "yesterday" or "4 November" as the day, and no line if it gives nothing.
+- **The progress line:** while the feed is on its way, "Getting the news · tagesschau.de". An episode shorter than the
+  maximum duration counts up to its own end: "Playing “Der Tag” · 0:42 of 10:00". The bar moves without a value until the
+  sound has started.
+- **"Turn off news"** empties the field and stores no news. It is disabled when there is nothing to turn off.
+- Emptying the field does not turn the news off: only the button does. Coming back to the screen shows what is stored.
+- The test stops at "Stop test", on leaving the screen, when the screen is hidden (also by a ringing alarm), when the
+  address changes, and at the maximum duration.
+
 ### 7 Diagnostics & history
 
 - **Top bar:** "Diagnostics & history".

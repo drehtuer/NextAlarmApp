@@ -77,7 +77,7 @@ private fun nowPlaying(playing: WakeUpPlaying, now: Instant): NowPlayingModel = 
     )
 }
 
-private fun fraction(part: Duration, whole: Duration): Float =
+internal fun fraction(part: Duration, whole: Duration): Float =
     (part.toMillis().toFloat() / whole.toMillis()).coerceIn(0f, 1f)
 
 /** "4:12", and "1:02:03" for an hour or more. */

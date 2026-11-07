@@ -334,6 +334,14 @@ latest episode, or the reason there is none. The wake-up automation and the news
 or the first one if it has no dates. RSS 2.0, RSS 1.0 and Atom are understood. What is read aloud is the title and the
 description of each entry, as plain text, in the order of the feed.
 
+**Test playback** on the news screen plays by the same rules as an alarm, because it runs on the same code:
+`NewsTestPlayer` (`domain`) has a `WakeUpDirector` of its own play the feed as the news of an alarm that exists nowhere
+else, and hands it the feed it has just fetched. So it uses the media stream, the same limits and the same fallbacks, but
+none of the automation's state, its notification or `WakeUpService`. That is enough, as a test only runs while the screen
+can be seen. `TextToSpeechOutput` and `MediaPlayerPodcastOutput` have their own instances for it. The director does not
+tell a failure from an end, so the player counts a test as failed if the news ended before anything was heard (no entry
+was read to its end and no episode started) and before the limit.
+
 Feeds come from servers the user does not control, so they are treated as hostile:
 
 - **XML:** a document with a DOCTYPE is refused, which rules out entity expansion and external entities. The parser

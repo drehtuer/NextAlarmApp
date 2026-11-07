@@ -41,6 +41,7 @@ import de.drehtuer.nextalarm.ui.theme.LightExtraColors
 import de.drehtuer.nextalarm.ui.theme.LocalExtraColors
 import de.drehtuer.nextalarm.ui.theme.NextAlarmTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.lifecycle.Lifecycle
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.Rule
@@ -338,6 +339,51 @@ class NextAlarmAppTest {
 
     private fun nextActivity(): Intent = shadowOf(application).nextStartedActivity
 
+    private fun openNews() {
+        openFromSettings("Alarm settings")
+        rule.onNodeWithText("News").performScrollTo().performClick()
+        rule.waitForIdle()
+    }
+
+    @Test
+    fun `the news row opens screen 6, which starts from what is stored`() {
+        show(ready)
+        openNews()
+        rule.onNodeWithText("Maximum duration").assertIsDisplayed()
+        assertEquals("open", actions.newsLifecycle.last())
+    }
+
+    @Test
+    fun `screen 6 reaches its actions`() {
+        show(ready)
+        openNews()
+        rule.onNodeWithText("Turn off news").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Longer").performClick()
+        assertEquals(listOf("lengthen"), actions.calls)
+    }
+
+    @Test
+    fun `the back arrow leaves screen 6 for screen 5, and that closes it`() {
+        show(ready)
+        openNews()
+        actions.newsLifecycle.clear()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("These apply to every alarm.").assertIsDisplayed()
+        assertEquals(listOf("close"), actions.newsLifecycle)
+    }
+
+    @Test
+    fun `a notification that opens another screen closes screen 6 too`() {
+        show(ready)
+        openNews()
+        actions.newsLifecycle.clear()
+        requests.intValue++
+        rule.waitForIdle()
+        rule.onNodeWithText("Diagnostics & history").assertIsDisplayed()
+        assertEquals(listOf("close"), actions.newsLifecycle)
+    }
+
     @Test
     fun `nothing shows before the first load`() {
         show(AppState())
@@ -394,14 +440,6 @@ class NextAlarmAppTest {
         assertEquals(listOf("vibrate:true"), actions.calls)
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithText("Run setup again").assertIsDisplayed()
-    }
-
-    @Test
-    fun `the news row opens nothing yet`() {
-        show(ready)
-        openFromSettings("Alarm settings")
-        rule.onNodeWithText("News").performScrollTo().performClick()
-        rule.onNodeWithText("These apply to every alarm.").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -564,6 +602,43 @@ class DocumentPickersTest {
     fun `leaving the document picker exports nothing`() {
         answer(exportLog(), null)
         assertTrue(actions.calls.isEmpty())
+    }
+}
+
+/** Screen 6 in an activity whose life can be moved along. */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, qualifiers = "w411dp-h923dp")
+class NewsLifecycleTest {
+    @get:Rule
+    val rule = createAndroidComposeRule<ComponentActivity>()
+
+    private val actions = RecordingActions()
+
+    private fun show(state: AppState) {
+        rule.setContent { NextAlarmTheme(dark = false) { NextAlarmApp(state, 0, {}, {}, actions) } }
+    }
+
+    private fun hide() {
+        rule.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+    }
+
+    @Test
+    fun `hiding screen 6 stops a test`() {
+        show(AppState(loaded = true, setupDone = true))
+        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithText("Alarm settings").performClick()
+        rule.onNodeWithText("News").performScrollTo().performClick()
+        rule.waitForIdle()
+        hide()
+        assertTrue("stopTest" in actions.newsLifecycle)
+    }
+
+    @Test
+    fun `hiding another screen has no test to stop`() {
+        show(AppState(loaded = true, setupDone = true))
+        rule.waitForIdle()
+        hide()
+        assertTrue("stopTest" !in actions.newsLifecycle)
     }
 }
 

@@ -16,6 +16,8 @@ import de.drehtuer.nextalarm.domain.DiagnosticsModel
 import de.drehtuer.nextalarm.domain.HomeModel
 import de.drehtuer.nextalarm.domain.LOG_FAILED_NOTE
 import de.drehtuer.nextalarm.domain.LOG_SAVED_NOTE
+import de.drehtuer.nextalarm.domain.NewsDraft
+import de.drehtuer.nextalarm.domain.NewsModel
 import de.drehtuer.nextalarm.domain.PlannerEngine
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.PlannerRepository
@@ -28,6 +30,7 @@ import de.drehtuer.nextalarm.domain.buildAlarmSettings
 import de.drehtuer.nextalarm.domain.buildDiagnostics
 import de.drehtuer.nextalarm.domain.buildHome
 import de.drehtuer.nextalarm.domain.buildLogExport
+import de.drehtuer.nextalarm.domain.buildNews
 import de.drehtuer.nextalarm.domain.calendarFact
 import de.drehtuer.nextalarm.domain.calendarSummary
 import de.drehtuer.nextalarm.domain.diagnosticsSummary
@@ -63,6 +66,7 @@ class AppPorts(
     /** Emits whenever a planning job changes state, so that home shows its result. */
     val planningChanges: Flow<*>,
     val phone: PhonePorts,
+    val news: NewsPorts,
     /** For the calls below that would block the screen. */
     val io: CoroutineDispatcher,
     val now: () -> Instant = Instant::now,
@@ -85,6 +89,7 @@ data class AppState(
     val calendars: List<DeviceCalendar> = emptyList(),
     val selectedCalendar: CalendarId? = null,
     val alarmSettings: AlarmSettingsModel = buildAlarmSettings(Settings.DEFAULT, null, null, null),
+    val news: NewsModel = buildNews(NewsDraft(), null, Instant.EPOCH, ZoneOffset.UTC),
     val diagnosticsSummary: String = diagnosticsSummary(PlannerRecord.INITIAL, ZoneOffset.UTC),
     val diagnostics: DiagnosticsModel = buildDiagnostics(
         PlannerRecord.INITIAL,
@@ -118,7 +123,19 @@ interface DiagnosticsActions {
     fun exportLog(uri: Uri)
 }
 
-interface AppActions : AlarmSettingsActions, DiagnosticsActions
+/** What screen 6 can ask for, and what leaving it means. */
+interface NewsActions {
+    fun openNews()
+    fun closeNews()
+    fun setNewsAddress(address: String)
+    fun shortenNews()
+    fun lengthenNews()
+    fun toggleNewsTest()
+    fun stopNewsTest()
+    fun turnOffNews()
+}
+
+interface AppActions : AlarmSettingsActions, NewsActions, DiagnosticsActions
 
 @HiltViewModel
 class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(), AppActions {
@@ -135,6 +152,16 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
 
     /** Why the last picked file was not taken. It stays until the user picks again or gives up on the file. */
     private var soundRejection: String? = null
+
+    private val news = NewsController(
+        viewModelScope,
+        ports.news,
+        ports.settings,
+        ports.now,
+        ports.zone,
+        store = { source -> changeSettings { it.copy(news = source) } },
+        publish = { model -> mutableState.update { it.copy(news = model) } },
+    )
 
     /** While the screen is visible: keeps relative times current, and picks up finished planning runs. */
     fun startWatching() {
@@ -225,6 +252,22 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
     override fun setSnoozeLength(minutes: Int) = changeSettings { it.copy(snoozeMinutes = minutes) }
 
     override fun setSpeakTitle(speak: Boolean) = changeSettings { it.copy(speakReason = speak) }
+
+    override fun openNews() = news.open()
+
+    override fun closeNews() = news.close()
+
+    override fun setNewsAddress(address: String) = news.setAddress(address)
+
+    override fun shortenNews() = news.shorten()
+
+    override fun lengthenNews() = news.lengthen()
+
+    override fun toggleNewsTest() = news.toggleTest()
+
+    override fun stopNewsTest() = news.stopTest()
+
+    override fun turnOffNews() = news.turnOff()
 
     /** A test alarm goes the normal way. Asking again while one is on its way does not add another. */
     override fun ringTestAlarm() {

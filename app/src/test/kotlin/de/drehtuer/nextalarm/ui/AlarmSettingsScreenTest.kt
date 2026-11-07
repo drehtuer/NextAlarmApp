@@ -35,6 +35,9 @@ import org.robolectric.annotation.Config
 class RecordingActions : AppActions {
     val calls = mutableListOf<String>()
 
+    /** Kept apart, as these come from moving between the screens, not from what the user asks for. */
+    val newsLifecycle = mutableListOf<String>()
+
     override fun importSound(uri: Uri) {
         calls += "import:$uri"
     }
@@ -65,6 +68,38 @@ class RecordingActions : AppActions {
 
     override fun setSpeakTitle(speak: Boolean) {
         calls += "speak:$speak"
+    }
+
+    override fun openNews() {
+        newsLifecycle += "open"
+    }
+
+    override fun closeNews() {
+        newsLifecycle += "close"
+    }
+
+    override fun stopNewsTest() {
+        newsLifecycle += "stopTest"
+    }
+
+    override fun setNewsAddress(address: String) {
+        calls += "address:$address"
+    }
+
+    override fun shortenNews() {
+        calls += "shorten"
+    }
+
+    override fun lengthenNews() {
+        calls += "lengthen"
+    }
+
+    override fun toggleNewsTest() {
+        calls += "toggleTest"
+    }
+
+    override fun turnOffNews() {
+        calls += "turnOff"
     }
 
     override fun ringTestAlarm() {
