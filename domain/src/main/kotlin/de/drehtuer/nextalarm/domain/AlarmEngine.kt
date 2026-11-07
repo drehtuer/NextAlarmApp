@@ -44,6 +44,13 @@ class AlarmEngine(
         alarms.all().filter { it.state == AlarmState.Ringing }.forEach { send(it.id, event) }
     }
 
+    /** The user stopped the wake-up automation, which all the alarms in it share. */
+    suspend fun stopWakeUp() = lock.withLock {
+        alarms.all()
+            .filter { it.state == AlarmState.Announcing || it.state == AlarmState.NewsPlaying }
+            .forEach { send(it.id, AlarmEvent.StopWakeUp) }
+    }
+
     /**
      * Registers every waiting alarm with the system again. Registering twice replaces the first one, and this also
      * repairs an alarm whose registration was interrupted by a cancelled planning run.

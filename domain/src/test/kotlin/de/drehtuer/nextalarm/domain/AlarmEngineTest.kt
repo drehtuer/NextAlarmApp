@@ -247,6 +247,20 @@ class AlarmEngineTest {
     }
 
     @Test
+    fun `stopping the wake-up automation ends every alarm in it, and only those`() = runBlocking {
+        stored(AlarmState.Announcing, id = 1)
+        stored(AlarmState.NewsPlaying, id = 2)
+        stored(AlarmState.Ringing, id = 3)
+        stored(AlarmState.Snoozed, id = 4)
+        engine.stopWakeUp()
+        assertEquals(AlarmState.Done, alarms.find(1)?.state)
+        assertEquals(AlarmState.Done, alarms.find(2)?.state)
+        assertEquals(AlarmState.Ringing, alarms.find(3)?.state)
+        assertEquals(AlarmState.Snoozed, alarms.find(4)?.state)
+        assertEquals(2, performed.count { it == AlarmAction.LeaveAllServices })
+    }
+
+    @Test
     fun `the recovery sweep does what the persisted state asks for`() = runBlocking {
         stored(AlarmState.Scheduled, id = 1)
         stored(AlarmState.Snoozed, id = 2)
@@ -316,8 +330,9 @@ class AlarmEngineTest {
         locked.handle(instance.id, AlarmEvent.Refresh(snapshot()))
         locked.fire(instance.id)
         locked.sendToRinging(AlarmEvent.Snooze)
+        locked.stopWakeUp()
         locked.registerWaiting()
         locked.recover()
-        assertEquals(6, lock.uses)
+        assertEquals(7, lock.uses)
     }
 }

@@ -53,11 +53,13 @@ flowchart LR
         SET[SettingsRepository<br/>Room, device-protected]
         DB[AlarmRepository<br/>Room, device-protected]
         SCH[AlarmScheduler<br/>AlarmManager.setAlarmClock]
+        FEED[FeedSource<br/>HttpURLConnection]
     end
     subgraph domain[":domain (pure Kotlin)"]
         PL[Planner]
         PSM[Planner state machine]
         ASM[Alarm state machine]
+        WUD[WakeUpDirector<br/>Feed parser]
     end
     UI --> SET
     UI --> DB
@@ -71,6 +73,8 @@ flowchart LR
     RCV --> ASM
     SVC --> ASM
     ASM --> DB
+    SVC --> WUD
+    WUD --> FEED
 ```
 
 `domain` depends on nothing. `data` and `app` depend on `domain`. Android types never appear in `domain`;
@@ -239,8 +243,7 @@ sequenceDiagram
   a maximum volume of 0 is silent.
 - `AlarmEngine` handles one event at a time under a lock, so that events from the system, the user, the ring timeout,
   the recovery sweep and the planner cannot overwrite each other's state. Effects run under that lock; anything that
-  reports back (such as the wake-up automation) must do so from outside the call. Until Phase 7, `SkippedWakeUp` ends
-  the wake-up automation at once, so that a dismissed alarm reaches `Done`.
+  reports back (such as the wake-up automation) must do so from outside the call, in a coroutine of its own.
 - **Ring timeout and snooze:** an alarm rings for `ringTimeoutMinutes` (default 3) and is then snoozed
   automatically. If it times out again after that automatic snooze, the app gives up and posts an "alarm not
   answered" notification. The user can snooze any number of times; the snooze length is `snoozeMinutes`
@@ -291,10 +294,50 @@ unlocked. This has consequences, because the phone is usually still locked at th
   ([direct boot](#direct-boot)). `WakeUpService` and the wake-up screen are therefore `directBootAware`, and
   everything they need (title, news source, TTS settings) is part of the alarm snapshot in device-protected storage.
 - The news needs network access. Wi-Fi usually connects before the first unlock, but if there is no network the
-  news step ends with `NewsDone` (failed) and the automation finishes.
+  news step ends with `NewsDone` (failed) and the automation finishes. The same goes for an unreadable feed, a feed of
+  the wrong kind (a podcast address without audio) and playback that fails.
 - The TTS engine is a separate app and may not be available before the first unlock. In that case the announcement
   is skipped (`AnnouncementDone`, failed) and the automation continues with the news. An RSS feed needs TTS too, so
-  its news step ends with `NewsDone` (failed); a podcast episode still plays.
+  its news step ends with `NewsDone` (failed); a podcast episode still plays. The manifest declares the
+  `TTS_SERVICE` intent in `queries`, as Android hides the engines from the app otherwise.
+
+`WakeUpDirector` (`domain`) runs the automation; `TextToSpeech`, `MediaPlayer` and the download sit behind thin
+interfaces. `WakeUpService` only keeps the process alive and holds the media notification, and if Android refuses it
+the automation runs on with the notification posted as usual, like `AlarmService`. A partial wake lock is held while
+it runs, as nothing else plays between two utterances.
+
+- **Several alarms share one automation, and only one thing plays at a time.** All titles are spoken one after the
+  other, and each alarm gets its `AnnouncementDone`. The news then plays once, also for an alarm that was still
+  waiting for the titles or that joins later, and all of them get `NewsDone` when it ends. If their news sources
+  differ (the settings changed between two alarms), the first alarm's is played. A title to speak while news plays stops
+  the news, which starts again from the beginning after it, so that two voices never talk at once.
+- **Stop** ends every alarm in the automation (`AlarmEngine.stopWakeUp`), from the wake-up screen, the media
+  notification and the `MediaSession`.
+- **Screen 9 follows screen 8.** Android does not let an app in the background open an activity, so when an alarm is
+  dismissed from its notification, the automation runs without opening the screen. The media notification opens it.
+- **The maximum duration** counts from the start of the news step, including the time the feed takes to download, so
+  that "stops by 06:16 at the latest" holds. An episode that has not started after 45 seconds has failed.
+- A speech engine that does not answer is given up on after 30 seconds plus 0.2 seconds per character, so that it
+  cannot hold up the automation.
+
+### Feeds
+
+`FeedSource.fetchFeed(url)` returns what is at an address: the kind (`RSS` or `PODCAST`), the name, the entries and the
+latest episode, or the reason there is none. The wake-up automation and the news screen both use it, through
+`DataComponents.feeds`. A feed with an audio enclosure is a podcast; its latest episode is the one with the newest date,
+or the first one if it has no dates. RSS 2.0, RSS 1.0 and Atom are understood. What is read aloud is the title and the
+description of each entry, as plain text, in the order of the feed.
+
+Feeds come from servers the user does not control, so they are treated as hostile:
+
+- **XML:** a document with a DOCTYPE is refused, which rules out entity expansion and external entities. The parser
+  feature for this does not exist on Android, so the SAX handler refuses when the DOCTYPE starts, which works the same
+  on the JVM and on the phone. Parsing is in `domain` (`parseFeed`).
+- **Size:** at most 16 MiB are downloaded, counted after decompression, and text and the number of entries are limited.
+- **Addresses:** only http and https reach the network or the media player, also for redirects and enclosures. A feed
+  cannot make the player open a local file. Plain http is allowed (`usesCleartextTraffic`), as many podcast addresses
+  still use it, and nothing but public feeds travels over it.
+- **Time:** 10 seconds to connect, 15 seconds per read, 60 seconds for the whole download, at most 5 redirects.
 
 ## Direct boot
 
@@ -318,6 +361,7 @@ storage and the calendar provider are not available. To ring anyway:
 A reboot or crash can interrupt an alarm at any point. The recovery sweep runs on `LOCKED_BOOT_COMPLETED` and at every
 process start. The services run in the app's process, so at process start nothing is playing yet, and the persisted
 state says what should be. `AlarmService` is sticky, so Android restarts the process after a crash during ringing.
+`WakeUpService` is not, as an interrupted automation is not resumed.
 
 | Persisted state             | Sweep                                                                                 |
 |-----------------------------|---------------------------------------------------------------------------------------|

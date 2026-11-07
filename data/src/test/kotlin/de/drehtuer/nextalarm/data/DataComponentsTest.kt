@@ -5,6 +5,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import de.drehtuer.nextalarm.domain.FeedFailure
+import de.drehtuer.nextalarm.domain.FeedResult
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.SoundRef
@@ -27,6 +29,11 @@ class DataComponentsTest {
         assertEquals(Settings.DEFAULT, components.settings.load())
         assertEquals(PlannerRecord.INITIAL, components.planner.load())
         assertTrue(components.alarms.all().isEmpty())
+    }
+
+    @Test
+    fun `feeds can be fetched, here without going near a network`() = runBlocking {
+        assertEquals(FeedResult.Failed(FeedFailure.InvalidAddress), components.feeds.fetchFeed("ftp://a.example/"))
     }
 
     @Test

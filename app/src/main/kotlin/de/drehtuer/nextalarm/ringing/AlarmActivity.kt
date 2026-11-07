@@ -1,5 +1,6 @@
 package de.drehtuer.nextalarm.ringing
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -28,6 +29,7 @@ class AlarmActivity : ComponentActivity() {
         controller.start(lifecycleScope)
         lifecycleScope.launch {
             controller.finished.first { it }
+            if (controller.wakeUpFollows.value) startActivity(Intent(this@AlarmActivity, WakeUpActivity::class.java))
             finish()
         }
         setContent {

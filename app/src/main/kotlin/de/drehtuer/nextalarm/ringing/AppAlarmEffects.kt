@@ -1,16 +1,11 @@
 package de.drehtuer.nextalarm.ringing
 
-import dagger.Lazy
 import de.drehtuer.nextalarm.domain.AlarmAction
 import de.drehtuer.nextalarm.domain.AlarmEffects
-import de.drehtuer.nextalarm.domain.AlarmEngine
-import de.drehtuer.nextalarm.domain.AlarmEvent
 import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
 import de.drehtuer.nextalarm.planning.AppNotifications
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 
 /** What the alarm state machine asks of Android. See the entry actions in docs/state_machines.md. */
 class AppAlarmEffects(
@@ -26,9 +21,10 @@ class AppAlarmEffects(
                 notifications.cancelSnoozed(instance.id)
                 ringer.join(instance)
             }
-            AlarmAction.LeaveAlarmService, AlarmAction.LeaveAllServices -> {
-                ringer.leave(instance.id)
-                removeAlarmNotifications(instance.id)
+            AlarmAction.LeaveAlarmService -> leaveRinging(instance.id)
+            AlarmAction.LeaveAllServices -> {
+                leaveRinging(instance.id)
+                wakeUp.leave(instance.id)
             }
             AlarmAction.StartAnnouncement -> wakeUp.startAnnouncement(instance)
             AlarmAction.StartNews -> wakeUp.startNews(instance)
@@ -47,25 +43,13 @@ class AppAlarmEffects(
 
     override fun showNextAlarm(alarm: AlarmInstance?) = nextAlarm.showNextAlarm(alarm)
 
+    private fun leaveRinging(instanceId: Long) {
+        ringer.leave(instanceId)
+        removeAlarmNotifications(instanceId)
+    }
+
     private fun removeAlarmNotifications(instanceId: Long) {
         notifications.cancelRinging(instanceId)
         notifications.cancelSnoozed(instanceId)
-    }
-}
-
-/**
- * Until Phase 7 there is nothing to speak or play, so the wake-up automation ends straight away and a dismissed alarm
- * reaches `Done`. Phase 7 replaces this with `WakeUpService`, in `AlarmModule`.
- */
-class SkippedWakeUp(
-    private val scope: CoroutineScope,
-    private val engine: Lazy<AlarmEngine>,
-) : WakeUpAutomation {
-    override fun startAnnouncement(alarm: AlarmInstance) = report(alarm, AlarmEvent.AnnouncementDone)
-
-    override fun startNews(alarm: AlarmInstance) = report(alarm, AlarmEvent.NewsDone)
-
-    private fun report(alarm: AlarmInstance, event: AlarmEvent) {
-        scope.launch { engine.get().handle(alarm.id, event) }
     }
 }

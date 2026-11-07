@@ -41,10 +41,14 @@ class AlarmScreenController(
     private val mutableRinging = MutableStateFlow<List<AlarmInstance>>(emptyList())
     private val mutableNow = MutableStateFlow(clock())
     private val mutableFinished = MutableStateFlow(false)
+    private val mutableWakeUpFollows = MutableStateFlow(false)
 
     val ringing: StateFlow<List<AlarmInstance>> = mutableRinging.asStateFlow()
     val now: StateFlow<Instant> = mutableNow.asStateFlow()
     val finished: StateFlow<Boolean> = mutableFinished.asStateFlow()
+
+    /** True if the wake-up automation runs, so that the wake-up screen should take over when this one is [finished]. */
+    val wakeUpFollows: StateFlow<Boolean> = mutableWakeUpFollows.asStateFlow()
 
     /** Keeps the state current for as long as [scope] lives. */
     fun start(scope: CoroutineScope) {
@@ -71,8 +75,10 @@ class AlarmScreenController(
     }
 
     private suspend fun reload() {
-        val current = alarms.all().filter { it.state == AlarmState.Ringing }
+        val all = alarms.all()
+        val current = all.filter { it.state == AlarmState.Ringing }
         mutableRinging.value = current
+        mutableWakeUpFollows.value = all.any { it.state == AlarmState.Announcing || it.state == AlarmState.NewsPlaying }
         mutableFinished.value = current.isEmpty()
     }
 }

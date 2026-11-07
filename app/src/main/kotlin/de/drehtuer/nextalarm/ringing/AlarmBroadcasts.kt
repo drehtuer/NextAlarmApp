@@ -30,6 +30,7 @@ class AlarmBroadcasts(
             AlarmActionReceiver.ACTION_SNOOZE_ALL -> engine.sendToRinging(AlarmEvent.Snooze)
             AlarmActionReceiver.ACTION_DISMISS_ALL -> engine.sendToRinging(AlarmEvent.Dismiss)
             AlarmActionReceiver.ACTION_DISMISS -> alarmInstanceId(intent)?.let { engine.handle(it, AlarmEvent.Dismiss) }
+            AlarmActionReceiver.ACTION_STOP_WAKE_UP -> engine.stopWakeUp()
         }
     }
 
@@ -61,6 +62,7 @@ class AlarmActionReceiver : BroadcastReceiver() {
         const val ACTION_SNOOZE_ALL = "de.drehtuer.nextalarm.SNOOZE_ALL"
         const val ACTION_DISMISS_ALL = "de.drehtuer.nextalarm.DISMISS_ALL"
         const val ACTION_DISMISS = "de.drehtuer.nextalarm.DISMISS"
+        const val ACTION_STOP_WAKE_UP = "de.drehtuer.nextalarm.STOP_WAKE_UP"
     }
 }
 

@@ -16,6 +16,7 @@ import de.drehtuer.nextalarm.domain.AlarmEvent
 import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.domain.FallbackSound
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
+import de.drehtuer.nextalarm.domain.WakeUpDirector
 import de.drehtuer.nextalarm.planning.AppAlarmIntents
 import de.drehtuer.nextalarm.planning.AppNotifications
 import de.drehtuer.nextalarm.planning.MutexEngineLock
@@ -86,10 +87,56 @@ object AlarmModule {
         },
     )
 
-    /** The seam of Phase 7. */
     @Provides
     @Singleton
-    fun wakeUp(scope: CoroutineScope, engine: Lazy<AlarmEngine>): WakeUpAutomation = SkippedWakeUp(scope, engine)
+    fun wakeUpNotifications(@ApplicationContext context: Context) = WakeUpNotifications(context)
+
+    @Provides
+    @Singleton
+    fun wakeUpMedia(@ApplicationContext context: Context, scope: CoroutineScope, engine: Lazy<AlarmEngine>) =
+        WakeUpMedia(context) { scope.launch { engine.get().stopWakeUp() } }
+
+    @Provides
+    @Singleton
+    fun wakeUpForeground(
+        @ApplicationContext context: Context,
+        notifications: WakeUpNotifications,
+        media: WakeUpMedia,
+    ) = WakeUpForeground(notifications, media) {
+        context.startForegroundService(Intent(context, WakeUpService::class.java))
+    }
+
+    @Provides
+    @Singleton
+    fun wakeUpChanges() = WakeUpChanges()
+
+    /** Effects run under the engine's lock, so what the automation reports has to go through a coroutine of its own. */
+    @Provides
+    @Singleton
+    fun wakeUpDirector(
+        @ApplicationContext context: Context,
+        data: DataComponents,
+        foreground: WakeUpForeground,
+        changes: WakeUpChanges,
+        scope: CoroutineScope,
+        engine: Lazy<AlarmEngine>,
+    ) = WakeUpDirector(
+        speech = TextToSpeechOutput(context),
+        podcast = MediaPlayerPodcastOutput(context),
+        feeds = ScopedNewsFetcher(scope, data.feeds),
+        timers = HandlerRingTimers(),
+        wakeLock = AndroidRingWakeLock(context, "NextAlarm:wakeup"),
+        now = Instant::now,
+        report = { id, event -> scope.launch { engine.get().handle(id, event) } },
+        onChanged = { status ->
+            foreground.changed(status)
+            changes.report(status)
+        },
+    )
+
+    @Provides
+    @Singleton
+    fun wakeUp(director: WakeUpDirector): WakeUpAutomation = director
 
     @Provides
     @Singleton
@@ -123,4 +170,15 @@ object AlarmModule {
         foreground: AlarmForeground,
         scope: CoroutineScope,
     ) = AlarmScreenController(data.alarms, engine, changes, foreground, scope)
+
+    /** A new one per screen. */
+    @Provides
+    fun wakeUpScreenController(
+        data: DataComponents,
+        engine: AlarmEngine,
+        director: WakeUpDirector,
+        changes: WakeUpChanges,
+        foreground: WakeUpForeground,
+        scope: CoroutineScope,
+    ) = WakeUpScreenController(data.alarms, engine, director::status, changes, foreground, scope)
 }

@@ -342,6 +342,19 @@ Details decided while building this screen:
 4. A small line: "Unlocking the phone won't stop it."
 5. **Stop:** a filled pill, the same as Dismiss.
 
+Details decided while building this screen:
+
+- The greeting is `titleMedium` in `nightOnSurfaceVariant`, the kind line `bodyMedium` and the small line `bodyMedium`,
+  both in `nightOnSurfaceVariant`, and the times `bodySmall` with tabular figures. The icon disc is 40 dp: speaker for
+  speech, RSS for a feed, microphone for a podcast.
+- Speech has no known length, so its time is what has passed ("0:03"), with no end time and a moving progress bar.
+- While the feed is on its way the card has no times, a moving bar, the kind line "Getting the news" and the address's
+  host as the main line. For an episode the length comes from the player, or from the feed until the player knows; if
+  neither knows, the second time is "up to 15:00". Between two steps, for a moment, there is no card.
+- An event without a title shows as on screen 8. The main line has at most two lines, and only the titles scroll.
+- A podcast feed gives "Der Tag" as its name and "Deutschlandfunk" as its publisher (`itunes:author`). Without a publisher
+  the kind line uses the name.
+
 ## Notifications
 
 All notifications use the standard Android layouts, the small icon `ic_stat_alarm`, and `primary` (`#00639B`) as the
@@ -352,7 +365,10 @@ accent colour (`setColor`).
 | Next alarm (silent, ongoing) | "Next alarm: tomorrow 06:00" | The event title | none |
 | Alarm | The event title ("Flight to Hamburg, leave at 6:15") | "Ringing now" | "Snooze", "Dismiss" |
 | Snoozed | "Snoozed until 06:10" | The event title | "Dismiss" |
-| Wake-up media | "Playing: Der Tag" | "Deutschlandfunk podcast · stops by 06:16 at the latest" | "Stop" |
+| Wake-up media, podcast | "Playing: Der Tag" | "Deutschlandfunk podcast · stops by 06:16 at the latest" | "Stop" |
+| Wake-up media, RSS | "Playing: tagesschau.de" | "Reading the news · stops by 06:16 at the latest" | "Stop" |
+| Wake-up media, speech | "Speaking the title" (or "Speaking the titles") | The title being spoken | "Stop" |
+| Wake-up media, feed on its way | "Getting the news" | "tagesschau.de · stops by 06:16 at the latest" | "Stop" |
 | Fail-safe warning | "New alarms aren't being added" | "NextAlarm can't read your calendar. Alarms already planned will still ring." | "Open diagnostics" |
 | Late alarm | "An alarm rang 7 min late" | "“Train to Cologne” was due at 06:45, but the phone was off." | "Open history" |
 | Missed alarm | "An alarm didn't ring" | "“Brunch with Lea” at 09:00 was missed because the phone was off." | "Open history" |

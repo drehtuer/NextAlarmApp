@@ -208,6 +208,14 @@ class AndroidRingPartsTest {
     }
 
     @Test
+    fun `the wake lock says who holds it`() {
+        AndroidRingWakeLock(context).hold(Duration.ofMinutes(1))
+        assertEquals("NextAlarm:ringing", shadowOf(ShadowPowerManager.getLatestWakeLock()).tag)
+        AndroidRingWakeLock(context, "NextAlarm:wakeup").hold(Duration.ofMinutes(1))
+        assertEquals("NextAlarm:wakeup", shadowOf(ShadowPowerManager.getLatestWakeLock()).tag)
+    }
+
+    @Test
     fun `holding the wake lock twice takes one release, and releasing it again does nothing`() {
         val lock = AndroidRingWakeLock(context)
         lock.hold(Duration.ofMinutes(4))

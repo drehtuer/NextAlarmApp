@@ -29,7 +29,8 @@ The UI is English only. This document defines content and flow; the visual desig
 [Design](design.md).
 
 Screens 8 and 9 are separate activities that can be shown over the lock screen, also before the first unlock after
-a reboot. They are reached from notifications, not from the in-app navigation. Neither requires unlocking the
+a reboot. They are reached from notifications, not from the in-app navigation. Screen 9 follows when Dismiss on screen 8
+starts the wake-up automation; after a Dismiss on a notification, the media notification opens it. Neither requires unlocking the
 phone (see [Wake-up automation and the lock screen](architecture.md#wake-up-automation-and-the-lock-screen)).
 
 There is no home screen widget and no quick settings tile in the first version. A quick settings tile (next alarm)

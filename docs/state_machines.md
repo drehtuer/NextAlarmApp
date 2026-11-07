@@ -115,7 +115,7 @@ Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the cur
 | `Remove`             | Re-planning no longer contains this entry                                           |
 | `AnnouncementDone`   | TTS finished (or failed)                                                            |
 | `NewsDone`           | News finished (or failed, e.g. no network)                                          |
-| `StopWakeUp`         | User stops the wake-up automation, or the recovery sweep ends an interrupted one     |
+| `StopWakeUp`         | User stops the wake-up automation (sent to every alarm in it), or the recovery sweep ends an interrupted one |
 
 Guards:
 
@@ -197,4 +197,6 @@ Rationale for the less obvious entries:
 - **Several alarms at once:** all alarms use the same sound, so a second alarm that fires while another one rings
   joins the running `AlarmService` instead of being delayed. It gets its own notification, is listed on the alarm
   screen and restarts the shared ring timeout. `Snooze`, `Dismiss` and `RingTimeout` are sent to every ringing
-  alarm; each machine transitions on its own (see [Ringing](architecture.md#ringing)).
+  alarm; each machine transitions on its own (see [Ringing](architecture.md#ringing)). They then also share one
+  [wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen), in which each still gets its own
+  `AnnouncementDone` and `NewsDone`.

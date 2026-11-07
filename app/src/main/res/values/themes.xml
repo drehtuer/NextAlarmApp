@@ -7,7 +7,7 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
-    <!-- The alarm screen: always black, whatever the system setting, so it is defined here only. -->
+    <!-- The alarm and wake-up screens: always black, whatever the system setting, so it is defined here only. -->
     <style name="Theme.NextAlarm.Night" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">#000000</item>
         <item name="android:statusBarColor">@android:color/transparent</item>

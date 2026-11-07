@@ -122,9 +122,9 @@ class HandlerRingTimers(private val handler: Handler = Handler(Looper.getMainLoo
     }
 }
 
-class AndroidRingWakeLock(context: Context) : RingWakeLock {
+class AndroidRingWakeLock(context: Context, tag: String = "NextAlarm:ringing") : RingWakeLock {
     private val lock = context.getSystemService(PowerManager::class.java)
-        .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "NextAlarm:ringing")
+        .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, tag)
         .apply { setReferenceCounted(false) }
 
     override fun hold(atMost: Duration) {

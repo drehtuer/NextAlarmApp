@@ -205,4 +205,7 @@ class AlarmRinger(
 interface WakeUpAutomation {
     fun startAnnouncement(alarm: AlarmInstance)
     fun startNews(alarm: AlarmInstance)
+
+    /** It is over for this alarm, for whichever reason. Nothing happens if it was not in the automation. */
+    fun leave(instanceId: Long)
 }

@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Looper
+import android.speech.tts.TextToSpeech
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.WorkManager
 import androidx.work.impl.WorkManagerImpl
@@ -20,9 +21,13 @@ import de.drehtuer.nextalarm.data.DataComponents
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmEvent
 import de.drehtuer.nextalarm.domain.AlarmKey
+import de.drehtuer.nextalarm.domain.AlarmSnapshot
 import de.drehtuer.nextalarm.domain.AlarmState
+import de.drehtuer.nextalarm.domain.NewsSource
+import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.domain.PlanEntry
 import de.drehtuer.nextalarm.domain.Settings
+import de.drehtuer.nextalarm.domain.WakeUpStatus
 import de.drehtuer.nextalarm.domain.snapshotFor
 import de.drehtuer.nextalarm.planning.AlarmReceiver
 import de.drehtuer.nextalarm.planning.alarmUri
@@ -36,6 +41,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
@@ -45,6 +51,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowAlarmManager
+import org.robolectric.shadows.ShadowTextToSpeech
 import org.w3c.dom.Element
 
 /**
@@ -85,7 +92,7 @@ class AlarmPathTest {
 
     private fun state(id: Long) = runBlocking { data.alarms.find(id)?.state }
 
-    private fun created(at: Instant) = runBlocking {
+    private fun created(at: Instant, snapshot: AlarmSnapshot = this.snapshot) = runBlocking {
         engine.create(PlanEntry(AlarmKey.forEvent(1, at), at, snapshot))
         data.alarms.all().last()
     }
@@ -132,11 +139,76 @@ class AlarmPathTest {
 
     @Test
     fun `a dismissed alarm reaches the end, without a wake-up automation to run`(): Unit = runBlocking {
-        val alarm = created(Instant.now())
+        val alarm = created(Instant.now(), Settings.DEFAULT.snapshotFor("Gym"))
         engine.fire(alarm.id)
         engine.sendToRinging(AlarmEvent.Dismiss)
         assertTrue(parts.ringer.ringing().isEmpty())
+        assertEquals(AlarmState.Done, state(alarm.id))
+        assertEquals(WakeUpStatus.IDLE, parts.director.status())
+    }
+
+    private fun ttsEngine() = shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance())
+
+    /** The automation runs under the engine's lock and reports through a coroutine, so waiting here shows it does not hang. */
+    @Test
+    fun `the title of a dismissed alarm is spoken, before the first unlock, and the service joins in`(): Unit = runBlocking {
+        val alarm = created(Instant.now())
+        engine.fire(alarm.id)
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        assertEquals(AlarmState.Announcing, state(alarm.id))
+        val application = shadowOf(real as Application)
+        val started = generateSequence { application.nextStartedService }.map { it.component?.className }.toList()
+        assertTrue(WakeUpService::class.java.name in started)
+        ttsEngine().onInitListener.onInit(TextToSpeech.SUCCESS)
+        assertEquals("Gym", ttsEngine().lastSpokenText)
+        assertEquals(snapshot.reason, parts.wakeUpChanges.status.value.titles.single())
+        ttsEngine().utteranceProgressListener.onDone("1")
         awaitUntil { state(alarm.id) == AlarmState.Done }
+        awaitUntil { parts.director.status() == WakeUpStatus.IDLE }
+        assertTrue(ttsEngine().isShutdown)
+    }
+
+    @Test
+    fun `without text to speech the alarm still reaches the end`(): Unit = runBlocking {
+        val alarm = created(Instant.now())
+        engine.fire(alarm.id)
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        ttsEngine().onInitListener.onInit(TextToSpeech.ERROR)
+        awaitUntil { state(alarm.id) == AlarmState.Done }
+    }
+
+    @Test
+    fun `news that cannot be fetched ends the automation, here without going near a network`(): Unit = runBlocking {
+        val news = NewsSource(NewsType.RSS, "ftp://not.on.the.web/feed")
+        val alarm = created(Instant.now(), Settings.DEFAULT.copy(news = news).snapshotFor("Gym"))
+        engine.fire(alarm.id)
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        awaitUntil { state(alarm.id) == AlarmState.Done }
+        awaitUntil { parts.director.status() == WakeUpStatus.IDLE }
+    }
+
+    @Test
+    fun `Stop in the media controls ends the automation`(): Unit = runBlocking {
+        val alarm = created(Instant.now())
+        engine.fire(alarm.id)
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        parts.wakeUpMedia.callback.onStop()
+        awaitUntil { state(alarm.id) == AlarmState.Done }
+        assertTrue(ttsEngine().isShutdown)
+    }
+
+    @Test
+    fun `a controller can be had per wake-up screen, and sees the automation`(): Unit = runBlocking {
+        val alarm = created(Instant.now())
+        engine.fire(alarm.id)
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        val controller = parts.wakeUpController()
+        val screen = alarmScope(Dispatchers.Default)
+        controller.start(screen)
+        awaitUntil { controller.status.value.titles == listOf("Gym") }
+        controller.stop()
+        awaitUntil { state(alarm.id) == AlarmState.Done }
+        screen.cancel()
     }
 
     @Test
@@ -187,11 +259,19 @@ private class AlarmPathParts(context: Context, data: DataComponents) {
     private val changes = AlarmModule.ringingChanges()
     private val lazyEngine: Lazy<AlarmEngine> = Lazy { engine }
     val ringer = AlarmModule.ringer(context, data, foreground, changes, scope, lazyEngine)
-    private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(scope, lazyEngine))
+    private val wakeUpNotifications = AlarmModule.wakeUpNotifications(context)
+    val wakeUpMedia = AlarmModule.wakeUpMedia(context, scope, lazyEngine)
+    private val wakeUpForeground = AlarmModule.wakeUpForeground(context, wakeUpNotifications, wakeUpMedia)
+    val wakeUpChanges = AlarmModule.wakeUpChanges()
+    val director = AlarmModule.wakeUpDirector(context, data, wakeUpForeground, wakeUpChanges, scope, lazyEngine)
+    private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(director))
     val engine: AlarmEngine = AlarmModule.engine(context, data, effects)
     private val controllerData = data
 
     fun controller() = AlarmModule.screenController(controllerData, engine, changes, foreground, scope)
+
+    fun wakeUpController() =
+        AlarmModule.wakeUpScreenController(controllerData, engine, director, wakeUpChanges, wakeUpForeground, scope)
 
     companion object {
         fun data(context: Context) = DataComponents(context)
@@ -273,6 +353,8 @@ class AlarmManifestTest {
         listOf(
             "activity" to ".ringing.AlarmActivity",
             "service" to ".ringing.AlarmService",
+            "activity" to ".ringing.WakeUpActivity",
+            "service" to ".ringing.WakeUpService",
             "receiver" to ".planning.AlarmReceiver",
             "receiver" to ".ringing.AlarmActionReceiver",
             "receiver" to ".ringing.LockedBootReceiver",
@@ -283,11 +365,31 @@ class AlarmManifestTest {
     }
 
     @Test
-    fun `the alarm screen shows over the lock screen, on black`() {
-        val activity = component("activity", ".ringing.AlarmActivity")
-        assertEquals("true", activity.getAttribute("android:showWhenLocked"))
-        assertEquals("true", activity.getAttribute("android:turnScreenOn"))
-        assertEquals("@style/Theme.NextAlarm.Night", activity.getAttribute("android:theme"))
+    fun `the alarm and wake-up screens show over the lock screen, on black`() {
+        listOf(".ringing.AlarmActivity", ".ringing.WakeUpActivity").forEach { name ->
+            val activity = component("activity", name)
+            assertEquals("true", activity.getAttribute("android:showWhenLocked"), name)
+            assertEquals("true", activity.getAttribute("android:turnScreenOn"), name)
+            assertEquals("@style/Theme.NextAlarm.Night", activity.getAttribute("android:theme"), name)
+        }
+    }
+
+    @Test
+    fun `the wake-up service is one of media playback`() {
+        assertEquals("mediaPlayback", component("service", ".ringing.WakeUpService").getAttribute("android:foregroundServiceType"))
+    }
+
+    @Test
+    fun `the text-to-speech engines are visible to the app`() {
+        val queries = manifest.getElementsByTagName("queries").item(0) as Element
+        val action = queries.getElementsByTagName("action").item(0) as Element
+        assertEquals(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE, action.getAttribute("android:name"))
+    }
+
+    @Test
+    fun `feeds can be plain http, which many podcast addresses still are`() {
+        val application = manifest.getElementsByTagName("application").item(0) as Element
+        assertEquals("true", application.getAttribute("android:usesCleartextTraffic"))
     }
 
     @Test
@@ -302,7 +404,9 @@ class AlarmManifestTest {
             .requestedPermissions.orEmpty().toSet()
         listOf(
             "FOREGROUND_SERVICE",
+            "FOREGROUND_SERVICE_MEDIA_PLAYBACK",
             "FOREGROUND_SERVICE_SYSTEM_EXEMPTED",
+            "INTERNET",
             "RECEIVE_BOOT_COMPLETED",
             "USE_EXACT_ALARM",
             "USE_FULL_SCREEN_INTENT",

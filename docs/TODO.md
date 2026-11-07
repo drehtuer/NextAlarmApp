@@ -104,7 +104,7 @@ These come before ringing, so that the app can be configured on the phone from t
 
 | Step | Work | Specification |
 |------|------|---------------|
-| 7.1  | `WakeUpService`: foreground service of type `mediaPlayback`, `MediaSession`, media notification, `USAGE_MEDIA`. It replaces `SkippedWakeUp` behind `WakeUpAutomation`, in `AlarmModule`, and also has to leave on `LeaveAllServices`. | [Wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen) |
+| 7.1  | `WakeUpService`: foreground service of type `mediaPlayback`, `MediaSession`, media notification, `USAGE_MEDIA`. It runs behind `WakeUpAutomation`, in `AlarmModule`, and leaves on `LeaveAllServices`. | [Wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen) |
 | 7.2  | Speak the event title with `TextToSpeech`, continue if TTS is unavailable. | [Wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen) |
 | 7.3  | Wake-up screen (screen 9) over the lock screen, with Stop. | [Screen list](screens.md#screen-list) |
 | 7.4  | News from an RSS feed, read aloud with `TextToSpeech`. | [Wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen) |
@@ -130,7 +130,7 @@ Run on the Pixel 10a with [wireless debugging](development.md#running-on-the-pix
 | 9.1  | Instrumented tests for ringing, full-screen intent and direct boot. |
 | 9.2  | Calendar sources: a local aCalendar calendar, a CalDAV calendar via DAVx⁵, a subscribed calendar via ICSx⁵. Also check whether `Instances` returns events that started before the query range. |
 | 9.3  | Reliability: reboot before the alarm without unlocking (also check which sound plays), phone off at the alarm time, Doze, revoked calendar permission. |
-| 9.4  | Sound and wake-up: Do Not Disturb, the alarm rings with the phone locked, no network, TTS unavailable before the first unlock. |
+| 9.4  | Sound and wake-up: Do Not Disturb, the alarm rings with the phone locked, no network, TTS unavailable before the first unlock, a real RSS feed and podcast on Android's own XML parser and media player, Stop in the lock screen's media controls. |
 | 9.5  | Everyday use over several real mornings. |
 
 ## Phase 10: After the MVP

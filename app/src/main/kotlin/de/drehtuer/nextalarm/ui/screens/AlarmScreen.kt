@@ -59,7 +59,7 @@ fun AlarmScreen(model: AlarmScreenModel, onSnooze: () -> Unit, onDismiss: () -> 
             ClockAndTitles(model)
             SnoozeButton(model.ringsAgain, onSnooze)
             Spacer(Modifier.height(48.dp))
-            DismissButton(onDismiss)
+            NightStopButton("Dismiss", onDismiss)
         }
     }
 }
@@ -191,10 +191,11 @@ private fun SnoozeButton(ringsAgain: String, onSnooze: () -> Unit) {
     }
 }
 
+/** The filled pill of Dismiss on screen 8 and Stop on screen 9. */
 @Composable
-private fun DismissButton(onDismiss: () -> Unit) {
+internal fun NightStopButton(label: String, onClick: () -> Unit) {
     Button(
-        onClick = onDismiss,
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 80.dp),
@@ -207,7 +208,7 @@ private fun DismissButton(onDismiss: () -> Unit) {
         SymbolIcon(R.drawable.ic_stop, null, tint = MaterialTheme.colorScheme.onPrimary)
         Spacer(Modifier.width(8.dp))
         Text(
-            "Dismiss",
+            label,
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Medium),
         )

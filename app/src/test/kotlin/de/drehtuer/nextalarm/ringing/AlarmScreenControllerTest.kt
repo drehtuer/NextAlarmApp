@@ -55,6 +55,21 @@ class AlarmScreenControllerTest {
     fun tearDown() = screenScope.cancel()
 
     @Test
+    fun `the wake-up screen follows if the automation runs, and only then`() {
+        controller.start(screenScope)
+        awaitUntil { controller.ringing.value.size == 2 }
+        assertFalse(controller.wakeUpFollows.value)
+        alarms.stored[1] = alarm(id = 1, state = AlarmState.Announcing)
+        changes.report(emptyList())
+        changes.report(listOf(alarm(id = 2)))
+        awaitUntil { controller.wakeUpFollows.value }
+        alarms.stored[1] = alarm(id = 1, state = AlarmState.NewsPlaying)
+        changes.report(emptyList())
+        awaitUntil { controller.ringing.value.size == 1 }
+        assertTrue(controller.wakeUpFollows.value)
+    }
+
+    @Test
     fun `nothing is known before it starts`() {
         assertTrue(controller.ringing.value.isEmpty())
         assertFalse(controller.finished.value)

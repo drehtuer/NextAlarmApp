@@ -56,6 +56,17 @@ class AlarmBroadcastsTest {
         Intent(name).also { intent -> id?.let { intent.data = alarmUri(it) } }
 
     @Test
+    fun `Stop in the media notification ends the wake-up automation`() {
+        alarms.stored[5] = alarm(id = 5, state = AlarmState.Announcing)
+        alarms.stored[6] = alarm(id = 6, state = AlarmState.NewsPlaying)
+        broadcasts.actionTapped(action(AlarmActionReceiver.ACTION_STOP_WAKE_UP)) { finished++ }
+        assertEquals(AlarmState.Done, state(5))
+        assertEquals(AlarmState.Done, state(6))
+        assertEquals(AlarmState.Ringing, state(2))
+        assertEquals(1, finished)
+    }
+
+    @Test
     fun `a fired alarm gets how late it is`() {
         broadcasts.fired(Intent().setData(alarmUri(1))) { finished++ }
         assertEquals(AlarmState.Ringing, state(1))

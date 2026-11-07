@@ -3,7 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -12,13 +14,21 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Without this, Android hides the text-to-speech engines from the app. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".NextAlarmApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="NextAlarm"
         android:supportsRtl="true"
-        android:theme="@style/Theme.NextAlarm">
+        android:theme="@style/Theme.NextAlarm"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
@@ -57,6 +67,23 @@
             android:directBootAware="true"
             android:exported="false"
             android:foregroundServiceType="systemExempted" />
+
+        <activity
+            android:name=".ringing.WakeUpActivity"
+            android:directBootAware="true"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.NextAlarm.Night"
+            android:turnScreenOn="true" />
+
+        <service
+            android:name=".ringing.WakeUpService"
+            android:directBootAware="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <receiver
             android:name=".planning.AlarmReceiver"
