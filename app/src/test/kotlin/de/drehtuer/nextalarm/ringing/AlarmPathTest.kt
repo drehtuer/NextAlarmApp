@@ -477,7 +477,7 @@ class AlarmManifestTest {
     }
 
     @Test
-    fun `feeds can be plain http, which many podcast addresses still are`() {
+    fun `plain http is allowed for the app, as many podcast addresses still use it, and limited by readFeed`() {
         val application = manifest.getElementsByTagName("application").item(0) as Element
         assertEquals("true", application.getAttribute("android:usesCleartextTraffic"))
     }

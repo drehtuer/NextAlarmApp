@@ -254,6 +254,14 @@ class WakeUpDirectorTest {
 
     private fun found(feed: Feed) = FeedResult.Found(feed)
 
+    @Test
+    fun `a stored RSS feed that is plain http plays nothing when the alarm comes, and the automation goes on to its end`() {
+        director.startNews(alarm(1, news = NewsSource(NewsType.RSS, "http://www.news.example/feed", maxMinutes = 15)))
+        fetcher.onResult(FeedResult.Failed(FeedFailure.InsecureFeed))
+        assertTrue(speech.said.isEmpty())
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
     private fun speechLimit(text: String) = Duration.ofSeconds(30).plusMillis(text.length * 200L)
 
     // Titles.

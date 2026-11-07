@@ -314,6 +314,11 @@ Details decided while building this screen:
   - Too large: "The answer is too large to be read as a feed."
   - Not a feed: "The answer isn't a feed NextAlarm can read."
   - Nothing in it: "The feed has nothing in it to play."
+- **An RSS feed over plain http** (at its address or at a redirect) can't be used, as plain http is only allowed for
+  podcasts. The helper text is "RSS feeds need an https address.", and the field shows its error border. The banner is
+  titled "This feed can't be used." and reads "This RSS feed uses plain http, which NextAlarm only allows for podcasts. Use
+  its https address.", followed by the end above. Unlike other failures, the detection shows this too, without a test: the
+  address is complete, and it also explains why alarms skip a feed that was stored before this rule.
 - **A feed that won't play** keeps its card and the helper text of a found feed, and the field no error border. It stays
   stored, as the failure can be the phone's. The banner reads, followed by the end above:
   - RSS: "The feed was found, but the phone couldn't read it aloud. Check its text-to-speech settings, then try again."

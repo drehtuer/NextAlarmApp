@@ -418,8 +418,14 @@ Feeds come from servers the user does not control, so they are treated as hostil
   on the JVM and on the phone. Parsing is in `domain` (`parseFeed`).
 - **Size:** at most 16 MiB are downloaded, counted after decompression, and text and the number of entries are limited.
 - **Addresses:** only http and https reach the network or the media player, also for redirects and enclosures. A feed
-  cannot make the player open a local file. Plain http is allowed (`usesCleartextTraffic`), as many podcast addresses
-  still use it, and nothing but public feeds travels over it.
+  cannot make the player open a local file.
+- **Plain http is for podcasts only.** Many podcast feeds and their audio still use it, so the app allows cleartext
+  (`usesCleartextTraffic`), which Android can only do for all of it. The app sets the limit itself: `HttpFeedDownloader`
+  reports every address on the way to the feed, and `readFeed` (`domain`) refuses a feed that turns out to be RSS or Atom
+  with `FeedFailure.InsecureFeed` if any of them was plain http, whether the first one or a redirect, even if the last one
+  was https. Everything that fetches a feed goes through `readFeed`, so a stored address gets no way around this: when the
+  alarm comes, the news step ends with `NewsDone` (failed) like for any feed that can't be read. A podcast feed and its
+  episode may use http. Nothing but public feeds travels over it.
 - **Time:** 10 seconds to connect, 15 seconds per read, 60 seconds for the whole download, at most 5 redirects.
 
 ## When the database fails

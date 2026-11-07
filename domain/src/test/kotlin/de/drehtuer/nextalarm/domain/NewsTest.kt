@@ -108,6 +108,7 @@ class NewsWordingTest {
         assertEquals("Podcast found.", newsHelper(NewsCheck.Unplayable(PODCAST)))
         assertEquals("This address didn't return a feed.", newsHelper(NewsCheck.Failed(FeedFailure.NotAFeed)))
         assertEquals("This address didn't return a feed.", newsHelper(NewsCheck.Empty))
+        assertEquals("RSS feeds need an https address.", newsHelper(NewsCheck.Failed(FeedFailure.InsecureFeed)))
     }
 
     private fun entries(count: Int, published: Instant?) = List(count) { FeedEntry("Headline $it", null, published) }
@@ -159,6 +160,29 @@ class NewsWordingTest {
 }
 
 class NewsBannerTest {
+    private val insecure = "This RSS feed uses plain http, which NextAlarm only allows for podcasts. Use its https address."
+
+    @Test
+    fun `an RSS feed over plain http says so, and how to fix it`() {
+        val banner = newsFailureBanner(NewsDraft(ADDRESS, check = NewsCheck.Failed(FeedFailure.InsecureFeed)))
+        assertEquals("This feed can't be used.", banner?.title)
+        assertEquals("$insecure Until it works, alarms skip the news.", banner?.body)
+    }
+
+    @Test
+    fun `an RSS feed over plain http leaves another stored feed in use`() {
+        val saved = NewsSource(NewsType.RSS, "https://example.org/feed", 15)
+        val banner = newsFailureBanner(NewsDraft(ADDRESS, saved = saved, check = NewsCheck.Failed(FeedFailure.InsecureFeed)))
+        assertEquals("$insecure Until it works, alarms keep using example.org.", banner?.body)
+    }
+
+    @Test
+    fun `an RSS feed over plain http marks the field as failed`() {
+        val model = buildNews(NewsDraft(ADDRESS, check = NewsCheck.Failed(FeedFailure.InsecureFeed)), null, AT_NOW, ZONE)
+        assertTrue(model.addressFailed)
+        assertEquals("RSS feeds need an https address.", model.helper)
+    }
+
     private fun body(check: NewsCheck, saved: NewsSource? = null) =
         newsFailureBanner(NewsDraft(ADDRESS, saved = saved, check = check))?.body
 

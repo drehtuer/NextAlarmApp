@@ -1,6 +1,7 @@
 package de.drehtuer.nextalarm.ui
 
 import de.drehtuer.nextalarm.domain.Feed
+import de.drehtuer.nextalarm.domain.FeedFailure
 import de.drehtuer.nextalarm.domain.FeedSource
 import de.drehtuer.nextalarm.domain.NewsCheck
 import de.drehtuer.nextalarm.domain.NewsDraft
@@ -124,9 +125,15 @@ class NewsController(
         save(null)
     }
 
+    /** Plain http is the one failure said at once: the address is complete, and alarms would skip this feed. */
     private suspend fun detect(address: String) {
         val check = newsCheck(ports.feeds.fetchFeed(address))
-        if (check is NewsCheck.Found) saveFound(check)
+        if (check is NewsCheck.Found) {
+            saveFound(check)
+        } else if (check == NewsCheck.Failed(FeedFailure.InsecureFeed)) {
+            draft = draft.copy(check = check)
+            show()
+        }
     }
 
     private fun saveFound(check: NewsCheck.Found): NewsSource {

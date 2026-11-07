@@ -63,6 +63,9 @@ sealed interface FeedFailure {
 
     /** The answer is not a feed, or not one that is safe to read. */
     data object NotAFeed : FeedFailure
+
+    /** An RSS or Atom feed that came over plain http, at its address or at any redirect. Only podcasts may do that. */
+    data object InsecureFeed : FeedFailure
 }
 
 sealed interface FeedResult {
@@ -72,7 +75,8 @@ sealed interface FeedResult {
 
 /** The result of a download, in memory and at most as large as asked for. */
 sealed interface FeedDownload {
-    class Bytes(val bytes: ByteArray) : FeedDownload
+    /** [addresses] are all the addresses it took to get them, in order, redirects included. */
+    class Bytes(val bytes: ByteArray, val addresses: List<String>) : FeedDownload
     data class Failed(val failure: FeedFailure) : FeedDownload
 }
 
@@ -92,17 +96,31 @@ fun interface FeedSource {
 /** Podcast feeds with a long back catalogue can be several megabytes. Nothing beyond this is kept in memory. */
 const val MAX_FEED_BYTES: Long = 16L * 1024 * 1024
 
-/** Downloads and parses the feed at [url]. It blocks. */
+/**
+ * Downloads and parses the feed at [url]. It blocks. Everything that fetches a feed comes through here, the wake-up
+ * automation with a stored address as well as the news screen, so this is where plain http is limited to podcasts.
+ * Android can only allow cleartext for the whole app. See docs/architecture.md#feeds.
+ */
 fun readFeed(url: String, downloader: FeedDownloader): FeedResult {
     val address = url.trim()
     if (!isWebAddress(address)) return FeedResult.Failed(FeedFailure.InvalidAddress)
     return when (val download = downloader.download(address, MAX_FEED_BYTES)) {
         is FeedDownload.Failed -> FeedResult.Failed(download.failure)
-        is FeedDownload.Bytes ->
-            parseFeed(download.bytes, feedFallbackName(address))?.let { FeedResult.Found(it) }
-                ?: FeedResult.Failed(FeedFailure.NotAFeed)
+        is FeedDownload.Bytes -> checkedFeed(
+            parseFeed(download.bytes, feedFallbackName(address)),
+            download.addresses + address,
+        )
     }
 }
+
+private fun checkedFeed(feed: Feed?, addresses: List<String>): FeedResult = when {
+    feed == null -> FeedResult.Failed(FeedFailure.NotAFeed)
+    feed.kind != NewsType.PODCAST && addresses.any(::isPlainHttp) -> FeedResult.Failed(FeedFailure.InsecureFeed)
+    else -> FeedResult.Found(feed)
+}
+
+/** Whether this address travels without encryption. */
+fun isPlainHttp(address: String): Boolean = address.startsWith(PLAIN_HTTP_PREFIX, ignoreCase = true)
 
 /** Addresses come from the user and from feeds, and only these may reach the network or the media player. */
 fun isWebAddress(address: String): Boolean = try {
@@ -120,3 +138,4 @@ fun feedFallbackName(address: String): String = try {
 }
 
 private val WEB_SCHEMES = setOf("http", "https")
+private const val PLAIN_HTTP_PREFIX = "http://" // NOSONAR: this looks for plain http, in order to refuse it.
