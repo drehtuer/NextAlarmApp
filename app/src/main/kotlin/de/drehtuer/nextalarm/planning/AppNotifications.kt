@@ -12,18 +12,29 @@ import de.drehtuer.nextalarm.R
 import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.PlannerEffects
 import de.drehtuer.nextalarm.domain.nextAlarmText
+import de.drehtuer.nextalarm.tile.AndroidTileRefresh
+import de.drehtuer.nextalarm.tile.TileRefresh
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 
-/** The "Next alarm" and "Fail-safe warning" notifications. The wording is specified in docs/design.md. */
+/**
+ * The "Next alarm" and "Fail-safe warning" notifications. The wording is specified in docs/design.md. Whatever changes
+ * the next alarm comes through [showNextAlarm], so this is also where the quick settings tile hears about it.
+ */
 class AppNotifications(
     private val context: Context,
     private val now: () -> Instant = Instant::now,
+    private val tile: TileRefresh = AndroidTileRefresh(context),
 ) {
     private val manager = context.getSystemService(NotificationManager::class.java)
 
     fun showNextAlarm(alarm: AlarmInstance?) {
+        postNextAlarm(alarm)
+        tile.request()
+    }
+
+    private fun postNextAlarm(alarm: AlarmInstance?) {
         if (alarm == null) {
             manager.cancel(NEXT_ALARM_ID)
             return
@@ -78,14 +89,15 @@ fun notificationBuilder(context: Context, channel: String, title: String, text: 
         .setColor(ACCENT)
         .setContentTitle(title)
         .setContentText(text)
-        .setContentIntent(
-            PendingIntent.getActivity(
-                context,
-                0,
-                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            ),
-        )
+        .setContentIntent(openAppIntent(context))
+
+/** Only opens the app. */
+fun openAppIntent(context: Context): PendingIntent = PendingIntent.getActivity(
+    context,
+    0,
+    Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+)
 
 fun notificationAction(context: Context, title: String, intent: PendingIntent): Notification.Action =
     Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_stat_alarm), title, intent).build()

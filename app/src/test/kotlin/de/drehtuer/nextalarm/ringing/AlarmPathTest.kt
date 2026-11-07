@@ -31,6 +31,7 @@ import de.drehtuer.nextalarm.domain.WakeUpStatus
 import de.drehtuer.nextalarm.domain.snapshotFor
 import de.drehtuer.nextalarm.planning.AlarmReceiver
 import de.drehtuer.nextalarm.planning.alarmUri
+import de.drehtuer.nextalarm.tile.AndroidTileRefresh
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -112,6 +113,15 @@ class AlarmPathTest {
         assertEquals(listOf(alarm.id), parts.ringer.ringing().map { it.id })
         val started = shadowOf(real as Application).nextStartedService
         assertEquals(AlarmService::class.java.name, started.component?.className)
+    }
+
+    @Test
+    fun `asking for a refresh of the tile needs no storage, before the first unlock`() {
+        // The context fails with an error, which the refresh does not catch.
+        AndroidTileRefresh(context).request()
+        var asked = false
+        AndroidTileRefresh(context) { _, _ -> asked = true }.request()
+        assertTrue(asked)
     }
 
     @Test

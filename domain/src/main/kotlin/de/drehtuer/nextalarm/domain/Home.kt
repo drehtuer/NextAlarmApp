@@ -54,6 +54,13 @@ data class NextAlarmText(
     val text: String,
 )
 
+/** What the quick settings tile shows. It is highlighted when [active]. */
+data class NextAlarmTile(
+    val label: String,
+    val subtitle: String,
+    val active: Boolean,
+)
+
 data class CalendarGroup(
     val label: String,
     val calendars: List<DeviceCalendar>,
@@ -183,8 +190,8 @@ private fun homeFooter(now: Instant, zone: ZoneId, record: PlannerRecord, calend
     return listOfNotNull(source, checked).joinToString(" ").ifEmpty { null }
 }
 
-/** The title and text of the "Next alarm" notification. */
-fun nextAlarmText(alarm: AlarmInstance, now: Instant, zone: ZoneId): NextAlarmText {
+/** "today 06:00", "tomorrow 06:00" or "Sunday 06:00". */
+private fun nextAlarmDayAndTime(alarm: AlarmInstance, now: Instant, zone: ZoneId): String {
     val today = now.atZone(zone).toLocalDate()
     val date = alarm.triggerAt.atZone(zone).toLocalDate()
     val day = when (date) {
@@ -192,9 +199,22 @@ fun nextAlarmText(alarm: AlarmInstance, now: Instant, zone: ZoneId): NextAlarmTe
         today.plusDays(1) -> "tomorrow"
         else -> date.format(WEEKDAY)
     }
-    return NextAlarmText(
-        title = "Next alarm: $day ${formatTime(alarm.triggerAt, zone)}",
-        text = alarm.snapshot.reason ?: "No title",
+    return "$day ${formatTime(alarm.triggerAt, zone)}"
+}
+
+/** The title and text of the "Next alarm" notification. */
+fun nextAlarmText(alarm: AlarmInstance, now: Instant, zone: ZoneId): NextAlarmText = NextAlarmText(
+    title = "Next alarm: ${nextAlarmDayAndTime(alarm, now, zone)}",
+    text = alarm.snapshot.reason ?: "No title",
+)
+
+/** The quick settings tile: the same alarm as the notification, in the same words. */
+fun nextAlarmTile(alarms: List<AlarmInstance>, now: Instant, zone: ZoneId): NextAlarmTile {
+    val next = nextAlarm(alarms, now)
+    return NextAlarmTile(
+        label = "Next alarm",
+        subtitle = next?.let { nextAlarmDayAndTime(it, now, zone) } ?: "None in 48 hours",
+        active = next != null,
     )
 }
 

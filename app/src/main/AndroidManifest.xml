@@ -106,6 +106,24 @@
             </intent-filter>
         </receiver>
 
+        <!--
+            Not directBootAware: it is only for looking at, and nothing on the alarm path needs it. An active tile is only
+            bound when it asks to be, through TileService.requestListeningState. See docs/architecture.md#quick-settings-tile.
+        -->
+        <service
+            android:name=".tile.NextAlarmTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_alarm"
+            android:label="Next alarm"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
+
         <!-- WorkManager gets its worker factory from NextAlarmApplication, so it must not start on its own. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
