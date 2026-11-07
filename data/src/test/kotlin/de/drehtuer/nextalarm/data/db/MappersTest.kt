@@ -2,6 +2,7 @@ package de.drehtuer.nextalarm.data.db
 
 import de.drehtuer.nextalarm.data.NEWS
 import de.drehtuer.nextalarm.domain.AlarmState
+import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.domain.PlannerState
 import de.drehtuer.nextalarm.domain.SoundRef
@@ -72,6 +73,26 @@ class MappersTest {
     fun `a stored sound keeps its file name`() {
         assertEquals("a", SoundRef.File("a").toColumn())
         assertEquals(SoundRef.File("a"), soundRefFromColumn("a"))
+    }
+
+    @Test
+    fun `the chosen calendars are stored sorted, and read back`() {
+        val several = setOf(CalendarId(9), CalendarId(3), CalendarId(12))
+        assertEquals("3,9,12", toAlarmCalendarsColumn(several))
+        assertEquals(several, alarmCalendarsFromColumn("3,9,12"))
+        assertEquals("9", toAlarmCalendarsColumn(setOf(CalendarId(9))))
+        assertEquals(setOf(CalendarId(9)), alarmCalendarsFromColumn("9"))
+    }
+
+    @Test
+    fun `no chosen calendars are stored as an empty column`() {
+        assertEquals("", toAlarmCalendarsColumn(emptySet()))
+        assertEquals(emptySet(), alarmCalendarsFromColumn(""))
+    }
+
+    @Test
+    fun `a damaged calendar column is an error, not a smaller choice`() {
+        assertFailsWith<NumberFormatException> { alarmCalendarsFromColumn("3,x") }
     }
 
     @Test

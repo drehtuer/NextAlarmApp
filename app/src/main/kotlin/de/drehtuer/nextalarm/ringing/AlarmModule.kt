@@ -13,10 +13,15 @@ import de.drehtuer.nextalarm.data.DataComponents
 import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmRinger
+import de.drehtuer.nextalarm.domain.AlarmVolumeKeeper
+import de.drehtuer.nextalarm.domain.AudioFocusHold
+import de.drehtuer.nextalarm.domain.CallWatch
 import de.drehtuer.nextalarm.domain.FallbackSound
 import de.drehtuer.nextalarm.domain.ForegroundGate
 import de.drehtuer.nextalarm.domain.GatedPodcast
 import de.drehtuer.nextalarm.domain.GatedSpeech
+import de.drehtuer.nextalarm.domain.RingAudio
+import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.SoundWorker
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
 import de.drehtuer.nextalarm.domain.WakeUpDirector
@@ -33,6 +38,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 private const val TAG = "NextAlarm"
+
+/** The alarm goes on whatever this is about. */
+fun logAudioProblem(message: String, failure: RuntimeException?) {
+    Log.w(TAG, message, failure)
+}
 
 /** Work of the alarm path that outlives whatever started it. A failure of one job does not end the others. */
 fun alarmScope(dispatcher: CoroutineDispatcher): CoroutineScope = CoroutineScope(
@@ -107,6 +117,12 @@ object AlarmModule {
         vibration = AndroidVibration(context),
         timers = HandlerRingTimers(),
         wakeLock = AndroidRingWakeLock(context),
+        audio = RingAudio(
+            AlarmVolumeKeeper(AndroidAlarmStream(context), data.savedVolume, ::logAudioProblem),
+            AudioFocusHold(alarmAudioFocus(context), ::logAudioProblem),
+            CallWatch(AndroidPhoneCalls(context), ::logAudioProblem),
+            ::logAudioProblem,
+        ),
         onTimeout = { ids -> scope.launch { engine.get().ringTimedOut(ids) } },
         onChanged = { alarms ->
             foreground.ringingChanged(alarms)
@@ -119,6 +135,34 @@ object AlarmModule {
         onForegroundLate = { Log.w(TAG, "The alarm service did not come up in time: the sound starts without it") },
     )
 
+    /**
+     * The sound on screen 5: the alarm's sources and player, with focus of its own. Only ever plays while that screen is
+     * visible, which lets Android play it without a service. An alarm that rings stops it: see `AppAlarmEffects`.
+     */
+    @Provides
+    @Singleton
+    fun soundPreview(@ApplicationContext context: Context, data: DataComponents, worker: SoundWorker, ringer: Lazy<AlarmRinger>) =
+        SoundPreview(
+            newSound = { onExhausted ->
+                FallbackSound(
+                    data.sounds::sources,
+                    data.sounds.bundled,
+                    MediaPlayerOutput(context),
+                    worker,
+                    HandlerRingTimers(),
+                    onExhausted = {
+                        Log.e(TAG, "None of the alarm sounds could be played for the preview")
+                        onExhausted()
+                    },
+                )
+            },
+            focus = AudioFocusHold(alarmAudioFocus(context), ::logAudioProblem),
+            calls = CallWatch(AndroidPhoneCalls(context), ::logAudioProblem),
+            timers = HandlerRingTimers(),
+            alarmRinging = { ringer.get().ringing().isNotEmpty() },
+            onProblem = ::logAudioProblem,
+        )
+
     @Provides
     @Singleton
     fun wakeUpNotifications(@ApplicationContext context: Context) = WakeUpNotifications(context)
@@ -130,7 +174,12 @@ object AlarmModule {
 
     @Provides
     @Singleton
-    fun wakeUpGate() = ForegroundGate(HandlerRingTimers())
+    fun wakeUpFocus(@ApplicationContext context: Context) = AudioFocusHold(mediaAudioFocus(context), ::logAudioProblem)
+
+    /** Android only gives the focus with the service up, so it is asked for again when that has come. */
+    @Provides
+    @Singleton
+    fun wakeUpGate(focus: AudioFocusHold) = ForegroundGate(HandlerRingTimers(), beforeAudio = focus::retry)
 
     @Provides
     @Singleton
@@ -155,6 +204,7 @@ object AlarmModule {
         data: DataComponents,
         foreground: WakeUpForeground,
         gate: ForegroundGate,
+        focus: AudioFocusHold,
         changes: WakeUpChanges,
         scope: CoroutineScope,
         engine: Lazy<AlarmEngine>,
@@ -164,6 +214,8 @@ object AlarmModule {
         feeds = ScopedNewsFetcher(scope, data.feeds),
         timers = HandlerRingTimers(),
         wakeLock = AndroidRingWakeLock(context, "NextAlarm:wakeup"),
+        focus = focus,
+        calls = CallWatch(AndroidPhoneCalls(context), ::logAudioProblem),
         now = Instant::now,
         report = { id, event -> scope.launch { engine.get().handle(id, event) } },
         onChanged = { status ->
@@ -183,7 +235,8 @@ object AlarmModule {
         ringer: AlarmRinger,
         notifications: AlarmNotifications,
         wakeUp: WakeUpAutomation,
-    ): AlarmEffects = AppAlarmEffects(ringer, notifications, AppNotifications(context), wakeUp)
+        preview: SoundPreview,
+    ): AlarmEffects = AppAlarmEffects(ringer, notifications, AppNotifications(context), wakeUp, preview)
 
     @Provides
     @Singleton
@@ -197,8 +250,13 @@ object AlarmModule {
 
     @Provides
     @Singleton
-    fun broadcasts(scope: CoroutineScope, engine: AlarmEngine, foreground: AlarmForeground, ringer: AlarmRinger) =
-        AlarmBroadcasts(scope, engine, foreground, ringer)
+    fun broadcasts(
+        scope: CoroutineScope,
+        engine: AlarmEngine,
+        foreground: AlarmForeground,
+        ringer: AlarmRinger,
+        preview: SoundPreview,
+    ) = AlarmBroadcasts(scope, engine, foreground, ringer, preview)
 
     /** A new one per screen. */
     @Provides

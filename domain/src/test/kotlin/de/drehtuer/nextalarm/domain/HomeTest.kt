@@ -21,8 +21,12 @@ class HomeTest {
         id: Long = 1,
     ) = AlarmInstance(id, AlarmKey.forEvent(id, Instant.parse(at)), Instant.parse(at), state, 0, false, snapshot(title))
 
-    private fun home(vararg alarms: AlarmInstance, record: PlannerRecord = planned, calendar: DeviceCalendar? = davx) =
-        buildHome(now, zone, alarms.toList(), record, calendar)
+    private val special = DeviceCalendar(CalendarId(2), "Special cases", null, "LOCAL", null)
+
+    private fun named(name: String, id: Long) = DeviceCalendar(CalendarId(id), name, null, "LOCAL", null)
+
+    private fun home(vararg alarms: AlarmInstance, record: PlannerRecord = planned, calendars: List<DeviceCalendar> = listOf(davx)) =
+        buildHome(now, zone, alarms.toList(), record, calendars)
 
     @Test
     fun `a home model has no notifications warning unless it is given one`() {
@@ -120,11 +124,20 @@ class HomeTest {
     }
 
     @Test
+    fun `the empty state with several calendars names none of them`() {
+        assertEquals(
+            "Nothing is planned until Sunday 20:00. To set one, add a timed event to one of your alarm calendars in " +
+                "your calendar app.",
+            home(calendars = listOf(davx, special)).emptyBody,
+        )
+    }
+
+    @Test
     fun `the empty state works without a known calendar`() {
         assertEquals(
-            "Nothing is planned until Sunday 20:00. To set one, add a timed event to your alarm calendar in your " +
+            "Nothing is planned until Sunday 20:00. To set one, add a timed event to an alarm calendar in your " +
                 "calendar app.",
-            home(calendar = null).emptyBody,
+            home(calendars = emptyList()).emptyBody,
         )
     }
 
@@ -155,19 +168,29 @@ class HomeTest {
     }
 
     @Test
-    fun `the banner says so if the alarm calendar is gone`() {
+    fun `the banner says so if an alarm calendar is gone, in words that fit one or several`() {
         val failed = PlanningRun(now, Duration.ZERO, null, PlanningFailure.CALENDAR_GONE)
         assertEquals(
-            "Your alarm calendar was no longer on this phone at 20:00. The alarms below will still ring, but nothing new " +
-                "is added, and after 48 hours nothing rings. Choose another calendar in the settings.",
+            "An alarm calendar was no longer on this phone at 20:00. The alarms below will still ring, but nothing new " +
+                "is added, and after 48 hours nothing rings. Untick it under Alarm calendars in the settings.",
             home(record = PlannerRecord(PlannerState.FailSafe, 1, 1, failed)).failSafeBody,
+        )
+    }
+
+    @Test
+    fun `the banner says so if every calendar was unticked`() {
+        val failed = PlanningRun(now, Duration.ZERO, null, PlanningFailure.NO_CALENDAR)
+        assertEquals(
+            "No alarm calendar was chosen at 20:00. The alarms below will still ring, but nothing new is added, and " +
+                "after 48 hours nothing rings. Choose one in the settings.",
+            home(record = PlannerRecord(PlannerState.FailSafe, 1, 1, failed), calendars = emptyList()).failSafeBody,
         )
     }
 
     @Test
     fun `home warns while notifications are off, and only then`() {
         assertNull(home().notificationsOff)
-        val banner = buildHome(now, zone, emptyList(), planned, davx, notificationsAllowed = false).notificationsOff
+        val banner = buildHome(now, zone, emptyList(), planned, listOf(davx), notificationsAllowed = false).notificationsOff
         assertEquals("Notifications are off", banner?.title)
         assertEquals(
             "A ringing alarm can't show its screen or its Snooze and Dismiss buttons. Open NextAlarm to stop it. Allow " +
@@ -196,9 +219,24 @@ class HomeTest {
     @Test
     fun `the footer leaves out what it does not know`() {
         assertEquals("From the calendar “NextAlarm” (DAVx⁵).", home().footer)
-        assertEquals("Checked today at 19:58.", home(record = checkedAt("2026-11-06T18:58:00Z"), calendar = null).footer)
-        assertNull(home(calendar = null).footer)
-        assertEquals("From the calendar “Mine”.", home(calendar = DeviceCalendar(CalendarId(2), "Mine", null, "LOCAL", null)).footer)
+        assertEquals("Checked today at 19:58.", home(record = checkedAt("2026-11-06T18:58:00Z"), calendars = emptyList()).footer)
+        assertNull(home(calendars = emptyList()).footer)
+        assertEquals("From the calendar “Mine”.", home(calendars = listOf(named("Mine", 2))).footer)
+    }
+
+    @Test
+    fun `the footer names several calendars with their sources and the last check`() {
+        assertEquals(
+            "From the calendars “NextAlarm” (DAVx⁵) and “Special cases”. Checked today at 19:58.",
+            home(record = checkedAt("2026-11-06T18:58:00Z"), calendars = listOf(special, davx)).footer,
+        )
+    }
+
+    @Test
+    fun `the footer lists three calendars, and cuts more short`() {
+        val three = listOf(named("C", 3), named("a", 1), named("B", 2))
+        assertEquals("From the calendars “a”, “B” and “C”.", home(calendars = three).footer)
+        assertEquals("From the calendars “a”, “B”, “C” and 2 more.", home(calendars = three + named("D", 4) + named("E", 5)).footer)
     }
 
     @Test
@@ -277,9 +315,61 @@ class HomeTest {
 
     @Test
     fun `the settings summary names the calendar and its source`() {
-        assertEquals("None chosen. Nothing rings", calendarSummary(null))
-        assertEquals("NextAlarm · DAVx⁵", calendarSummary(davx))
-        assertEquals("Other · me", calendarSummary(DeviceCalendar(CalendarId(5), "Other", "me", "com.example", null)))
-        assertEquals("Solo", calendarSummary(DeviceCalendar(CalendarId(6), "Solo", null, null, null)))
+        assertEquals("None chosen. Nothing rings", calendarSummary(emptyList()))
+        assertEquals("NextAlarm · DAVx⁵", calendarSummary(listOf(davx)))
+        assertEquals("Other · me", calendarSummary(listOf(DeviceCalendar(CalendarId(5), "Other", "me", "com.example", null))))
+        assertEquals("Solo", calendarSummary(listOf(DeviceCalendar(CalendarId(6), "Solo", null, null, null))))
+    }
+
+    @Test
+    fun `the settings summary counts several calendars, and names them sorted`() {
+        assertEquals("2 calendars: NextAlarm, Special cases", calendarSummary(listOf(special, davx)))
+        assertEquals("3 calendars: a, B, C", calendarSummary(listOf(named("C", 3), named("a", 1), named("B", 2))))
+    }
+
+    @Test
+    fun `calendars of the same name always read the same`() {
+        val twins = listOf(named("Same", 2), named("Same", 1))
+        assertEquals(calendarSummary(twins), calendarSummary(twins.reversed()))
+    }
+
+    @Test
+    fun `the settings summary cuts a long list short`() {
+        val calendars = listOf("E", "D", "C", "B", "A").mapIndexed { index, name -> named(name, index.toLong()) }
+        assertEquals("5 calendars: A, B, C and 2 more", calendarSummary(calendars))
+    }
+
+    @Test
+    fun `the chosen calendars are those on the phone that are ticked`() {
+        val phone = listOf(davx, special, named("Meetings", 3))
+        assertEquals(listOf(davx, special), chosenCalendars(setOf(davx.id, special.id, CalendarId(9)), phone))
+        assertEquals(emptyList(), chosenCalendars(emptySet(), phone))
+    }
+
+    @Test
+    fun `chosen calendars that are not on the phone are missing, in a stable order`() {
+        assertEquals(
+            listOf(CalendarId(8), CalendarId(9)),
+            missingCalendars(setOf(CalendarId(9), davx.id, CalendarId(8)), listOf(davx, special)),
+        )
+        assertEquals(emptyList(), missingCalendars(setOf(davx.id), listOf(davx, special)))
+        assertEquals(emptyList(), missingCalendars(emptySet(), listOf(davx)))
+    }
+
+    @Test
+    fun `no calendars at all may only mean no permission, so nothing counts as missing`() {
+        assertEquals(emptyList(), missingCalendars(setOf(davx.id), emptyList()))
+    }
+
+    @Test
+    fun `the wording of the calendar list warns, and says that a hidden calendar rings`() {
+        assertEquals("Alarm calendars", ALARM_CALENDARS_TITLE)
+        assertEquals("Choose the alarm calendars", CHOOSE_CALENDARS_TITLE)
+        listOf(ALARM_CALENDARS_LEAD, CHOOSE_CALENDARS_LEAD).forEach { lead ->
+            assertEquals(true, "Every timed event in the ticked calendars" in lead, lead)
+            assertEquals(true, "every meeting in it would ring too" in lead, lead)
+            assertEquals(true, "A calendar hidden in a calendar app still rings." in lead, lead)
+        }
+        assertEquals(BannerText("No calendar chosen.", "Until you choose one, no alarm rings."), NO_CALENDAR_CHOSEN_BANNER)
     }
 }

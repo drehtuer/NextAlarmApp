@@ -7,7 +7,7 @@ val NOW: Instant = Instant.parse("2026-11-06T05:00:00Z")
 val NEWS = NewsSource(NewsType.PODCAST, "https://example.org/feed.xml")
 
 fun settings(speakReason: Boolean = true, news: NewsSource? = null, vibrate: Boolean = true) = Settings(
-    alarmCalendar = CalendarId(1),
+    alarmCalendars = setOf(CalendarId(1)),
     sound = SoundRef.SystemDefault,
     vibrate = vibrate,
     volumeRampSeconds = 30,

@@ -10,7 +10,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.lifecycle.lifecycleScope
+import dagger.Lazy
 import dagger.hilt.android.AndroidEntryPoint
+import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.ringing.AlarmActivity
 import de.drehtuer.nextalarm.ringing.RingingChanges
 import de.drehtuer.nextalarm.ui.AppViewModel
@@ -30,6 +32,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var ringing: RingingChanges
 
+    @Inject
+    lateinit var ringer: Lazy<AlarmRinger>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // A saved state means the activity was only recreated: the request was served, and the screens are restored.
@@ -41,7 +46,7 @@ class MainActivity : ComponentActivity() {
                 NextAlarmApp(
                     state = state,
                     resumeCount = resumeCount.intValue,
-                    onSelectCalendar = viewModel::chooseCalendar,
+                    onToggleCalendar = viewModel::setCalendarTicked,
                     onCompleteSetup = viewModel::completeSetup,
                     actions = viewModel,
                     diagnosticsRequests = diagnosticsRequests.intValue,
@@ -82,6 +87,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         resumeCount.intValue++
         viewModel.startWatching()
+        // The phone's alarm volume can still be raised after a reboot in the middle of an alarm, and an app that can be seen is allowed to change it.
+        ringer.get().restoreVolumeIfIdle()
     }
 
     override fun onPause() {

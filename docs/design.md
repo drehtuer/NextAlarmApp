@@ -143,16 +143,16 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
 1. **Explanation.** Title "Your calendar sets the alarms". Lead "NextAlarm has no alarm editor. You plan alarms in your
    calendar app, and this phone rings them." Three rows, each a 40 dp `primaryContainer` icon disc with a bold line and
    a secondary line:
-   - Calendar icon: "Every event is an alarm" / "Each timed event in the calendar you choose rings at its start time."
+   - Calendar icon: "Every event is an alarm" / "Each timed event in the calendars you choose rings at its start time."
    - Repeat icon: "Regular alarms repeat" / "For a weekday alarm, make a recurring event. Skip a day by deleting that one
      occurrence."
    - Bin icon: "Change or delete in the calendar" / "Move an event and its alarm moves. Delete it and the alarm is gone."
 
    The main button is "Get started".
-2. **Permissions.** Title "Allow three things". Lead "NextAlarm only reads the one calendar you choose next. Nothing
+2. **Permissions.** Title "Allow three things". Lead "NextAlarm only reads the calendars you choose next. Nothing
    leaves your phone." Below that, one `surfaceContainer` card per permission, with the title, a description, and on the
    right either an "Allow" button or a green check with "Allowed":
-   - "Read your calendars" / "To see the events in your alarm calendar. Only that one calendar is read."
+   - "Read your calendars" / "To see the events in your alarm calendars. Only those calendars are read."
    - "Send notifications" / "To show the next alarm, and to ring when the phone is locked."
    - "Show alarms full screen" / "So a ringing alarm fills the screen, even when the phone is locked."
 
@@ -168,8 +168,10 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
    notification. Full-screen alarms are optional.
 
    The main button is "Continue".
-3. **Calendar.** Title "Choose the alarm calendar". Lead "Every timed event in it will ring. Use a calendar just for
-   alarms, so meetings don't wake you." The same list as screen 4. The main button is "Done".
+3. **Calendars.** Title "Choose the alarm calendars". Lead "Every timed event in the ticked calendars will ring. Don't
+   tick a calendar you use for anything else: every meeting in it would ring too. Use calendars just for alarms. A
+   calendar hidden in a calendar app still rings." The same list as screen 4. The main button is "Done", which needs at
+   least one ticked calendar.
 
 ### 2 Home
 
@@ -178,9 +180,11 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
   - Title: "New alarms aren't being added"
   - Body: "NextAlarm couldn't read your calendar at 19:58. The alarms below will still ring. Anything you add or change in
     the calendar won't, and if this lasts 48 hours, nothing rings."
-  - Body if the alarm calendar is gone (`CALENDAR_GONE`): "Your alarm calendar was no longer on this phone at 19:58. The
-    alarms below will still ring, but nothing new is added, and after 48 hours nothing rings. Choose another calendar in
-    the settings."
+  - Body if an alarm calendar is gone (`CALENDAR_GONE`): "An alarm calendar was no longer on this phone at 19:58. The
+    alarms below will still ring, but nothing new is added, and after 48 hours nothing rings. Untick it under Alarm
+    calendars in the settings."
+  - Body if none is chosen (`NO_CALENDAR`): "No alarm calendar was chosen at 19:58. The alarms below will still ring, but
+    nothing new is added, and after 48 hours nothing rings. Choose one in the settings."
   - Outlined button: "See what went wrong", which opens screen 7.
 - **Notifications-off banner** (`errorContainer`, warning icon, above the fail-safe banner, only while the app's
   notifications or its "Alarm" channel are off):
@@ -200,8 +204,11 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
 - **Empty state** (`surfaceContainer` card, calendar icon):
   - Title: "No alarms in the next 48 hours"
   - Body: "Nothing is planned until Sunday 20:00. To set one, add a timed event to the NextAlarm calendar in your calendar
-    app."
-- **Footer** (`bodySmall`, `onSurfaceVariant`): "From the calendar “NextAlarm” (DAVx⁵). Checked today at 19:58."
+    app." With several calendars: "... to one of your alarm calendars in your calendar app." If none is known: "... to an
+    alarm calendar in your calendar app."
+- **Footer** (`bodySmall`, `onSurfaceVariant`): "From the calendar “NextAlarm” (DAVx⁵). Checked today at 19:58." With
+  several calendars, sorted by name: "From the calendars “NextAlarm” (DAVx⁵) and “Special cases”." At most three are named:
+  "From the calendars “A”, “B”, “C” and 2 more." It names the chosen calendars that are on this phone.
 
 ### 3 Settings
 
@@ -209,10 +216,10 @@ The top bar has a back button and "Settings". Each row has a title, a secondary 
 
 | Row | Secondary line |
 |-----|----------------|
-| "Alarm calendar" | The calendar and its account ("NextAlarm · DAVx⁵"), or "None chosen. Nothing rings" |
+| "Alarm calendars" | The same as "Calendar" on screen 7: the calendar and its account ("NextAlarm · DAVx⁵"), several calendars by name, sorted ("2 calendars: NextAlarm, Special cases", at most three names: "5 calendars: A, B, C and 2 more"), or "None chosen. Nothing rings" |
 | "Alarm settings" | "Sound, snooze, speech and news" |
 | "Diagnostics & history" | "Last check 19:58 · all good", or "Last check failed" |
-| "Run setup again" | "Explanation, permissions and calendar" |
+| "Run setup again" | "Explanation, permissions and calendars" |
 
 Below the rows come a divider and a section headed "About". It is always present:
 
@@ -222,15 +229,19 @@ Below the rows come a divider and a section headed "About". It is always present
   external-link icon. Tapping the row opens `https://github.com/drehtuer/NextAlarmApp` in the browser
   (`Intent.ACTION_VIEW`).
 
-### 4 Alarm calendar
+### 4 Alarm calendars
 
-- **Top bar:** "Alarm calendar".
-- **Lead:** "Every timed event in this calendar rings at its start time. No other calendar is read."
+- **Top bar:** "Alarm calendars".
+- **Lead:** "Every timed event in the ticked calendars rings at its start time. Don't tick a calendar you use for anything
+  else: every meeting in it would ring too. A calendar hidden in a calendar app still rings. No other calendar is read."
 - **Calendars:** grouped by account, with the account name as a `primary` header ("DAVx⁵ · me@cloud.example",
-  "ICSx⁵ · Holidays", "On this phone"). Each row is a radio button, the calendar's own colour as a 12 dp square, and its
-  name. A calendar without a colour leaves the square's place empty, so that the names line up. The selected row has a
-  `surfaceContainer` background.
-- **None selected** (`errorContainer` banner): "**No calendar chosen.** Until you choose one, no alarm rings."
+  "ICSx⁵ · Holidays", "On this phone"). Each row is a checkbox, the calendar's own colour as a 12 dp square, and its
+  name. Any number can be ticked. A calendar without a colour leaves the square's place empty, so that the names line up.
+  A ticked row has a `surfaceContainer` background.
+- **Chosen calendars that are gone:** after the other groups, under the header "No longer on this phone", one ticked row
+  each: "Missing calendar. Untick it to carry on". Their names are not known any more. Not shown while there are no
+  calendars to list, because a missing permission looks the same.
+- **None ticked** (`errorContainer` banner): "**No calendar chosen.** Until you choose one, no alarm rings."
 - **No calendars:**
   - Title: "No calendars on this phone"
   - Body: "Sync one from your Nextcloud with an app such as DAVx⁵, or create a local calendar in your calendar app. Then
@@ -242,18 +253,25 @@ Below the rows come a divider and a section headed "About". It is always present
 - **Lead:** "These apply to every alarm."
 - **Low-volume banner** (`secondaryContainer`, muted-speaker icon), shown when the alarm stream volume is at or below
   2 steps: "**Your phone's alarm volume is low (1 of 7).** Alarms may be too quiet to wake you. Turn it up in the phone's
-  sound settings." The delivered wording went on "or set a maximum volume below". That is left out, because the maximum
-  volume only lowers the player's own gain and can never make an alarm louder. See Q-S1 in
-  [Open questions](open_questions.md).
+  sound settings, or set a maximum volume below." A maximum volume sets the phone's alarm volume while an alarm rings,
+  so it can make an alarm louder.
 - **Section "Sound":**
-  - "Alarm sound": "Phone default (<sound name>)" or the file name. On the right, an outlined "Choose file" button. When
-    a file is set, a text button "Use the phone's default sound" appears below.
-  - When a file is rejected, a line in `error` with an error icon appears below the sound row:
+  - "Alarm sound": "Phone default (<sound name>)", the phone sound's name or the file name, with a play icon button at
+    the end of the row (content description "Play the alarm sound", `primary` tint), which becomes a stop icon button
+    ("Stop the alarm sound") while the sound plays. Below it, two outlined
+    buttons: "Phone sounds" opens Android's own picker of alarm sounds (titled "Alarm sound"), and "Choose file" opens
+    the file picker. When a file or a phone sound is set, a text button "Use the phone's default sound" appears below.
+  - While the sound plays, a line in `onSurfaceVariant` (`bodyMedium`) below the two buttons says: "Playing at the
+    phone's alarm volume, without the ramp or the maximum volume. Stops after 10 s." If it can't start, the line says
+    why instead: "The sound can't play during a call." or "The sound can't play while an alarm rings." The button then
+    still plays, and the line goes when the sound is played again or the screen is left.
+  - When a file or a phone sound is rejected, a line in `error` with an error icon appears below the sound row. Phone
+    sounds use the same messages, with the sound's name in place of the file name:
     - Unsupported type: "“Notes.pdf” isn't a sound file. Choose an MP3, WAV, OGG or M4A file."
     - Can't be read: "“morning.mp3” can't be opened. It may have been moved or deleted. Choose it again."
     - No playable audio: "“silence.m4a” has no sound NextAlarm can play. Choose another file."
   - "Volume ramp" / "Rises from silent", with the value on the right: "None" or a duration.
-  - "Maximum volume" / "Not set: uses the phone's alarm volume", with the value "Not set" or a percentage.
+  - "Maximum volume" / "Sets the phone's alarm volume while ringing. Not set: leaves it as it is", with the value "Not set" or a percentage.
   - "Vibration", with a switch.
 - **Section "Ringing":**
   - "Ring for" / "Then it snoozes on its own": "3 min".
@@ -269,13 +287,31 @@ Details decided while building this screen:
 - A picker is a Material 3 dialog with one radio button per value, and "Cancel":
   - Volume ramp: "None", 15 s, 30 s, 1, 2 or 5 min. A ramp longer than "Ring for" is cut to that length when the alarm
     rings, so that it reaches its full level. The picker keeps showing the chosen value.
-  - Maximum volume: "Not set", then 90% down to 10% in steps of 10. There is no 0%, because an alarm must not be silent.
-    100% would be the same as "Not set".
+  - Maximum volume: "Not set", then 100% down to 10% in steps of 10. There is no 0%, because an alarm must not be silent.
+    100% is not the same as "Not set": it sets the phone's alarm volume to its top while the alarm rings.
   - Ring for: 1, 2, 3, 5, 10 or 15 min.
   - Snooze length: 1, 5, 10, 15, 20 or 30 min.
-- "Maximum volume" keeps its secondary line also when a value is set, as an explanation of "Not set".
+- "Maximum volume" keeps its secondary line also when a value is set.
+- "Vibration" is what happens outside a call. During a call an alarm has no sound and vibrates even if this is off. See
+  [Calls and audio focus](architecture.md#calls-and-audio-focus).
 - The file's own name is kept in the name of the app's copy (`sound-<unique id>-<file name>`), because the settings only
   store that one name. It shows at most 64 characters of the file name.
+- "Phone sounds" is there because the file picker doesn't show the sounds that come with the phone. Its buttons sit below
+  the sound's name, as two buttons beside it would leave the name too little room. The picker offers the phone's alarm
+  sounds and a "Default" entry, and no "None", as an alarm must not be silent. While the phone's default is the sound,
+  "Default" is marked. Choosing "Default" is the same as "Use the phone's default sound". Leaving the picker changes
+  nothing, and a rejection that is shown stays.
+- The play button is an icon button, not a labelled one: a third labelled button beside "Phone sounds" and "Choose file"
+  would not fit 411 dp at a larger font size, and the end of the name's row is where the other rows have their value.
+  The name keeps the rest of the row and wraps beside the 48 dp button.
+- The sound plays the way an alarm plays it: the same sources in the same order, with the same fallback to the next one
+  (see [Hearing the sound on screen 5](architecture.md#hearing-the-sound-on-screen-5)). It plays at the phone's alarm
+  volume as it is, never changes that volume, and leaves out the ramp and the maximum volume, which the line says, as
+  the maximum volume can make an alarm louder than what is heard here. It stops at Stop, after 10 seconds, when a call
+  starts, when another sound is chosen or the file is given up, when the screen is left or hidden (also by a ringing
+  alarm, or while it is rebuilt after a rotation), and when an alarm starts to ring.
+- A phone sound is named by its title in the media store ("Oxygen"), or else the way a file is. It is kept like a
+  picked file, and from then on shown like one: the row doesn't say that it came with the phone.
 - The "News" row names the feed's host name, without "www.", for both kinds. A feed's own title ("Der Tag") isn't stored.
 - If the phone doesn't say what its default sound is called, the row says "Phone default".
 
@@ -314,6 +350,11 @@ Details decided while building this screen:
   - Too large: "The answer is too large to be read as a feed."
   - Not a feed: "The answer isn't a feed NextAlarm can read."
   - Nothing in it: "The feed has nothing in it to play."
+- **An RSS feed over plain http** (at its address or at a redirect) can't be used, as plain http is only allowed for
+  podcasts. The helper text is "RSS feeds need an https address.", and the field shows its error border. The banner is
+  titled "This feed can't be used." and reads "This RSS feed uses plain http, which NextAlarm only allows for podcasts. Use
+  its https address.", followed by the end above. Unlike other failures, the detection shows this too, without a test: the
+  address is complete, and it also explains why alarms skip a feed that was stored before this rule.
 - **A feed that won't play** keeps its card and the helper text of a found feed, and the field no error border. It stays
   stored, as the failure can be the phone's. The banner reads, followed by the end above:
   - RSS: "The feed was found, but the phone couldn't read it aloud. Check its text-to-speech settings, then try again."
@@ -327,6 +368,8 @@ Details decided while building this screen:
 - **The progress line:** while the feed is on its way, "Getting the news · tagesschau.de". An episode shorter than the
   maximum duration counts up to its own end: "Playing “Der Tag” · 0:42 of 10:00". The bar moves without a value until the
   sound has started.
+- **A call or other audio** that ends a test, or a call that keeps one from starting, is no failure of the feed: the test
+  just ends, without a banner.
 - **"Turn off news"** empties the field and stores no news. It is disabled when there is nothing to turn off.
 - Emptying the field does not turn the news off: only the button does. Coming back to the screen shows what is stored.
 - The test stops at "Stop test", on leaving the screen, when the screen is hidden (also by a ringing alarm), when the
@@ -366,15 +409,17 @@ Details decided while building this screen:
 |---------|------|-----|
 | `NO_PERMISSION` | "calendar permission was removed" | "Allow calendar access again to fix it." |
 | `NO_CALENDAR` | "no alarm calendar is chosen" | "Choose an alarm calendar in the settings to fix it." |
-| `CALENDAR_GONE` | "the alarm calendar is no longer on this phone" | "Choose another alarm calendar in the settings to fix it." |
+| `CALENDAR_GONE` | "an alarm calendar is no longer on this phone" | "Untick it under Alarm calendars in the settings to fix it." |
 | `READ_FAILED` | "the calendar couldn't be read" | "NextAlarm keeps trying. If this lasts, check that the calendar is still on this phone." |
 | `APPLY_FAILED` | "the alarms couldn't be updated" | "NextAlarm keeps trying. If this lasts, restart the phone." |
 
 - "No alarms are planned, and changes in the calendar are not picked up." replaces the sentence about what still rings
   when nothing is waiting.
 - In the settings, "Diagnostics & history" says "Not checked yet" before the first finished check.
-- "Calendar" says "Can't be read right now" if the chosen calendar can't be found, for example without the permission,
-  and "No longer on this phone. Choose another" if the last check found that it is gone.
+- "Calendar" sums up the chosen calendars as under "Alarm calendars" on screen 3. It says "Can't be read right now" if none
+  of them can be found, for example without the permission, and "No longer on this phone. Untick and choose again" if the
+  last check found that they are gone. If only some are gone, it says so after the others: "NextAlarm · DAVx⁵. 1 no longer
+  on this phone".
   "Full-screen alarms" says "Allowed" or "Not allowed: alarms ring as a notification".
 - A past alarm is listed at the time of its event, not of its last snooze; a test alarm has no event, and shows its own
   time with its seconds. A `Done` alarm that rang late shows that rather than its snoozes. The newest comes first. An
@@ -465,7 +510,8 @@ accent colour (`setColor`).
 | Wake-up media, speech | "Speaking the title" (or "Speaking the titles") | The title being spoken | "Stop" |
 | Wake-up media, feed on its way | "Getting the news" | "tagesschau.de · stops by 06:16 at the latest" | "Stop" |
 | Fail-safe warning | "New alarms aren't being added" | "NextAlarm can't read your calendar. Alarms already planned will still ring." | "Open diagnostics" |
-| Fail-safe warning, calendar gone | "New alarms aren't being added" | "Your alarm calendar is no longer on this phone. Alarms already planned will still ring. Choose another calendar." | "Open diagnostics" |
+| Fail-safe warning, calendar gone | "New alarms aren't being added" | "An alarm calendar is no longer on this phone. Alarms already planned will still ring. Untick it under Alarm calendars." | "Open diagnostics" |
+| Fail-safe warning, none chosen | "New alarms aren't being added" | "No alarm calendar is chosen. Alarms already planned will still ring. Choose one in the settings." | "Open diagnostics" |
 | Late alarm | "An alarm rang 7 min late" | "“Train to Cologne” was due at 06:45, but the phone was off." | "Open history" |
 | Missed alarm | "An alarm didn't ring" | "“Brunch with Lea” at 09:00 was missed because the phone was off." | "Open history" |
 | Alarm not answered | "An alarm wasn't answered" | "“Gym” at 06:30 rang twice with no response. It won't ring again." | "Open history" |

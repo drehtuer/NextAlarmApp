@@ -113,6 +113,8 @@ fun newsKindLine(kind: NewsType): String = when (kind) {
     NewsType.PODCAST -> "Podcast · latest episode plays"
 }
 
+private const val NO_FEED_HELPER = "This address didn't return a feed."
+
 private fun foundHelper(kind: NewsType): String = when (kind) {
     NewsType.RSS -> "RSS feed found."
     NewsType.PODCAST -> "Podcast found."
@@ -123,7 +125,9 @@ fun newsHelper(check: NewsCheck): String = when (check) {
     NewsCheck.None -> "Paste the address of an RSS or podcast feed."
     is NewsCheck.Found -> foundHelper(check.feed.kind)
     is NewsCheck.Unplayable -> foundHelper(check.feed.kind)
-    is NewsCheck.Failed, NewsCheck.Empty -> "This address didn't return a feed."
+    is NewsCheck.Failed ->
+        if (check.failure == FeedFailure.InsecureFeed) "RSS feeds need an https address." else NO_FEED_HELPER
+    NewsCheck.Empty -> NO_FEED_HELPER
 }
 
 /** "12 headlines today", or how many there are if none of them is from today, or the feed gives no dates. */
@@ -183,6 +187,7 @@ private fun failureReason(failure: FeedFailure): String = when (failure) {
     FeedFailure.Unreachable -> "The server can't be reached, or the phone has no connection."
     FeedFailure.TooLarge -> "The answer is too large to be read as a feed."
     FeedFailure.NotAFeed -> "The answer isn't a feed NextAlarm can read."
+    FeedFailure.InsecureFeed -> "This RSS feed uses plain http, which NextAlarm only allows for podcasts. Use its https address."
 }
 
 private fun playbackFailure(kind: NewsType): String = when (kind) {
@@ -203,10 +208,15 @@ private fun untilItWorks(draft: NewsDraft): String {
     }
 }
 
-/** The banner of a failed test. */
+/**
+ * The banner of a failed test, or of a feed that no test can fix: unlike an address that gave nothing, plain http is
+ * known not to be a typing mistake, so it also comes from the detection, with a title of its own.
+ */
 fun newsFailureBanner(draft: NewsDraft): BannerText? {
     val reason = when (val check = draft.check) {
         NewsCheck.None, is NewsCheck.Found -> return null
+        NewsCheck.Failed(FeedFailure.InsecureFeed) ->
+            return BannerText("This feed can't be used.", "${failureReason(FeedFailure.InsecureFeed)} ${untilItWorks(draft)}")
         is NewsCheck.Unplayable -> playbackFailure(check.feed.kind)
         is NewsCheck.Failed -> "${failureReason(check.failure)} Check the address, then try again."
         NewsCheck.Empty -> "The feed has nothing in it to play. Check the address, then try again."
@@ -260,13 +270,16 @@ fun buildNews(draft: NewsDraft, test: NewsTestProgress?, now: Instant, zone: Zon
 /**
  * Plays a feed for the test on screen 6, with the parts of the wake-up automation and by its rules: `WakeUpDirector`
  * plays it as the news of an alarm that exists nowhere else, so the limits and the stream are the ones an alarm would
- * get. Its parts are its own, so that a test cannot get into the automation's state.
+ * get, also during a call and when other audio starts. Its parts are its own, so that a test cannot get into the
+ * automation's state.
  */
 class NewsTestPlayer(
     speech: SpeechOutput,
     podcast: PodcastOutput,
     timers: RingTimers,
     wakeLock: RingWakeLock,
+    focus: AudioFocusHold,
+    private val calls: CallWatch,
     private val now: () -> Instant,
 ) {
     private var feed: FeedResult = FeedResult.Failed(FeedFailure.NotAFeed)
@@ -287,9 +300,11 @@ class NewsTestPlayer(
         },
         timers = timers,
         wakeLock = wakeLock,
+        focus = focus,
+        calls = calls,
         now = now,
-        // Only the news is ever asked for, so its end is all that is ever reported.
-        report = { _, _ -> ended() },
+        // Only the news is ever asked for, so its end or being stopped by other audio is all that is ever reported.
+        report = { _, event -> ended(event) },
         onChanged = {},
     )
 
@@ -313,9 +328,12 @@ class NewsTestPlayer(
         director.leave(TEST_ALARM_ID)
     }
 
-    /** Reaching the limit before the first utterance is done is no failure: a long first entry can take that long. */
-    private fun ended() {
-        val worked = heard || !now().isBefore(stopsAt)
+    /**
+     * Reaching the limit before the first utterance is done is no failure: a long first entry can take that long. Neither is
+     * a call or other audio getting in the way, as these say nothing about the feed.
+     */
+    private fun ended(event: AlarmEvent) {
+        val worked = heard || !now().isBefore(stopsAt) || event == AlarmEvent.StopWakeUp || calls.active()
         director.leave(TEST_ALARM_ID)
         onEnded(worked)
     }

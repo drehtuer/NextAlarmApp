@@ -18,12 +18,15 @@ import de.drehtuer.nextalarm.domain.LOG_FAILED_NOTE
 import de.drehtuer.nextalarm.domain.LOG_SAVED_NOTE
 import de.drehtuer.nextalarm.domain.NewsDraft
 import de.drehtuer.nextalarm.domain.NewsModel
+import de.drehtuer.nextalarm.domain.PhoneSoundPick
 import de.drehtuer.nextalarm.domain.PlannerEngine
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.PlannerRepository
 import de.drehtuer.nextalarm.domain.PlannerState
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.SettingsRepository
+import de.drehtuer.nextalarm.domain.SoundPreview
+import de.drehtuer.nextalarm.domain.SoundPreviewStatus
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.TEST_ALARM_DELAY
 import de.drehtuer.nextalarm.domain.buildAlarmSettings
@@ -33,12 +36,16 @@ import de.drehtuer.nextalarm.domain.buildLogExport
 import de.drehtuer.nextalarm.domain.buildNews
 import de.drehtuer.nextalarm.domain.calendarFact
 import de.drehtuer.nextalarm.domain.calendarSummary
+import de.drehtuer.nextalarm.domain.chosenCalendars
 import de.drehtuer.nextalarm.domain.diagnosticsSummary
 import de.drehtuer.nextalarm.domain.soundRejectionText
 import de.drehtuer.nextalarm.domain.testAlarmEntry
+import de.drehtuer.nextalarm.domain.withAlarmCalendar
+import de.drehtuer.nextalarm.domain.withPreview
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -67,6 +74,8 @@ class AppPorts(
     val planningChanges: Flow<*>,
     val phone: PhonePorts,
     val news: NewsPorts,
+    /** Plays the alarm sound on screen 5. */
+    val preview: SoundPreview,
     /** For the calls below that would block the screen. */
     val io: CoroutineDispatcher,
     val now: () -> Instant = Instant::now,
@@ -88,7 +97,7 @@ data class AppState(
     val setupDone: Boolean = false,
     val home: HomeModel = HomeModel(null, emptyList(), null, null, null),
     val calendars: List<DeviceCalendar> = emptyList(),
-    val selectedCalendar: CalendarId? = null,
+    val selectedCalendars: Set<CalendarId> = emptySet(),
     val alarmSettings: AlarmSettingsModel = buildAlarmSettings(Settings.DEFAULT, null, null, null),
     val news: NewsModel = buildNews(NewsDraft(), null, Instant.EPOCH, ZoneOffset.UTC),
     val diagnosticsSummary: String = diagnosticsSummary(PlannerRecord.INITIAL, ZoneOffset.UTC),
@@ -97,7 +106,7 @@ data class AppState(
         emptyList(),
         Instant.EPOCH,
         ZoneOffset.UTC,
-        calendarSummary(null),
+        calendarSummary(emptyList()),
         false,
     ),
     /** True from asking for a test alarm until it rings. */
@@ -109,6 +118,7 @@ data class AppState(
 /** What screen 5 can ask for. */
 interface AlarmSettingsActions {
     fun importSound(uri: Uri)
+    fun pickPhoneSound(pick: PhoneSoundPick)
     fun useDefaultSound()
     fun setVolumeRamp(seconds: Int)
     fun setMaxVolume(volume: Float?)
@@ -116,6 +126,12 @@ interface AlarmSettingsActions {
     fun setRingFor(minutes: Int)
     fun setSnoozeLength(minutes: Int)
     fun setSpeakTitle(speak: Boolean)
+
+    /** Plays the selected sound, or stops it if it plays. */
+    fun toggleSoundPreview()
+
+    /** Also when the screen is left or hidden. Does nothing if nothing plays. */
+    fun stopSoundPreview()
 }
 
 /** What screen 7 can ask for. */
@@ -154,6 +170,13 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
     /** Why the last picked file was not taken. It stays until the user picks again or gives up on the file. */
     private var soundRejection: String? = null
 
+    /** What the preview of the sound does, which a refresh keeps. Its end can be told on any thread. */
+    @Volatile
+    private var preview = SoundPreviewStatus.IDLE
+
+    /** Told apart from each other, because the end of an earlier preview, or the sound it waits for, can still arrive. */
+    private val previewRun = AtomicInteger()
+
     private val news = NewsController(
         viewModelScope,
         ports.news,
@@ -188,8 +211,8 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         val record: PlannerRecord = ports.planner.load()
         val calendars = readCalendars()
         val alarms = ports.alarms.all()
-        val selected = settings.alarmCalendar
-        val calendar = calendars.find { it.id == selected }
+        val selected = settings.alarmCalendars
+        val chosen = chosenCalendars(selected, calendars)
         val now = ports.now()
         val zone = ports.zone()
         val phone = ports.phone
@@ -200,17 +223,17 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
             it.copy(
                 loaded = true,
                 setupDone = record.state != PlannerState.Unconfigured,
-                home = buildHome(now, zone, alarms, record, calendar, notificationsAllowed),
+                home = buildHome(now, zone, alarms, record, chosen, notificationsAllowed),
                 calendars = calendars,
-                selectedCalendar = selected,
-                alarmSettings = buildAlarmSettings(settings, soundName, volume, soundRejection),
+                selectedCalendars = selected,
+                alarmSettings = buildAlarmSettings(settings, soundName, volume, soundRejection, preview),
                 diagnosticsSummary = diagnosticsSummary(record, zone),
                 diagnostics = buildDiagnostics(
                     record,
                     alarms,
                     now,
                     zone,
-                    calendarFact(selected, calendar, record.lastRun?.failure),
+                    calendarFact(selected, chosen, record.lastRun?.failure),
                     phone.fullScreenAllowed(),
                     notificationsAllowed,
                 ),
@@ -218,8 +241,9 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         }
     }
 
-    /** Choosing a calendar counts at once. Before setup is finished, the planner ignores the request. */
-    fun chooseCalendar(calendar: CalendarId) = changeSettings { it.copy(alarmCalendar = calendar) }
+    /** Ticking or unticking a calendar counts at once. Before setup is finished, the planner ignores the request. */
+    fun setCalendarTicked(calendar: CalendarId, ticked: Boolean) =
+        changeSettings { it.withAlarmCalendar(calendar, ticked) }
 
     fun completeSetup() {
         viewModelScope.launch {
@@ -228,9 +252,18 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         }
     }
 
-    override fun importSound(uri: Uri) {
+    override fun importSound(uri: Uri) = takeSound { ports.phone.sounds.import(uri) }
+
+    /** A phone sound is copied like a picked file. The picker's "Default" entry is the phone's default sound. */
+    override fun pickPhoneSound(pick: PhoneSoundPick) = when (pick) {
+        PhoneSoundPick.Cancelled -> Unit
+        PhoneSoundPick.PhoneDefault -> useDefaultSound()
+        is PhoneSoundPick.Sound -> takeSound { ports.phone.sounds.importPhoneSound(Uri.parse(pick.address)) }
+    }
+
+    private fun takeSound(import: suspend () -> SoundImportResult) {
         viewModelScope.launch {
-            when (val result = ports.phone.sounds.import(uri)) {
+            when (val result = import()) {
                 is SoundImportResult.Imported -> replaceSound(result.sound)
                 is SoundImportResult.Rejected -> {
                     soundRejection = soundRejectionText(result.reason, result.fileName)
@@ -255,6 +288,37 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
     override fun setSnoozeLength(minutes: Int) = changeSettings { it.copy(snoozeMinutes = minutes) }
 
     override fun setSpeakTitle(speak: Boolean) = changeSettings { it.copy(speakReason = speak) }
+
+    /** The sound is read from what is stored, as a sound that was just picked may not be on the screen yet. */
+    override fun toggleSoundPreview() {
+        if (preview == SoundPreviewStatus.PLAYING) {
+            stopSoundPreview()
+            return
+        }
+        val run = previewRun.incrementAndGet()
+        showPreview(SoundPreviewStatus.PLAYING)
+        viewModelScope.launch {
+            val sound = ports.settings.load().sound
+            if (run != previewRun.get()) return@launch
+            val status = ports.preview.play(sound) { previewEnded(run) }
+            if (status != SoundPreviewStatus.PLAYING) showPreview(status)
+        }
+    }
+
+    override fun stopSoundPreview() {
+        previewRun.incrementAndGet()
+        ports.preview.stop()
+        showPreview(SoundPreviewStatus.IDLE)
+    }
+
+    private fun previewEnded(run: Int) {
+        if (run == previewRun.get()) showPreview(SoundPreviewStatus.IDLE)
+    }
+
+    private fun showPreview(status: SoundPreviewStatus) {
+        preview = status
+        mutableState.update { it.copy(alarmSettings = it.alarmSettings.withPreview(status)) }
+    }
 
     override fun openNews() = news.open()
 
@@ -303,6 +367,8 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
 
     /** The settings are saved first, so that they never name a copy that has been deleted. */
     private suspend fun replaceSound(sound: SoundRef) {
+        // What plays would no longer be the sound that is selected.
+        stopSoundPreview()
         soundRejection = null
         val old = settingsLock.withLock {
             val current = ports.settings.load()

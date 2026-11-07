@@ -29,6 +29,8 @@ import de.drehtuer.nextalarm.domain.NewsSource
 import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.domain.PlanEntry
 import de.drehtuer.nextalarm.domain.Settings
+import de.drehtuer.nextalarm.domain.SoundPreviewStatus
+import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.WakeUpStatus
 import de.drehtuer.nextalarm.domain.snapshotFor
 import de.drehtuer.nextalarm.planning.AlarmReceiver
@@ -53,6 +55,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import org.robolectric.shadows.ShadowAlarmManager
 import org.robolectric.shadows.ShadowTextToSpeech
 import org.w3c.dom.Element
@@ -154,7 +157,7 @@ class AlarmPathTest {
         }
         parts.foreground.attach(host)
         assertEquals(AlarmNotifications.PLACEHOLDER_ID, host.shown)
-        AlarmModule.broadcasts(alarmScope(Dispatchers.Unconfined), engine, parts.foreground, parts.ringer).sweep()
+        AlarmModule.broadcasts(alarmScope(Dispatchers.Unconfined), engine, parts.foreground, parts.ringer, parts.preview).sweep()
         awaitUntil { host.shown == AlarmNotifications.ringingId(alarm.id) }
         assertEquals(false, host.finished)
         assertNull(shadowOf(real as Application).nextStartedService)
@@ -329,6 +332,26 @@ class AlarmPathTest {
     }
 
     @Test
+    fun `the sound of screen 5 goes the way of an alarm's, and ends when none of its sources plays`() {
+        // Robolectric's player can play none of them.
+        var stopped = 0
+        assertEquals(SoundPreviewStatus.PLAYING, parts.preview.play(SoundRef.SystemDefault) { stopped++ })
+        awaitUntil { stopped == 1 }
+        assertTrue(ShadowLog.getLogsForTag("NextAlarm").any { it.msg == "None of the alarm sounds could be played for the preview" })
+    }
+
+    @Test
+    fun `an alarm that rings stops the sound of screen 5, which can't start again while it rings`(): Unit = runBlocking {
+        var stopped = 0
+        assertEquals(SoundPreviewStatus.PLAYING, parts.preview.play(SoundRef.SystemDefault) { stopped++ })
+        engine.fire(created(Instant.now()).id)
+        awaitUntil { stopped == 1 }
+        assertEquals(SoundPreviewStatus.ALARM_RINGING, parts.preview.play(SoundRef.SystemDefault) {})
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        assertTrue(parts.ringer.ringing().isEmpty())
+    }
+
+    @Test
     fun `the module uses a background thread`() {
         assertEquals(Dispatchers.Default, AlarmModule.dispatcher())
     }
@@ -345,11 +368,13 @@ private class AlarmPathParts(private val context: Context, private val data: Dat
         AlarmModule.ringer(context, data, foreground, changes, notifications, AlarmModule.soundWorker(scope), scope, lazyEngine)
     private val wakeUpNotifications = AlarmModule.wakeUpNotifications(context)
     val wakeUpMedia = AlarmModule.wakeUpMedia(context, scope, lazyEngine)
-    private val wakeUpGate = AlarmModule.wakeUpGate()
+    private val wakeUpFocus = AlarmModule.wakeUpFocus(context)
+    private val wakeUpGate = AlarmModule.wakeUpGate(wakeUpFocus)
     val wakeUpForeground = AlarmModule.wakeUpForeground(context, wakeUpNotifications, wakeUpMedia, wakeUpGate)
     val wakeUpChanges = AlarmModule.wakeUpChanges()
-    val director = AlarmModule.wakeUpDirector(context, data, wakeUpForeground, wakeUpGate, wakeUpChanges, scope, lazyEngine)
-    private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(director))
+    val director = AlarmModule.wakeUpDirector(context, data, wakeUpForeground, wakeUpGate, wakeUpFocus, wakeUpChanges, scope, lazyEngine)
+    val preview = AlarmModule.soundPreview(context, data, AlarmModule.soundWorker(scope), Lazy { ringer })
+    private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(director), preview)
     val engine: AlarmEngine = AlarmModule.engine(context, data, effects)
     private val controllerData = data
 
@@ -477,9 +502,25 @@ class AlarmManifestTest {
     }
 
     @Test
-    fun `feeds can be plain http, which many podcast addresses still are`() {
+    fun `plain http is allowed for the app, as many podcast addresses still use it, and limited by readFeed`() {
         val application = manifest.getElementsByTagName("application").item(0) as Element
         assertEquals("true", application.getAttribute("android:usesCleartextTraffic"))
+    }
+
+    @Test
+    fun `problems around the sound are logged, with or without a failure`() {
+        logAudioProblem("Without", null)
+        logAudioProblem("With", SecurityException("Not allowed"))
+        val logged = ShadowLog.getLogsForTag("NextAlarm").map { it.msg }
+        assertTrue("Without" in logged && "With" in logged)
+    }
+
+    @Test
+    fun `calls are found out about without asking for the phone's state`() {
+        val requested = context.packageManager
+            .getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
+            .requestedPermissions.orEmpty().toSet()
+        assertTrue("android.permission.READ_PHONE_STATE" !in requested)
     }
 
     @Test

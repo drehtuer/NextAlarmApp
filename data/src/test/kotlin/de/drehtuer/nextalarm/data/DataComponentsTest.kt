@@ -25,6 +25,11 @@ class DataComponentsTest {
     private val components = DataComponents(context)
 
     @Test
+    fun `the saved alarm volume is there, and starts empty`() {
+        assertEquals(null, components.savedVolume.load())
+    }
+
+    @Test
     fun `the repositories work on one database`() = runBlocking {
         assertEquals(Settings.DEFAULT, components.settings.load())
         assertEquals(PlannerRecord.INITIAL, components.planner.load())

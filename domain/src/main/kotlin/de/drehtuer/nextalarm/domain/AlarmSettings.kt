@@ -46,6 +46,10 @@ data class AlarmSettingsModel(
     val snoozeLength: ValuePicker<Int>,
     val speakTitle: Boolean,
     val news: String,
+    /** True while the sound plays on the screen, which turns its Play button into Stop. */
+    val previewing: Boolean,
+    /** The line below the sound's buttons: how the sound plays, or why it didn't. */
+    val previewLine: String?,
 )
 
 private const val LOW_ALARM_VOLUME_STEPS = 2
@@ -58,17 +62,17 @@ private val RAMP_SECONDS = listOf(0, 15, 30, 60, 120, 300)
 private val RING_MINUTES = listOf(1, 2, 3, 5, 10, 15)
 private val SNOOZE_MINUTES = listOf(1, 5, 10, 15, 20, 30)
 
-/** No option is silent: an alarm nobody can hear is worse than none. 100% is the same as not setting a value. */
-private val MAX_VOLUME_TENTHS = 9 downTo 1
+/** No option is silent: an alarm nobody can hear is worse than none. 100% sets the phone's stream to its top, "Not set" leaves it. */
+private val MAX_VOLUME_TENTHS = 10 downTo 1
 
 /** The threshold of the low-volume banner. */
 fun isAlarmVolumeLow(volume: AlarmVolume): Boolean = volume.current <= LOW_ALARM_VOLUME_STEPS
 
-/** The maximum volume only lowers the player's own gain, so the banner cannot offer it as a way to be louder. */
+/** The maximum volume sets the phone's alarm stream while an alarm rings, so it is a way out of a low volume too. */
 fun lowVolumeBanner(volume: AlarmVolume): BannerText? = if (isAlarmVolumeLow(volume)) {
     BannerText(
         "Your phone's alarm volume is low (${volume.current} of ${volume.max}).",
-        "Alarms may be too quiet to wake you. Turn it up in the phone's sound settings.",
+        "Alarms may be too quiet to wake you. Turn it up in the phone's sound settings, or set a maximum volume below.",
     )
 } else {
     null
@@ -78,6 +82,51 @@ fun soundRejectionText(reason: SoundRejection, fileName: String): String = when 
     SoundRejection.UNSUPPORTED_TYPE -> "“$fileName” isn't a sound file. Choose an MP3, WAV, OGG or M4A file."
     SoundRejection.UNREADABLE -> "“$fileName” can't be opened. It may have been moved or deleted. Choose it again."
     SoundRejection.NOT_PLAYABLE -> "“$fileName” has no sound NextAlarm can play. Choose another file."
+}
+
+/** The button of the "Alarm sound" row that opens the phone's own picker of alarm sounds. */
+const val PHONE_SOUNDS_BUTTON = "Phone sounds"
+
+/** The content descriptions of the "Alarm sound" row's button. */
+const val PLAY_SOUND_DESCRIPTION = "Play the alarm sound"
+const val STOP_SOUND_DESCRIPTION = "Stop the alarm sound"
+
+/** What screen 5 says about the preview of the sound. The maximum volume is named, as it can make an alarm louder. */
+fun soundPreviewLine(status: SoundPreviewStatus): String? = when (status) {
+    SoundPreviewStatus.IDLE -> null
+    SoundPreviewStatus.PLAYING ->
+        "Playing at the phone's alarm volume, without the ramp or the maximum volume. Stops after ${SOUND_PREVIEW_LIMIT.seconds} s."
+    SoundPreviewStatus.IN_CALL -> "The sound can't play during a call."
+    SoundPreviewStatus.ALARM_RINGING -> "The sound can't play while an alarm rings."
+}
+
+/** Screen 5 with the preview of the sound at [status]. */
+fun AlarmSettingsModel.withPreview(status: SoundPreviewStatus): AlarmSettingsModel =
+    copy(previewing = status == SoundPreviewStatus.PLAYING, previewLine = soundPreviewLine(status))
+
+/** The title of the phone's picker of alarm sounds. */
+const val PHONE_SOUNDS_TITLE = "Alarm sound"
+
+/** What the phone's own picker of alarm sounds gave back. */
+sealed interface PhoneSoundPick {
+    /** Closed without a choice. Nothing changes. */
+    data object Cancelled : PhoneSoundPick
+
+    /** Its "Default" entry, which is the same as "Use the phone's default sound". */
+    data object PhoneDefault : PhoneSoundPick
+
+    /** One of the phone's sounds, at [address]. It is copied like a picked file. */
+    data class Sound(val address: String) : PhoneSoundPick
+}
+
+/**
+ * Reads the picker's answer. [picked] is the address it gave back, or null if it was closed without a choice.
+ * [defaultAddress] is the address that stands for its "Default" entry.
+ */
+fun phoneSoundPick(picked: String?, defaultAddress: String): PhoneSoundPick = when (picked) {
+    null -> PhoneSoundPick.Cancelled
+    defaultAddress -> PhoneSoundPick.PhoneDefault
+    else -> PhoneSoundPick.Sound(picked)
 }
 
 /** The value of the "Alarm sound" row. [defaultName] is empty if the phone does not say what its default is called. */
@@ -126,6 +175,7 @@ fun buildAlarmSettings(
     defaultSoundName: String?,
     volume: AlarmVolume?,
     soundRejection: String?,
+    preview: SoundPreviewStatus = SoundPreviewStatus.IDLE,
 ): AlarmSettingsModel = AlarmSettingsModel(
     lowVolume = volume?.let(::lowVolumeBanner),
     soundName = soundName(settings.sound, defaultSoundName),
@@ -138,4 +188,6 @@ fun buildAlarmSettings(
     snoozeLength = picker(settings.snoozeMinutes, SNOOZE_MINUTES, ::minutesLabel),
     speakTitle = settings.speakReason,
     news = newsLabel(settings.news),
+    previewing = preview == SoundPreviewStatus.PLAYING,
+    previewLine = soundPreviewLine(preview),
 )

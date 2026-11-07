@@ -33,6 +33,26 @@ import org.robolectric.shadows.util.DataSource
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
+class AndroidAlarmStreamTest {
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val audio = context.getSystemService(AudioManager::class.java)
+    private val stream = AndroidAlarmStream(context)
+
+    @Test
+    fun `it reads and sets the alarm stream, and no other`() {
+        val music = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+        audio.setStreamVolume(AudioManager.STREAM_ALARM, 2, 0)
+        assertEquals(2, stream.current())
+        assertEquals(audio.getStreamMaxVolume(AudioManager.STREAM_ALARM), stream.max())
+        assertEquals(audio.getStreamMinVolume(AudioManager.STREAM_ALARM), stream.min())
+        stream.set(3)
+        assertEquals(3, audio.getStreamVolume(AudioManager.STREAM_ALARM))
+        assertEquals(music, audio.getStreamVolume(AudioManager.STREAM_MUSIC))
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
 class MediaPlayerOutputTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val file = File("/sound-1")
@@ -156,7 +176,7 @@ class MediaPlayerOutputTest {
     }
 
     @Test
-    fun `the system's stream volumes are never changed`() {
+    fun `the player itself leaves the system's stream volume alone`() {
         val audio = context.getSystemService(AudioManager::class.java)
         audio.setStreamVolume(AudioManager.STREAM_ALARM, 2, 0)
         play(SoundSource.Stored(file), gain = 0f)

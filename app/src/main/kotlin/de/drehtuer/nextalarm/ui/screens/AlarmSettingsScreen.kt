@@ -14,6 +14,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -32,18 +33,25 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import de.drehtuer.nextalarm.R
 import de.drehtuer.nextalarm.domain.AlarmSettingsModel
+import de.drehtuer.nextalarm.domain.PHONE_SOUNDS_BUTTON
+import de.drehtuer.nextalarm.domain.PLAY_SOUND_DESCRIPTION
+import de.drehtuer.nextalarm.domain.STOP_SOUND_DESCRIPTION
 import de.drehtuer.nextalarm.domain.ValuePicker
 import de.drehtuer.nextalarm.ui.AlarmSettingsActions
 import de.drehtuer.nextalarm.ui.theme.nextAlarmRadioColors
 import de.drehtuer.nextalarm.ui.theme.nextAlarmSwitchColors
 import de.drehtuer.nextalarm.ui.theme.outlinedButtonBorder
 
-/** Screen 5. [onChooseFile] opens the file picker. [onNews] is where the "News" row leads: screen 6. */
+/**
+ * Screen 5. [onPhoneSounds] opens the phone's own picker of alarm sounds, [onChooseFile] the file picker. [onNews] is
+ * where the "News" row leads: screen 6.
+ */
 @Composable
 fun AlarmSettingsScreen(
     model: AlarmSettingsModel,
     actions: AlarmSettingsActions,
     onBack: () -> Unit,
+    onPhoneSounds: () -> Unit,
     onChooseFile: () -> Unit,
     onNews: () -> Unit,
 ) {
@@ -72,9 +80,9 @@ fun AlarmSettingsScreen(
                 )
             }
             SectionHeader("Sound")
-            SoundRow(model, actions, onChooseFile)
+            SoundRow(model, actions, onPhoneSounds, onChooseFile)
             PickerRow("Volume ramp", "Rises from silent", model.volumeRamp, actions::setVolumeRamp)
-            PickerRow("Maximum volume", "Not set: uses the phone's alarm volume", model.maxVolume, actions::setMaxVolume)
+            PickerRow("Maximum volume", "Sets the phone's alarm volume while ringing. Not set: leaves it as it is", model.maxVolume, actions::setMaxVolume)
             SwitchRow("Vibration", null, model.vibrate, actions::setVibrate)
             SectionHeader("Ringing")
             PickerRow("Ring for", "Then it snoozes on its own", model.ringFor, actions::setRingFor)
@@ -109,15 +117,42 @@ private fun RowText(title: String, secondary: String?, modifier: Modifier = Modi
 
 private val RowModifier = Modifier.fillMaxWidth()
 
+/**
+ * Two buttons would not leave the sound's name enough room beside them, so they go below it. The icon button that plays
+ * the sound sits at the end of the name's row, where the other rows have their values.
+ */
 @Composable
-private fun SoundRow(model: AlarmSettingsModel, actions: AlarmSettingsActions, onChooseFile: () -> Unit) {
+private fun SoundRow(
+    model: AlarmSettingsModel,
+    actions: AlarmSettingsActions,
+    onPhoneSounds: () -> Unit,
+    onChooseFile: () -> Unit,
+) {
     Row(
-        RowModifier.heightIn(min = 56.dp).padding(horizontal = 24.dp, vertical = 8.dp),
+        RowModifier.padding(start = 24.dp, end = 12.dp, top = 8.dp),
         Arrangement.spacedBy(16.dp),
         Alignment.CenterVertically,
     ) {
         RowText("Alarm sound", model.soundName, Modifier.weight(1f))
+        IconButton(onClick = actions::toggleSoundPreview) {
+            if (model.previewing) {
+                SymbolIcon(R.drawable.ic_stop, STOP_SOUND_DESCRIPTION, tint = MaterialTheme.colorScheme.primary)
+            } else {
+                SymbolIcon(R.drawable.ic_play, PLAY_SOUND_DESCRIPTION, tint = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+    Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = onPhoneSounds, border = outlinedButtonBorder()) { Text(PHONE_SOUNDS_BUTTON) }
         OutlinedButton(onClick = onChooseFile, border = outlinedButtonBorder()) { Text("Choose file") }
+    }
+    model.previewLine?.let { line ->
+        Text(
+            line,
+            Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+            MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
     }
     if (model.usesFile) {
         TextButton(onClick = actions::useDefaultSound, modifier = Modifier.padding(horizontal = 12.dp)) {

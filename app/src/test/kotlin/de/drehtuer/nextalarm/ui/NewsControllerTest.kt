@@ -243,6 +243,36 @@ class NewsControllerTest {
     }
 
     @Test
+    fun `a detection that finds an RSS feed over plain http says so at once, and stores nothing`() {
+        parts.feeds.result = FeedResult.Failed(FeedFailure.InsecureFeed)
+        typeAndDetect(FEED)
+        assertTrue(shown.addressFailed)
+        assertEquals("RSS feeds need an https address.", shown.helper)
+        assertEquals("This feed can't be used.", shown.failure?.title)
+        assertTrue(stored.isEmpty())
+    }
+
+    @Test
+    fun `opening a stored RSS feed that is plain http shows why alarms skip it, and leaves it stored`() {
+        val source = NewsSource(NewsType.RSS, FEED, 15)
+        settings.stored = source
+        parts.feeds.result = FeedResult.Failed(FeedFailure.InsecureFeed)
+        controller.open()
+        settle()
+        assertEquals("This feed can't be used.", shown.failure?.title)
+        assertEquals(source, settings.stored)
+    }
+
+    @Test
+    fun `a test of an RSS feed over plain http fails with the reason, and plays nothing`() {
+        startTest(FeedResult.Failed(FeedFailure.InsecureFeed))
+        settle()
+        assertFalse(shown.testing)
+        assertEquals("This feed can't be used.", shown.failure?.title)
+        assertTrue(parts.podcast.played.isEmpty())
+    }
+
+    @Test
     fun `a detection that finds an empty feed stores nothing`() {
         parts.feeds.result = FeedResult.Found(RSS_FEED.copy(entries = emptyList()))
         typeAndDetect(FEED)

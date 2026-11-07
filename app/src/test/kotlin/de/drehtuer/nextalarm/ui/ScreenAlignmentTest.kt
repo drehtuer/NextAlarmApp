@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import de.drehtuer.nextalarm.domain.ALARM_CALENDARS_LEAD
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import de.drehtuer.nextalarm.domain.DiagnosticsModel
@@ -137,21 +138,21 @@ class ScreenAlignmentTest {
 
     @Test
     fun `the text of screen 4 is at the margin for text`() {
-        rule.setContent { NextAlarmTheme(dark = false) { CalendarScreen(listOf(COLOURED), COLOURED.id, {}, {}) } }
-        rule.onNodeWithText("Every timed event in this calendar rings at its start time. No other calendar is read.")
+        rule.setContent { NextAlarmTheme(dark = false) { CalendarScreen(listOf(COLOURED), setOf(COLOURED.id), { _, _ -> }, {}) } }
+        rule.onNodeWithText(ALARM_CALENDARS_LEAD)
             .assertLeftPositionInRootIsEqualTo(TEXT_MARGIN)
         rule.onNodeWithText(DAVX_HEADER).assertLeftPositionInRootIsEqualTo(TEXT_MARGIN)
     }
 
     @Test
     fun `the list alone adds no margin, as onboarding has its own`() {
-        rule.setContent { NextAlarmTheme(dark = false) { CalendarList(listOf(COLOURED), COLOURED.id, {}) } }
+        rule.setContent { NextAlarmTheme(dark = false) { CalendarList(listOf(COLOURED), setOf(COLOURED.id), { _, _ -> }) } }
         rule.onNodeWithText(DAVX_HEADER).assertLeftPositionInRootIsEqualTo(0.dp)
     }
 
     @Test
     fun `calendar names line up, with or without a colour`() {
-        rule.setContent { NextAlarmTheme(dark = false) { CalendarScreen(listOf(COLOURED, PLAIN), COLOURED.id, {}, {}) } }
+        rule.setContent { NextAlarmTheme(dark = false) { CalendarScreen(listOf(COLOURED, PLAIN), setOf(COLOURED.id), { _, _ -> }, {}) } }
         assertEquals(left("Coloured"), left("Plain"))
     }
 }

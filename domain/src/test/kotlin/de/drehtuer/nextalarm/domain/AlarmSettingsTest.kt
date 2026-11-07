@@ -27,7 +27,7 @@ class AlarmSettingsTest {
     fun `the banner gives the steps, and only offers what can make the alarm louder`() {
         val banner = assertNotNull(lowVolumeBanner(AlarmVolume(1, 7)))
         assertEquals("Your phone's alarm volume is low (1 of 7).", banner.title)
-        assertEquals("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings.", banner.body)
+        assertEquals("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings, or set a maximum volume below.", banner.body)
     }
 
     @Test
@@ -63,6 +63,27 @@ class AlarmSettingsTest {
         assertEquals("Phone default (Bright Morning)", soundName(SoundRef.SystemDefault, "Bright Morning"))
         assertEquals("Phone default", soundName(SoundRef.SystemDefault, null))
         assertEquals("morning.mp3", soundName(SoundRef.File.forCopy("0".repeat(36), "morning.mp3"), "Bright Morning"))
+    }
+
+    @Test
+    fun `a phone sound is named by its title like a file`() {
+        assertEquals("Oxygen", soundName(SoundRef.File.forCopy("0".repeat(36), "Oxygen"), "Bright Morning"))
+    }
+
+    @Test
+    fun `the phone's sound picker is called by its wording`() {
+        assertEquals("Phone sounds", PHONE_SOUNDS_BUTTON)
+        assertEquals("Alarm sound", PHONE_SOUNDS_TITLE)
+    }
+
+    @Test
+    fun `the phone's sound picker gives a sound, its default, or nothing`() {
+        val default = "content://settings/system/alarm_alert"
+        val oxygen = "content://media/internal/audio/media/37"
+        assertEquals(PhoneSoundPick.Cancelled, phoneSoundPick(null, default))
+        assertEquals(PhoneSoundPick.PhoneDefault, phoneSoundPick(default, default))
+        assertEquals(PhoneSoundPick.Sound(oxygen), phoneSoundPick(oxygen, default))
+        assertEquals(oxygen, (phoneSoundPick(oxygen, default) as PhoneSoundPick.Sound).address)
     }
 
     @Test
@@ -103,9 +124,11 @@ class AlarmSettingsTest {
         val options = model().maxVolume.options
         assertEquals(null, options.first().value)
         assertEquals("Not set", options.first().label)
-        assertEquals("90%", options[1].label)
+        assertEquals("100%", options[1].label)
+        assertEquals(1f, options[1].value)
+        assertEquals("90%", options[2].label)
         assertEquals("10%", options.last().label)
-        assertTrue(options.mapNotNull { it.value }.all { it > 0f && it < 1f })
+        assertTrue(options.mapNotNull { it.value }.all { it > 0f && it <= 1f })
     }
 
     @Test
@@ -144,5 +167,45 @@ class AlarmSettingsTest {
     fun `an address without a host shows as it is`() {
         assertEquals("RSS · not a url", newsLabel(NewsSource(NewsType.RSS, "not a url")))
         assertEquals("RSS · feed.xml", newsLabel(NewsSource(NewsType.RSS, "feed.xml")))
+    }
+
+    @Test
+    fun `without a preview the button plays and there is no line`() {
+        val model = model()
+        assertFalse(model.previewing)
+        assertNull(model.previewLine)
+        assertNull(soundPreviewLine(SoundPreviewStatus.IDLE))
+    }
+
+    @Test
+    fun `a playing preview turns the button into stop, and says how it plays`() {
+        val model = buildAlarmSettings(Settings.DEFAULT, null, null, null, SoundPreviewStatus.PLAYING)
+        assertTrue(model.previewing)
+        assertEquals(
+            "Playing at the phone's alarm volume, without the ramp or the maximum volume. Stops after 10 s.",
+            model.previewLine,
+        )
+    }
+
+    @Test
+    fun `a preview that didn't start says why, and the button still plays`() {
+        val inCall = model().withPreview(SoundPreviewStatus.IN_CALL)
+        assertFalse(inCall.previewing)
+        assertEquals("The sound can't play during a call.", inCall.previewLine)
+        val ringing = model().withPreview(SoundPreviewStatus.ALARM_RINGING)
+        assertFalse(ringing.previewing)
+        assertEquals("The sound can't play while an alarm rings.", ringing.previewLine)
+    }
+
+    @Test
+    fun `the preview can be taken back, and leaves the rest of the screen as it is`() {
+        val before = model()
+        assertEquals(before, before.withPreview(SoundPreviewStatus.PLAYING).withPreview(SoundPreviewStatus.IDLE))
+    }
+
+    @Test
+    fun `the button is described for what it does`() {
+        assertEquals("Play the alarm sound", PLAY_SOUND_DESCRIPTION)
+        assertEquals("Stop the alarm sound", STOP_SOUND_DESCRIPTION)
     }
 }

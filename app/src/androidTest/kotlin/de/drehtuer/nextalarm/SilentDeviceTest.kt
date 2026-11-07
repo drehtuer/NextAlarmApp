@@ -3,20 +3,26 @@ package de.drehtuer.nextalarm
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.os.Bundle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import de.drehtuer.nextalarm.data.DataComponents
+import de.drehtuer.nextalarm.data.DeviceSavedAlarmVolume
 import de.drehtuer.nextalarm.data.SoundSource
 import de.drehtuer.nextalarm.data.SoundStore
 import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.AlarmKey
 import de.drehtuer.nextalarm.domain.AlarmState
+import de.drehtuer.nextalarm.domain.FeedDownload
+import de.drehtuer.nextalarm.domain.FeedFailure
+import de.drehtuer.nextalarm.domain.FeedResult
 import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.parseFeed
+import de.drehtuer.nextalarm.domain.readFeed
 import de.drehtuer.nextalarm.domain.snapshotFor
 import de.drehtuer.nextalarm.planning.AlarmReceiver
 import de.drehtuer.nextalarm.planning.AppAlarmIntents
@@ -24,6 +30,7 @@ import de.drehtuer.nextalarm.planning.AppNotifications
 import de.drehtuer.nextalarm.planning.alarmUri
 import de.drehtuer.nextalarm.ringing.AlarmActionReceiver
 import de.drehtuer.nextalarm.ringing.AlarmActivity
+import de.drehtuer.nextalarm.ringing.AndroidPhoneCalls
 import de.drehtuer.nextalarm.ringing.MediaPlayerOutput
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
@@ -39,8 +46,9 @@ import org.junit.runner.RunWith
 
 /**
  * What only a real phone can show, without making a sound: every alarm here plays at volume 0, without vibration or
- * speech, and these tests can safely run while someone sleeps next to the phone. They use their own alarms in the app's
- * real database and delete them, and they don't touch the settings or the planner.
+ * speech, and these tests can safely run while someone sleeps next to the phone. They never change the phone's alarm
+ * volume and never ask for the audio focus, which would pause what plays. They use their own alarms in the app's real
+ * database and delete them, and they don't touch the settings or the planner.
  *
  * Set the argument `holdSeconds` to keep the alarm screen up for a screenshot.
  *
@@ -204,6 +212,58 @@ class SilentDeviceTest {
         assertTrue("Left behind: $left", left.isEmpty())
     }
 
+    /** `maxVolume = 0` must leave the stream alone, from start to end, and store nothing to put back. */
+    @Test
+    fun aSilentAlarmLeavesThePhonesAlarmVolumeAlone() {
+        val audio = context.getSystemService(AudioManager::class.java)
+        val before = audio.getStreamVolume(AudioManager.STREAM_ALARM)
+        val savedBefore = data.savedVolume.load()
+        val alarm = silentAlarm("Device test volume")
+        fire(alarm)
+        awaitState(alarm.id, AlarmState.Ringing)
+        // The sound starts when the service is up, which is what would change the volume if anything did.
+        Thread.sleep(SERVICE_WAIT_MILLIS)
+        assertEquals(before, audio.getStreamVolume(AudioManager.STREAM_ALARM))
+        assertEquals(savedBefore, data.savedVolume.load())
+        send(AlarmActionReceiver.ACTION_DISMISS_ALL)
+        awaitState(alarm.id, AlarmState.Done)
+        assertEquals(before, audio.getStreamVolume(AudioManager.STREAM_ALARM))
+    }
+
+    /** That the volume can be stored is checked in a file of its own: what is in the real one would change the stream. */
+    @Test
+    fun theVolumeCanBeStoredInDeviceProtectedStorage() {
+        val saved = DeviceSavedAlarmVolume(context, "device_test_alarm_volume")
+        saved.save(TEST_VOLUME)
+        assertEquals(TEST_VOLUME, DeviceSavedAlarmVolume(context, "device_test_alarm_volume").load())
+        saved.clear()
+        assertNull(saved.load())
+    }
+
+    /** Only reads: whether the phone is in a call says nothing, but asking and listening must work without a permission. */
+    @Test
+    fun theAudioModeCanBeReadAndWatchedWithoutAPermission() {
+        val calls = AndroidPhoneCalls(context)
+        calls.active()
+        calls.watch {}()
+    }
+
+    /** Android's XML parser differs from the JVM's that the unit tests run on, and no network is needed for this. */
+    @Test
+    fun anRssFeedOverPlainHttpIsRefusedAndAPodcastIsNot() {
+        val rss = """<?xml version="1.0"?><rss version="2.0"><channel><title>News</title>
+            <item><title>Headline</title></item></channel></rss>""".toByteArray()
+        val podcast = """<?xml version="1.0"?><rss version="2.0"><channel><title>Cast</title>
+            <item><title>Episode</title><enclosure url="http://example.org/a.mp3" type="audio/mpeg"/></item></channel></rss>"""
+            .toByteArray()
+        val address = "http://example.org/feed"
+        assertEquals(
+            FeedResult.Failed(FeedFailure.InsecureFeed),
+            readFeed(address) { _, _ -> FeedDownload.Bytes(rss, listOf(address)) },
+        )
+        assertTrue(readFeed(address) { _, _ -> FeedDownload.Bytes(podcast, listOf(address)) } is FeedResult.Found)
+    }
+
     /** Includes the phone's own default sound, if it is reachable: the alarm has to fall back if not. */
     @Test
     fun everySoundSourceCanBeOpenedAtVolumeZero() {
@@ -263,6 +323,8 @@ class SilentDeviceTest {
         const val WAIT_STEPS = 500
         const val POLL_MILLIS = 20L
         const val MILLIS_PER_SECOND = 1_000L
+        const val SERVICE_WAIT_MILLIS = 4_000L
+        const val TEST_VOLUME = 4
         const val NEXT_ALARM_ID = AppNotifications.NEXT_ALARM_ID
     }
 }

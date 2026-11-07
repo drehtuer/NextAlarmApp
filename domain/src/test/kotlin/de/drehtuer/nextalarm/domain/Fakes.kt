@@ -47,6 +47,49 @@ class FakeAlarmRepository : AlarmRepository {
     }
 }
 
+class FakeCalls(var isActive: Boolean = false) : PhoneCalls {
+    var failure: RuntimeException? = null
+    var failToWatch: RuntimeException? = null
+    val watching = mutableListOf<(Boolean) -> Unit>()
+
+    override fun active(): Boolean {
+        failure?.let { throw it }
+        return isActive
+    }
+
+    override fun watch(onChange: (Boolean) -> Unit): () -> Unit {
+        failToWatch?.let { throw it }
+        watching += onChange
+        return { watching -= onChange }
+    }
+
+    /** A call starts or ends, and Android says so. */
+    fun change(active: Boolean) {
+        isActive = active
+        watching.toList().forEach { it(active) }
+    }
+}
+
+class FakeFocus : AudioFocus {
+    var requests = 0
+    var abandons = 0
+    var answer = true
+    var failure: RuntimeException? = null
+    var onLost: () -> Unit = {}
+
+    override fun request(onLostForGood: () -> Unit): Boolean {
+        requests++
+        onLost = onLostForGood
+        failure?.let { throw it }
+        return answer
+    }
+
+    override fun abandon() {
+        abandons++
+        failure?.let { throw it }
+    }
+}
+
 object NoAlarmEffects : AlarmEffects {
     override fun perform(instance: AlarmInstance, action: AlarmAction) = Unit
     override fun showNextAlarm(alarm: AlarmInstance?) = Unit
@@ -92,15 +135,21 @@ class FakeCalendarRepository : CalendarRepository {
     var events = listOf<CalendarEvent>()
     var failure: Exception? = null
     var readRange: Pair<Instant, Instant>? = null
-    var readCalendar: CalendarId? = null
+    var readCalendars: Set<CalendarId>? = null
+
+    /** If set, what each calendar on the phone holds: a run gets what the calendars it asks for hold, and others are gone. */
+    var onThePhone: Map<CalendarId, List<CalendarEvent>>? = null
 
     override suspend fun calendars() = emptyList<DeviceCalendar>()
 
-    override suspend fun events(calendar: CalendarId, from: Instant, to: Instant): List<CalendarEvent> {
-        readCalendar = calendar
+    override suspend fun events(calendars: Set<CalendarId>, from: Instant, to: Instant): List<CalendarEvent> {
+        readCalendars = calendars
         readRange = from to to
         failure?.let { throw it }
-        return events
+        val phone = onThePhone ?: return events
+        val gone = calendars - phone.keys
+        if (gone.isNotEmpty()) throw CalendarGoneException(gone)
+        return calendars.flatMap { phone.getValue(it) }
     }
 }
 

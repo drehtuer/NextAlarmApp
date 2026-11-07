@@ -50,14 +50,16 @@ class HttpFeedDownloader(
 
     private fun follow(url: String, maxBytes: Long, deadline: Long): FeedDownload {
         var address = url
+        val addresses = mutableListOf<String>()
         repeat(MAX_REDIRECTS + 1) {
             if (!isWebAddress(address)) return FeedDownload.Failed(FeedFailure.InvalidAddress)
+            addresses += address
             val connection = open(URL(address))
             try {
                 configure(connection)
                 val code = connection.responseCode
                 val location = if (code in REDIRECTS) connection.getHeaderField("Location") else null
-                if (location == null) return answer(connection, code, maxBytes, deadline)
+                if (location == null) return answer(connection, code, maxBytes, deadline, addresses)
                 address = URL(URL(address), location).toString()
             } finally {
                 connection.disconnect()
@@ -74,19 +76,25 @@ class HttpFeedDownloader(
         connection.setRequestProperty("Accept", ACCEPT)
     }
 
-    private fun answer(connection: HttpURLConnection, code: Int, maxBytes: Long, deadline: Long): FeedDownload = when {
+    private fun answer(
+        connection: HttpURLConnection,
+        code: Int,
+        maxBytes: Long,
+        deadline: Long,
+        addresses: List<String>,
+    ): FeedDownload = when {
         code !in SUCCESS -> FeedDownload.Failed(FeedFailure.Http(code, connection.responseMessage))
         connection.contentLengthLong > maxBytes -> FeedDownload.Failed(FeedFailure.TooLarge)
-        else -> connection.inputStream.use { read(it, maxBytes, deadline) }
+        else -> connection.inputStream.use { read(it, maxBytes, deadline, addresses) }
     }
 
     /** The limit for the whole download stops a server that keeps sending just enough not to run into the timeout. */
-    private fun read(stream: InputStream, maxBytes: Long, deadline: Long): FeedDownload {
+    private fun read(stream: InputStream, maxBytes: Long, deadline: Long, addresses: List<String>): FeedDownload {
         val bytes = ByteArrayOutputStream()
         val buffer = ByteArray(BUFFER_BYTES)
         while (true) {
             val count = stream.read(buffer)
-            if (count < 0) return FeedDownload.Bytes(bytes.toByteArray())
+            if (count < 0) return FeedDownload.Bytes(bytes.toByteArray(), addresses)
             if (bytes.size() + count > maxBytes) return FeedDownload.Failed(FeedFailure.TooLarge)
             if (nanoTime() > deadline) return FeedDownload.Failed(FeedFailure.Unreachable)
             bytes.write(buffer, 0, count)

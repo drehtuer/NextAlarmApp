@@ -32,6 +32,7 @@ import de.drehtuer.nextalarm.ringing.FakeSound
 import de.drehtuer.nextalarm.ringing.FakeTimers
 import de.drehtuer.nextalarm.ringing.FakeVibration
 import de.drehtuer.nextalarm.ringing.FakeWakeLock
+import de.drehtuer.nextalarm.ringing.PreviewParts
 import de.drehtuer.nextalarm.ringing.alarm
 import de.drehtuer.nextalarm.ringing.awaitUntil
 import java.io.File
@@ -141,13 +142,13 @@ class TileRefreshTest {
 
     @Test
     fun `a failing refresh never reaches the alarm path`() {
-        val ringer = AlarmRinger(FakeSound(), FakeVibration(), FakeTimers(), FakeWakeLock(), {}, {})
+        val ringer = AlarmRinger(FakeSound(), FakeVibration(), FakeTimers(), FakeWakeLock(), de.drehtuer.nextalarm.ringing.fakeRingAudio(), {}, {})
         val wakeUp = object : WakeUpAutomation {
             override fun startAnnouncement(alarm: AlarmInstance) = Unit
             override fun startNews(alarm: AlarmInstance) = Unit
             override fun leave(instanceId: Long) = Unit
         }
-        val effects = AppAlarmEffects(ringer, AlarmNotifications(context), AppNotifications(context, tile = failing()), wakeUp)
+        val effects = AppAlarmEffects(ringer, AlarmNotifications(context), AppNotifications(context, tile = failing()), wakeUp, PreviewParts().preview)
         effects.showNextAlarm(scheduled())
         assertNotNull(shadowOf(manager).getNotification(nextAlarmId))
     }

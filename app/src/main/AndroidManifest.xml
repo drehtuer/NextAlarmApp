@@ -21,6 +21,11 @@
         </intent>
     </queries>
 
+    <!--
+        usesCleartextTraffic: many podcast feeds and their audio still use plain http, and Android can only allow that for
+        the whole app. The app limits it itself: readFeed in :domain refuses an RSS or Atom feed if any address on the way to
+        it was plain http, so only podcasts get to use it. See docs/architecture.md#feeds.
+    -->
     <application
         android:name=".NextAlarmApplication"
         android:allowBackup="false"

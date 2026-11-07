@@ -3,6 +3,7 @@ package de.drehtuer.nextalarm.ringing
 import android.content.ContentResolver
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Handler
@@ -13,6 +14,7 @@ import android.os.VibrationEffect
 import android.os.VibratorManager
 import android.util.Log
 import de.drehtuer.nextalarm.data.SoundSource
+import de.drehtuer.nextalarm.domain.AlarmStream
 import de.drehtuer.nextalarm.domain.AlarmVibration
 import de.drehtuer.nextalarm.domain.PreparedSound
 import de.drehtuer.nextalarm.domain.RingTimers
@@ -24,8 +26,8 @@ import java.time.Duration
 private const val TAG = "NextAlarm"
 
 /**
- * Plays alarm sounds with `MediaPlayer`, as `USAGE_ALARM`, so that they pass Do Not Disturb. The volume is only ever
- * the player's own gain: the app never changes the system's stream volume.
+ * Plays alarm sounds with `MediaPlayer`, as `USAGE_ALARM`, so that they pass Do Not Disturb. This only sets the player's own
+ * gain, while the system's stream volume is up to `AlarmVolumeKeeper`.
  */
 class MediaPlayerOutput(
     private val context: Context,
@@ -90,6 +92,21 @@ class MediaPlayerOutput(
             .setUsage(AudioAttributes.USAGE_ALARM)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
+    }
+}
+
+/** The system's alarm stream. It changes without any sound or volume panel of its own. */
+class AndroidAlarmStream(context: Context) : AlarmStream {
+    private val audio = context.getSystemService(AudioManager::class.java)
+
+    override fun current() = audio.getStreamVolume(AudioManager.STREAM_ALARM)
+    override fun min() = audio.getStreamMinVolume(AudioManager.STREAM_ALARM)
+    override fun max() = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+
+    override fun set(level: Int) = audio.setStreamVolume(AudioManager.STREAM_ALARM, level, NO_FLAGS)
+
+    private companion object {
+        const val NO_FLAGS = 0
     }
 }
 

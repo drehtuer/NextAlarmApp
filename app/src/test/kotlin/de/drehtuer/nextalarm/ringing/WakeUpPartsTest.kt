@@ -246,6 +246,71 @@ class MediaPlayerPodcastOutputTest {
         ShadowMediaPlayer.addMediaInfo(source, ShadowMediaPlayer.MediaInfo(60_000, 0))
     }
 
+    private fun playStarted(): MediaPlayer {
+        play()
+        idle()
+        return players.last()
+    }
+
+    @Test
+    fun `pausing and resuming a podcast that plays hold it and let it go on, without ending it`() {
+        val player = playStarted()
+        output.pause()
+        assertEquals(ShadowMediaPlayer.State.PAUSED, shadow().state)
+        output.resume()
+        assertEquals(ShadowMediaPlayer.State.STARTED, shadow().state)
+        assertTrue(player.isPlaying)
+        assertEquals(0, ends)
+    }
+
+    @Test
+    fun `pausing and resuming with no player do nothing`() {
+        output.pause()
+        output.resume()
+        assertEquals(0, ends)
+        assertEquals(0, starts)
+    }
+
+    @Test
+    fun `pausing and resuming a player that has not started do nothing`() {
+        play()
+        output.pause()
+        output.resume()
+        assertEquals(0, ends)
+    }
+
+    /** A player in its error state, from the moment it has started. */
+    private fun brokenOutput(): MediaPlayerPodcastOutput {
+        val output = MediaPlayerPodcastOutput(context) {
+            object : MediaPlayer() {
+                var started = false
+
+                override fun start() {
+                    if (started) throw IllegalStateException("In its error state")
+                    started = true
+                    super.start()
+                }
+
+                override fun pause(): Unit = throw IllegalStateException("In its error state")
+            }.also { players += it }
+        }
+        output.play(url, { starts++ }, { ends++ })
+        idle()
+        return output
+    }
+
+    @Test
+    fun `a player that can't pause is left alone, as its error is on its way`() {
+        brokenOutput().pause()
+        assertEquals(0, ends)
+    }
+
+    @Test
+    fun `a player that can't go on is the end of the episode`() {
+        brokenOutput().resume()
+        assertEquals(1, ends)
+    }
+
     @Test
     fun `an episode is streamed from its address, as media, and reports that it started`() {
         play()

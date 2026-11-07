@@ -19,13 +19,17 @@ import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.domain.LOG_FAILED_NOTE
 import de.drehtuer.nextalarm.domain.LOG_SAVED_NOTE
 import de.drehtuer.nextalarm.domain.LOG_TITLES_NOTE
+import de.drehtuer.nextalarm.domain.PhoneSoundPick
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.PlanningRun
 import de.drehtuer.nextalarm.domain.SettingsRepository
+import de.drehtuer.nextalarm.domain.SoundPreviewStatus
 import de.drehtuer.nextalarm.domain.SoundRef
+import de.drehtuer.nextalarm.domain.soundPreviewLine
 import de.drehtuer.nextalarm.domain.SoundRejection
 import de.drehtuer.nextalarm.domain.TEST_ALARM_DELAY
 import de.drehtuer.nextalarm.ringing.FakeScheduler
+import de.drehtuer.nextalarm.ringing.PreviewParts
 import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmInstance
@@ -41,6 +45,7 @@ import de.drehtuer.nextalarm.domain.EngineLock
 import de.drehtuer.nextalarm.domain.PlannerState
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.snapshotFor
+import de.drehtuer.nextalarm.domain.soundRejectionText
 import de.drehtuer.nextalarm.planning.AppNotifications
 import de.drehtuer.nextalarm.planning.AppPlannerEffects
 import de.drehtuer.nextalarm.planning.PlanningModule
@@ -71,6 +76,7 @@ import org.robolectric.annotation.LooperMode
 private val NOW: Instant = Instant.parse("2026-11-06T19:00:00Z")
 private val CALENDAR = DeviceCalendar(CalendarId(1), "NextAlarm", "me", "bitfire.at.davdroid", null)
 private const val FEED_ADDRESS = "https://www.tagesschau.de/feed"
+private const val PHONE_SOUND = "content://media/internal/audio/media/37"
 
 private class FakeCalendars(var result: () -> List<DeviceCalendar> = { listOf(CALENDAR) }) : CalendarRepository {
     var reads = 0
@@ -80,7 +86,7 @@ private class FakeCalendars(var result: () -> List<DeviceCalendar> = { listOf(CA
         return result()
     }
 
-    override suspend fun events(calendar: CalendarId, from: Instant, to: Instant) = emptyList<CalendarEvent>()
+    override suspend fun events(calendars: Set<CalendarId>, from: Instant, to: Instant) = emptyList<CalendarEvent>()
 }
 
 private class RecordingEffects : PlannerEffects {
@@ -99,6 +105,13 @@ private class RecordingEffects : PlannerEffects {
 private object NoAlarmEffects : AlarmEffects {
     override fun perform(instance: AlarmInstance, action: AlarmAction) = Unit
     override fun showNextAlarm(alarm: AlarmInstance?) = Unit
+}
+
+/** Holds back what is read while [gate] is set, until the test completes it. */
+private class GatedSettings(private val real: SettingsRepository) : SettingsRepository by real {
+    var gate: kotlinx.coroutines.CompletableDeferred<Settings>? = null
+
+    override suspend fun load(): Settings = gate?.await() ?: real.load()
 }
 
 private object OpenLock : EngineLock {
@@ -124,9 +137,12 @@ class AppViewModelTest {
     private var fullScreen = true
     private var notificationsOn = true
     private val news = NewsParts { NOW }
+    private var alarmRinging = false
+    private val preview = PreviewParts { alarmRinging }
+    private val settings = GatedSettings(data.settings)
     private val viewModel = AppViewModel(
         AppPorts(
-            settings = data.settings,
+            settings = settings,
             planner = data.planner,
             alarms = data.alarms,
             calendars = calendars,
@@ -135,6 +151,7 @@ class AppViewModelTest {
             planningChanges = changes,
             phone = PhonePorts(audio, sounds, logs, { notificationsOn }) { fullScreen },
             news = news.ports,
+            preview = preview.preview,
             io = Dispatchers.Unconfined,
             now = { NOW },
             zone = { ZoneId.of("Europe/Berlin") },
@@ -174,17 +191,17 @@ class AppViewModelTest {
         val state = load()
         assertTrue(state.loaded)
         assertFalse(state.setupDone)
-        assertNull(state.selectedCalendar)
+        assertEquals(emptySet(), state.selectedCalendars)
         assertEquals(listOf(CALENDAR), state.calendars)
     }
 
     @Test
     fun `home shows the waiting alarms and the chosen calendar`() = runBlocking {
         val at = NOW.plus(Duration.ofHours(10))
-        data.settings.save(Settings.DEFAULT.copy(alarmCalendar = CALENDAR.id))
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id)))
         data.alarms.create(AlarmKey.forEvent(1, at), at, Settings.DEFAULT.snapshotFor("Flight"))
         val state = load()
-        assertEquals(CALENDAR.id, state.selectedCalendar)
+        assertEquals(setOf(CALENDAR.id), state.selectedCalendars)
         assertEquals("Flight", state.home.hero?.title)
         assertEquals("From the calendar “NextAlarm” (DAVx⁵).", state.home.footer)
     }
@@ -221,16 +238,53 @@ class AppViewModelTest {
     }
 
     @Test
-    fun `choosing a calendar saves it, and re-plans once setup is done`() = runBlocking {
-        viewModel.chooseCalendar(CALENDAR.id)
-        awaitState { it.selectedCalendar == CALENDAR.id }
+    fun `ticking a calendar saves it, and re-plans once setup is done`() = runBlocking {
+        viewModel.setCalendarTicked(CALENDAR.id, true)
+        awaitState { it.selectedCalendars == setOf(CALENDAR.id) }
         assertTrue(effects.started.isEmpty())
 
         engine.setupCompleted()
-        viewModel.chooseCalendar(CalendarId(2))
-        awaitState { it.selectedCalendar == CalendarId(2) }
+        viewModel.setCalendarTicked(CalendarId(2), true)
+        awaitState { it.selectedCalendars == setOf(CALENDAR.id, CalendarId(2)) }
         assertEquals(listOf(1L, 2L), effects.started)
         assertEquals(PlannerState.Planning, data.planner.load().state)
+        assertEquals(setOf(CALENDAR.id, CalendarId(2)), data.settings.load().alarmCalendars)
+    }
+
+    @Test
+    fun `unticking a calendar saves it, and re-plans`() = runBlocking {
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id, CalendarId(2))))
+        engine.setupCompleted()
+        viewModel.setCalendarTicked(CalendarId(2), false)
+        awaitState { it.selectedCalendars == setOf(CALENDAR.id) }
+        assertEquals(listOf(1L, 2L), effects.started)
+        assertEquals(setOf(CALENDAR.id), data.settings.load().alarmCalendars)
+    }
+
+    @Test
+    fun `quick ticks of different calendars are all kept`() = runBlocking {
+        (1L..5L).forEach { viewModel.setCalendarTicked(CalendarId(it), true) }
+        awaitState { it.selectedCalendars.size == 5 }
+        assertEquals((1L..5L).map(::CalendarId).toSet(), data.settings.load().alarmCalendars)
+    }
+
+    @Test
+    fun `home and diagnostics follow several chosen calendars`() = runBlocking {
+        val special = DeviceCalendar(CalendarId(2), "Special cases", null, "LOCAL", null)
+        val other = DeviceCalendar(CalendarId(3), "Meetings", null, "LOCAL", null)
+        calendars.result = { listOf(CALENDAR, special, other) }
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id, special.id)))
+        val state = load()
+        assertEquals("From the calendars “NextAlarm” (DAVx⁵) and “Special cases”.", state.home.footer)
+        assertEquals("2 calendars: NextAlarm, Special cases", state.diagnostics.calendar)
+    }
+
+    @Test
+    fun `diagnostics say when one of several chosen calendars is gone`() = runBlocking {
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id, CalendarId(9))))
+        val state = load()
+        assertEquals("From the calendar “NextAlarm” (DAVx⁵).", state.home.footer)
+        assertEquals("NextAlarm · DAVx⁵. 1 no longer on this phone", state.diagnostics.calendar)
     }
 
     @Test
@@ -396,6 +450,64 @@ class AppViewModelTest {
         awaitState { it.alarmSettings.soundRejection == null }
     }
 
+    @Test
+    fun `a phone sound is copied like a file, and the old copy is deleted only after the settings are saved`() = runBlocking {
+        val old = SoundRef.File("old")
+        val oxygen = SoundRef.File.forCopy("0".repeat(36), "Oxygen")
+        data.settings.save(Settings.DEFAULT.copy(sound = old))
+        engine.setupCompleted()
+        val runs = effects.started.size
+        sounds.result = SoundImportResult.Imported(oxygen)
+        viewModel.pickPhoneSound(PhoneSoundPick.Sound(PHONE_SOUND))
+        awaitState { it.alarmSettings.soundName == "Oxygen" }
+        assertEquals(oxygen, data.settings.load().sound)
+        assertEquals(listOf(Uri.parse(PHONE_SOUND)), sounds.importedPhoneSounds)
+        assertTrue(sounds.imported.isEmpty())
+        assertEquals(listOf<SoundRef>(old), sounds.deleted)
+        assertEquals(oxygen, sounds.storedAtDelete.single())
+        assertEquals(runs + 1, effects.started.size)
+    }
+
+    @Test
+    fun `a rejected phone sound changes nothing and says why with the same words as a file`() = runBlocking {
+        val old = SoundRef.File("old")
+        data.settings.save(Settings.DEFAULT.copy(sound = old))
+        sounds.result = SoundImportResult.Rejected(SoundRejection.UNREADABLE, "Oxygen")
+        viewModel.pickPhoneSound(PhoneSoundPick.Sound(PHONE_SOUND))
+        val rejected = awaitState { it.alarmSettings.soundRejection != null }
+        assertEquals(soundRejectionText(SoundRejection.UNREADABLE, "Oxygen"), rejected.alarmSettings.soundRejection)
+        assertEquals(old, data.settings.load().sound)
+        assertTrue(sounds.deleted.isEmpty())
+    }
+
+    @Test
+    fun `the phone picker's default entry goes back to the default, and deletes the copy after saving`() = runBlocking {
+        val old = SoundRef.File("old")
+        data.settings.save(Settings.DEFAULT.copy(sound = old))
+        assertTrue(load().alarmSettings.usesFile)
+        viewModel.pickPhoneSound(PhoneSoundPick.PhoneDefault)
+        awaitState { !it.alarmSettings.usesFile }
+        assertEquals(SoundRef.SystemDefault, data.settings.load().sound)
+        assertEquals(listOf<SoundRef>(old), sounds.deleted)
+        assertEquals(SoundRef.SystemDefault, sounds.storedAtDelete.single())
+        assertTrue(sounds.importedPhoneSounds.isEmpty())
+    }
+
+    @Test
+    fun `leaving the phone picker changes nothing, not even a rejection`() = runBlocking {
+        val old = SoundRef.File("old")
+        data.settings.save(Settings.DEFAULT.copy(sound = old))
+        sounds.result = SoundImportResult.Rejected(SoundRejection.UNREADABLE, "a.mp3")
+        viewModel.importSound(picked)
+        awaitState { it.alarmSettings.soundRejection != null }
+        viewModel.pickPhoneSound(PhoneSoundPick.Cancelled)
+        val after = load()
+        assertNotNull(after.alarmSettings.soundRejection)
+        assertEquals(old, data.settings.load().sound)
+        assertTrue(sounds.importedPhoneSounds.isEmpty())
+        assertTrue(sounds.deleted.isEmpty())
+    }
+
     /** Detection waits until the typing has paused, on a clock that only moves when the test says so. */
     private fun detectNews(address: String) {
         viewModel.setNewsAddress(address)
@@ -453,6 +565,88 @@ class AppViewModelTest {
     }
 
     @Test
+    fun `the preview plays the stored sound at full gain, and stops at a second tap`() = runBlocking {
+        val file = SoundRef.File("sound-1-morning.mp3")
+        data.settings.save(Settings.DEFAULT.copy(sound = file, volumeRampSeconds = 60, maxVolume = 0.3f))
+        viewModel.toggleSoundPreview()
+        val playing = awaitState { it.alarmSettings.previewing && preview.sound.playing != null }
+        assertEquals(file, preview.sound.playing)
+        assertEquals(1f, preview.sound.gain)
+        assertEquals(soundPreviewLine(SoundPreviewStatus.PLAYING), playing.alarmSettings.previewLine)
+        viewModel.toggleSoundPreview()
+        val stopped = awaitState { !it.alarmSettings.previewing }
+        assertNull(stopped.alarmSettings.previewLine)
+        assertNull(preview.sound.playing)
+    }
+
+    @Test
+    fun `the preview keeps its state through a refresh`() {
+        viewModel.toggleSoundPreview()
+        awaitState { preview.sound.playing != null }
+        assertTrue(load().alarmSettings.previewing)
+    }
+
+    @Test
+    fun `a preview that ends on its own shows that it ended`() {
+        viewModel.toggleSoundPreview()
+        awaitState { preview.sound.playing != null }
+        preview.calls.change(true)
+        awaitState { !it.alarmSettings.previewing }
+        assertNull(preview.sound.playing)
+    }
+
+    @Test
+    fun `a preview that can't start says why`() {
+        preview.calls.isActive = true
+        viewModel.toggleSoundPreview()
+        val inCall = awaitState { it.alarmSettings.previewLine == soundPreviewLine(SoundPreviewStatus.IN_CALL) }
+        assertFalse(inCall.alarmSettings.previewing)
+        preview.calls.isActive = false
+        alarmRinging = true
+        viewModel.toggleSoundPreview()
+        awaitState { it.alarmSettings.previewLine == soundPreviewLine(SoundPreviewStatus.ALARM_RINGING) }
+        assertEquals(0, preview.sound.plays)
+        viewModel.stopSoundPreview()
+        awaitState { it.alarmSettings.previewLine == null }
+    }
+
+    @Test
+    fun `a preview stopped before its sound is read never plays`() {
+        val gate = kotlinx.coroutines.CompletableDeferred<Settings>()
+        settings.gate = gate
+        viewModel.toggleSoundPreview()
+        assertTrue(viewModel.state.value.alarmSettings.previewing)
+        viewModel.stopSoundPreview()
+        assertFalse(viewModel.state.value.alarmSettings.previewing)
+        gate.complete(Settings.DEFAULT)
+        settle()
+        assertEquals(0, preview.sound.plays)
+        assertFalse(viewModel.state.value.alarmSettings.previewing)
+    }
+
+    @Test
+    fun `the end of an earlier preview doesn't end the next one`() {
+        viewModel.toggleSoundPreview()
+        awaitState { preview.sound.plays == 1 }
+        // Stopped from outside, as an alarm does, and played again before the end is told.
+        viewModel.stopSoundPreview()
+        viewModel.toggleSoundPreview()
+        awaitState { preview.sound.plays == 2 && it.alarmSettings.previewing }
+        preview.preview.stop()
+        awaitState { !it.alarmSettings.previewing }
+    }
+
+    @Test
+    fun `choosing another sound stops the preview`() = runBlocking {
+        data.settings.save(Settings.DEFAULT.copy(sound = SoundRef.File("old")))
+        viewModel.toggleSoundPreview()
+        awaitState { preview.sound.playing != null }
+        viewModel.useDefaultSound()
+        awaitState { !it.alarmSettings.previewing && !it.alarmSettings.usesFile }
+        assertNull(preview.sound.playing)
+    }
+
+    @Test
     fun `a test plays, and stops at stop`() {
         viewModel.setNewsAddress(FEED_ADDRESS)
         viewModel.toggleNewsTest()
@@ -482,7 +676,7 @@ class AppViewModelTest {
         val at = NOW.minus(Duration.ofDays(1))
         val done = data.alarms.create(AlarmKey.forEvent(1, at), at, Settings.DEFAULT.snapshotFor("Gym"))
         data.alarms.update(done.copy(state = AlarmState.Done))
-        data.settings.save(Settings.DEFAULT.copy(alarmCalendar = CALENDAR.id))
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id)))
         val run = PlanningRun(NOW, Duration.ofMillis(400), 4, null)
         data.planner.save(PlannerRecord(PlannerState.Planned, 1, lastRun = run))
         fullScreen = false
@@ -562,7 +756,7 @@ class AppViewModelTest {
         viewModel.ringTestAlarm()
         awaitCondition { data.alarms.all().isNotEmpty() }
         engine.setupCompleted()
-        data.settings.save(Settings.DEFAULT.copy(alarmCalendar = CALENDAR.id))
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id)))
         engine.runPlanning(data.planner.load().generation)
         assertEquals(PlannerState.Planned, data.planner.load().state)
         assertEquals(AlarmState.Scheduled, data.alarms.all().single().state)
@@ -615,11 +809,17 @@ private class FakeAudio : PhoneAudio {
 private class FakeSounds(private val settings: SettingsRepository) : SoundFiles {
     var result: SoundImportResult = SoundImportResult.Rejected(SoundRejection.UNREADABLE, "none")
     val imported = mutableListOf<Uri>()
+    val importedPhoneSounds = mutableListOf<Uri>()
     val deleted = mutableListOf<SoundRef>()
     val storedAtDelete = mutableListOf<SoundRef>()
 
     override suspend fun import(uri: Uri): SoundImportResult {
         imported += uri
+        return result
+    }
+
+    override suspend fun importPhoneSound(uri: Uri): SoundImportResult {
+        importedPhoneSounds += uri
         return result
     }
 
@@ -745,7 +945,9 @@ class AppPlannerEffectsTest {
         val data = PlanningModule.dataComponents(context)
         val engine = PlanningModule.plannerEngine(context, data, PlanningModule.planningWork(context), AlarmEngine(data.alarms, data.scheduler(de.drehtuer.nextalarm.planning.AppAlarmIntents(context)), NoAlarmEffects, { NOW }, OpenLock))
         val alarmEngine = AlarmEngine(data.alarms, FakeScheduler(), NoAlarmEffects, { NOW }, OpenLock)
-        val ports = PlanningModule.appPorts(context, data, engine, alarmEngine)
+        val preview = PreviewParts().preview
+        val ports = PlanningModule.appPorts(context, data, engine, alarmEngine, preview)
+        assertEquals(preview, ports.preview)
         assertEquals(alarmEngine, ports.alarmEngine)
         assertEquals(data.sounds, ports.phone.sounds)
         assertEquals(data.feeds, ports.news.feeds)

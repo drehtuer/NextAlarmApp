@@ -35,7 +35,7 @@ class ModelTest {
     @Test
     fun `the default settings change nothing and add nothing`() {
         val defaults = Settings.DEFAULT
-        assertNull(defaults.alarmCalendar)
+        assertEquals(emptySet(), defaults.alarmCalendars)
         assertEquals(SoundRef.SystemDefault, defaults.sound)
         assertFalse(defaults.vibrate)
         assertEquals(0, defaults.volumeRampSeconds)
@@ -81,9 +81,34 @@ class ModelTest {
     }
 
     @Test
+    fun `ticking adds a calendar to those chosen, and leaves the rest of the settings alone`() {
+        val settings = settings(speakReason = false).withAlarmCalendar(CalendarId(2), ticked = true)
+        assertEquals(setOf(CalendarId(1), CalendarId(2)), settings.alarmCalendars)
+        assertFalse(settings.speakReason)
+    }
+
+    @Test
+    fun `unticking removes only that calendar`() {
+        val both = settings().copy(alarmCalendars = setOf(CalendarId(1), CalendarId(2)))
+        assertEquals(setOf(CalendarId(2)), both.withAlarmCalendar(CalendarId(1), ticked = false).alarmCalendars)
+    }
+
+    @Test
+    fun `ticking or unticking twice changes nothing`() {
+        val one = settings()
+        assertEquals(one, one.withAlarmCalendar(CalendarId(1), ticked = true))
+        assertEquals(one, one.withAlarmCalendar(CalendarId(2), ticked = false))
+    }
+
+    @Test
+    fun `unticking the last calendar leaves none chosen`() {
+        assertEquals(emptySet(), settings().withAlarmCalendar(CalendarId(1), ticked = false).alarmCalendars)
+    }
+
+    @Test
     fun `snapshot copies every setting`() {
         val settings = Settings(
-            alarmCalendar = CalendarId(7),
+            alarmCalendars = setOf(CalendarId(7)),
             sound = SoundRef.File("a.mp3"),
             vibrate = false,
             volumeRampSeconds = 12,

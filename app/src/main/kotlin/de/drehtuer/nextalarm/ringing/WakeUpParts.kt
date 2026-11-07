@@ -148,10 +148,12 @@ class MediaPlayerPodcastOutput(
 ) : PodcastOutput {
     private var player: MediaPlayer? = null
     private var playing = false
+    private var onEnded: () -> Unit = {}
 
     override fun play(url: String, onStarted: () -> Unit, onEnded: () -> Unit) {
         val candidate = synchronized(this) {
             release()
+            this.onEnded = onEnded
             newPlayer().also { player = it }
         }
         try {
@@ -178,6 +180,31 @@ class MediaPlayerPodcastOutput(
     /** A stream may not know how long it is, for which the player gives a value of zero or less. */
     @Synchronized
     override fun duration(): Duration? = ask { it.duration }?.takeIf { it > 0 }?.let { Duration.ofMillis(it.toLong()) }
+
+    /** The player can be in its error state here, in which case its error is on its way to the listener. */
+    @Synchronized
+    override fun pause() {
+        try {
+            player?.takeIf { playing }?.pause()
+        } catch (failure: IllegalStateException) {
+            Log.w(TAG, "Could not pause the podcast", failure)
+        }
+    }
+
+    /** A stream can have gone during a long call. That counts as its end. */
+    override fun resume() {
+        val failed = synchronized(this) {
+            val current = player?.takeIf { playing }
+            try {
+                current?.start()
+                null
+            } catch (failure: IllegalStateException) {
+                Log.w(TAG, "Could not resume the podcast", failure)
+                current
+            }
+        }
+        failed?.let { ended(it, onEnded) }
+    }
 
     @Synchronized
     override fun stop() = release()

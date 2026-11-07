@@ -19,7 +19,7 @@ interface PhoneAudio {
     fun defaultSoundName(): String?
 }
 
-/** The phone's alarm stream, and the sound set for it. Only reads: the system's alarm volume is never changed. */
+/** The phone's alarm stream, and the sound set for it. It only reads: changing the stream is up to a ringing alarm. */
 class AndroidPhoneAudio(private val context: Context) : PhoneAudio {
     private val audio = context.getSystemService(AudioManager::class.java)
 

@@ -12,7 +12,7 @@ flowchart TD
     Check -- yes --> Home[2 Home: upcoming alarms]
     Onb --> Home
     Home --> Settings[3 Settings]
-    Settings --> Cal[4 Alarm calendar]
+    Settings --> Cal[4 Alarm calendars]
     Settings --> AlarmSet[5 Alarm settings]
     AlarmSet --> News[6 News source]
     Settings --> Diag[7 Diagnostics & history]
@@ -42,11 +42,11 @@ and tapping it opens home.
 
 | #  | Screen                    | Purpose                                                                                                                         | State machine link |
 |----|---------------------------|---------------------------------------------------------------------------------------------------------------------------------|--------------------|
-| 1  | Onboarding & permissions  | Explain the app: every event in the alarm calendar is an alarm, regular alarms are recurring events, alarms are deleted in the calendar app. Request calendar read, notifications, full-screen intent. Choose the alarm calendar (same as 4). | Sends `SetupCompleted` |
-| 2  | Home                      | Next alarm prominently; list of the alarms in the next 48 hours with time and event title ("06:30 Flight to Hamburg"). Empty state when the alarm calendar has no event in the window. Banner when in `FailSafe`. Read-only: alarms are changed in the calendar app. | Shows planner state |
+| 1  | Onboarding & permissions  | Explain the app: every timed event in the alarm calendars is an alarm, regular alarms are recurring events, alarms are deleted in the calendar app. Request calendar read, notifications, full-screen intent. Choose the alarm calendars (same as 4), at least one. | Sends `SetupCompleted` |
+| 2  | Home                      | Next alarm prominently; list of the alarms in the next 48 hours with time and event title ("06:30 Flight to Hamburg"). Empty state when the alarm calendars have no event in the window. Banner when in `FailSafe`. Read-only: alarms are changed in the calendar app. | Shows planner state |
 | 3  | Settings                  | Entry point to all configuration. Always ends with an About section: the release version and a link to the source code on GitHub. | — |
-| 4  | Alarm calendar            | List of device calendars; choose exactly one as the alarm calendar.                                                             | Change sends `ReplanRequested` |
-| 5  | Alarm settings            | Applies to every alarm: sound (the phone's default alarm sound, or an audio file chosen with the Android file picker: MP3, WAV, OGG, M4A; unselecting a file deletes the app's copy), vibration, volume ramp duration, maximum volume (optional: without one, the system's alarm volume is left as it is), ring timeout (default 3 min), snooze length (default 10 min), speak title, news source. Shows a hint when the phone's alarm volume is very low. | Change sends `ReplanRequested` |
+| 4  | Alarm calendars           | List of device calendars with checkboxes; tick any number as alarm calendars, visible or hidden in a calendar app. Warns that every timed event in a ticked calendar rings. A chosen calendar that is gone is listed, so that it can be unticked. | Change sends `ReplanRequested` |
+| 5  | Alarm settings            | Applies to every alarm: sound (the phone's default alarm sound, or one of the phone's own alarm sounds chosen with Android's sound picker, or an audio file chosen with the Android file picker: MP3, WAV, OGG, M4A; unselecting a sound deletes the app's copy; a play button plays it as an alarm would, for up to 10 seconds), vibration, volume ramp duration, maximum volume (optional: without one, the system's alarm volume is left as it is), ring timeout (default 3 min), snooze length (default 10 min), speak title, news source. Shows a hint when the phone's alarm volume is very low. | Change sends `ReplanRequested` |
 | 6  | News source               | RSS feed or podcast feed URL, stored once it has been found to work; maximum duration (default 15 min); test playback; turn off news. | Change sends `ReplanRequested` |
 | 7  | Diagnostics & history     | Planner state, last planning run and error, list of past alarms with final state (`Done`, `Missed`, ...), test alarm, export log. | read-only; test alarm creates an instance |
 | 8  | Alarm screen              | Full-screen, over lock screen: time and the titles of all ringing alarms. Buttons: Snooze, Dismiss (both act on all ringing alarms; no challenge). | Sends `Snooze`, `Dismiss` |

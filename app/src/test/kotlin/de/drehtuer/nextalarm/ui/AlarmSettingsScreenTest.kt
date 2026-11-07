@@ -16,11 +16,16 @@ import androidx.compose.ui.test.performScrollTo
 import de.drehtuer.nextalarm.domain.AlarmVolume
 import de.drehtuer.nextalarm.domain.NewsSource
 import de.drehtuer.nextalarm.domain.NewsType
+import de.drehtuer.nextalarm.domain.PhoneSoundPick
 import de.drehtuer.nextalarm.domain.Settings
+import de.drehtuer.nextalarm.domain.SoundPreviewStatus
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.SoundRejection
 import de.drehtuer.nextalarm.domain.buildAlarmSettings
 import de.drehtuer.nextalarm.domain.soundRejectionText
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import de.drehtuer.nextalarm.ui.screens.AlarmSettingsScreen
 import de.drehtuer.nextalarm.ui.theme.NextAlarmTheme
 import kotlin.test.assertEquals
@@ -38,8 +43,15 @@ class RecordingActions : AppActions {
     /** Kept apart, as these come from moving between the screens, not from what the user asks for. */
     val newsLifecycle = mutableListOf<String>()
 
+    /** The same for the preview of the sound on screen 5. */
+    val previewLifecycle = mutableListOf<String>()
+
     override fun importSound(uri: Uri) {
         calls += "import:$uri"
+    }
+
+    override fun pickPhoneSound(pick: PhoneSoundPick) {
+        calls += "phone:$pick"
     }
 
     override fun useDefaultSound() {
@@ -68,6 +80,14 @@ class RecordingActions : AppActions {
 
     override fun setSpeakTitle(speak: Boolean) {
         calls += "speak:$speak"
+    }
+
+    override fun toggleSoundPreview() {
+        calls += "preview"
+    }
+
+    override fun stopSoundPreview() {
+        previewLifecycle += "stopPreview"
     }
 
     override fun openNews() {
@@ -124,13 +144,15 @@ class AlarmSettingsScreenTest {
         settings: Settings = Settings.DEFAULT,
         volume: AlarmVolume? = AlarmVolume(5, 7),
         rejection: String? = null,
+        preview: SoundPreviewStatus = SoundPreviewStatus.IDLE,
     ) {
         rule.setContent {
             NextAlarmTheme(dark = false) {
                 AlarmSettingsScreen(
-                    model = buildAlarmSettings(settings, "Bright Morning", volume, rejection),
+                    model = buildAlarmSettings(settings, "Bright Morning", volume, rejection, preview),
                     actions = actions,
                     onBack = { other += "back" },
+                    onPhoneSounds = { other += "phone sounds" },
                     onChooseFile = { other += "file" },
                     onNews = { other += "news" },
                 )
@@ -150,12 +172,13 @@ class AlarmSettingsScreenTest {
             "Sound",
             "Alarm sound",
             "Phone default (Bright Morning)",
+            "Phone sounds",
             "Choose file",
             "Volume ramp",
             "Rises from silent",
             "None",
             "Maximum volume",
-            "Not set: uses the phone's alarm volume",
+            "Sets the phone's alarm volume while ringing. Not set: leaves it as it is",
             "Not set",
             "Vibration",
             "Ringing",
@@ -181,16 +204,16 @@ class AlarmSettingsScreenTest {
     }
 
     @Test
-    fun `a low volume shows the banner, without suggesting the maximum volume`() {
+    fun `a low volume shows the banner, which suggests the maximum volume`() {
         show(volume = AlarmVolume(1, 7))
         visible("Your phone's alarm volume is low (1 of 7).")
-        visible("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings.")
+        visible("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings, or set a maximum volume below.")
     }
 
     @Test
     fun `a normal volume shows no banner`() {
         show()
-        rule.onNodeWithText("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings.").assertDoesNotExist()
+        rule.onNodeWithText("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings, or set a maximum volume below.").assertDoesNotExist()
     }
 
     @Test
@@ -212,6 +235,24 @@ class AlarmSettingsScreenTest {
         show()
         tap("Choose file")
         assertEquals(listOf("file"), other)
+    }
+
+    @Test
+    fun `Phone sounds opens the phone's own picker`() {
+        show()
+        tap("Phone sounds")
+        assertEquals(listOf("phone sounds"), other)
+        assertTrue(actions.calls.isEmpty())
+    }
+
+    @Test
+    fun `a phone sound shows its name and can be given up like a file`() {
+        show(Settings.DEFAULT.copy(sound = SoundRef.File.forCopy("0".repeat(36), "Oxygen")))
+        visible("Oxygen")
+        visible("Phone sounds")
+        visible("Choose file")
+        tap("Use the phone's default sound")
+        assertEquals(listOf("default"), actions.calls)
     }
 
     @Test
@@ -281,5 +322,65 @@ class AlarmSettingsScreenTest {
         show(volume = AlarmVolume(1, 7), rejection = "Rejected.")
         visible("News")
         visible("Rejected.")
+    }
+
+    @Test
+    fun `the sound can be played from its row, which says nothing until it plays`() {
+        show()
+        rule.onNodeWithContentDescription("Play the alarm sound").assertIsDisplayed().performClick()
+        assertEquals(listOf("preview"), actions.calls)
+        rule.onNodeWithContentDescription("Stop the alarm sound").assertDoesNotExist()
+        rule.onNodeWithText("Stops after 10 s.", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `while the sound plays the button stops it, and a line says how it plays`() {
+        show(preview = SoundPreviewStatus.PLAYING)
+        visible("Playing at the phone's alarm volume, without the ramp or the maximum volume. Stops after 10 s.")
+        rule.onNodeWithContentDescription("Play the alarm sound").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Stop the alarm sound").assertIsDisplayed().performClick()
+        assertEquals(listOf("preview"), actions.calls)
+    }
+
+    @Test
+    fun `a sound that can't play says why, and can be tried again`() {
+        show(preview = SoundPreviewStatus.IN_CALL)
+        visible("The sound can't play during a call.")
+        rule.onNodeWithContentDescription("Play the alarm sound").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the play button leaves a long name its room, and sits beside it`() {
+        val long = "A very long name of a sound file the user picked one day.mp3"
+        show(Settings.DEFAULT.copy(sound = SoundRef.File.forCopy("0".repeat(36), long)))
+        val name = rule.onNodeWithText(long).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val button = rule.onNodeWithContentDescription("Play the alarm sound").fetchSemanticsNode().boundsInRoot
+        assertTrue(name.right <= button.left, "$name overlaps $button")
+        assertTrue(button.top < name.bottom && name.top < button.bottom, "$button is not beside $name")
+        visible("Phone sounds")
+        visible("Choose file")
+    }
+
+    @Test
+    fun `the button follows the sound as it starts and stops`() {
+        var status by mutableStateOf(SoundPreviewStatus.IDLE)
+        rule.setContent {
+            NextAlarmTheme(dark = false) {
+                AlarmSettingsScreen(
+                    model = buildAlarmSettings(Settings.DEFAULT, null, null, null, status),
+                    actions = actions,
+                    onBack = {},
+                    onPhoneSounds = {},
+                    onChooseFile = {},
+                    onNews = {},
+                )
+            }
+        }
+        rule.onNodeWithContentDescription("Play the alarm sound").assertIsDisplayed()
+        status = SoundPreviewStatus.PLAYING
+        rule.onNodeWithContentDescription("Stop the alarm sound").assertIsDisplayed().performClick()
+        status = SoundPreviewStatus.IDLE
+        rule.onNodeWithContentDescription("Play the alarm sound").assertIsDisplayed().performClick()
+        assertEquals(listOf("preview", "preview"), actions.calls)
     }
 }

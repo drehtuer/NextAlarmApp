@@ -4,15 +4,20 @@ import de.drehtuer.nextalarm.domain.AlarmAction
 import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.AlarmRinger
+import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
 import de.drehtuer.nextalarm.planning.AppNotifications
 
-/** What the alarm state machine asks of Android. See the entry actions in docs/state_machines.md. */
+/**
+ * What the alarm state machine asks of Android. See the entry actions in docs/state_machines.md. An alarm that starts to
+ * ring stops the [preview] of the sound on screen 5, after it has joined: from then on the preview can't start again.
+ */
 class AppAlarmEffects(
     private val ringer: AlarmRinger,
     private val notifications: AlarmNotifications,
     private val nextAlarm: AppNotifications,
     private val wakeUp: WakeUpAutomation,
+    private val preview: SoundPreview,
 ) : AlarmEffects {
     override fun perform(instance: AlarmInstance, action: AlarmAction) {
         when (action) {
@@ -20,6 +25,7 @@ class AppAlarmEffects(
                 // A snoozed alarm that rings again is no longer snoozed.
                 notifications.cancelSnoozed(instance.id)
                 ringer.join(instance)
+                preview.stop()
             }
             AlarmAction.LeaveAlarmService -> leaveRinging(instance.id)
             AlarmAction.LeaveAllServices -> {

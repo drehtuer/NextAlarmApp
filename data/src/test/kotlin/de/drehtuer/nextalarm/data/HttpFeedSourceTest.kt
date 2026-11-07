@@ -116,6 +116,7 @@ class HttpFeedDownloaderTest {
         assertContentEquals(byteArrayOf(7), assertIs<FeedDownload.Bytes>(result).bytes)
         assertEquals(6, opened.size)
         assertTrue(opened.all { it.disconnected })
+        assertEquals(answers.keys.toList(), assertIs<FeedDownload.Bytes>(result).addresses)
     }
 
     private class FakeAnswer(val code: Int, val location: String?)
@@ -195,7 +196,7 @@ class HttpFeedSourceTest {
 
     @Test
     fun `a feed is downloaded and parsed`(): Unit = runBlocking {
-        val source = HttpFeedSource(FeedDownloader { _, _ -> FeedDownload.Bytes(rss.toByteArray()) }, Dispatchers.Unconfined)
+        val source = HttpFeedSource(FeedDownloader { _, _ -> FeedDownload.Bytes(rss.toByteArray(), emptyList()) }, Dispatchers.Unconfined)
         assertEquals("A", assertIs<FeedResult.Found>(source.fetchFeed("https://a.example/")).feed.name)
     }
 
@@ -204,6 +205,13 @@ class HttpFeedSourceTest {
         val failure = FeedDownload.Failed(FeedFailure.Unreachable)
         val source = HttpFeedSource(FeedDownloader { _, _ -> failure }, Dispatchers.Unconfined)
         assertEquals(FeedResult.Failed(FeedFailure.Unreachable), source.fetchFeed("https://a.example/"))
+    }
+
+    @Test
+    fun `an RSS feed that was redirected over plain http is refused where the feed is fetched`(): Unit = runBlocking {
+        val hops = listOf("https://a.example/", "http://b.example/")
+        val source = HttpFeedSource(FeedDownloader { _, _ -> FeedDownload.Bytes(rss.toByteArray(), hops) }, Dispatchers.Unconfined)
+        assertEquals(FeedResult.Failed(FeedFailure.InsecureFeed), source.fetchFeed("https://a.example/"))
     }
 
     @Test

@@ -44,7 +44,7 @@ transitions that change something.
 | `SetupCompleted`             | Onboarding finished (or re-run) with the required permissions |
 | `ReplanRequested`            | Any [re-planning trigger](architecture.md#re-planning-triggers) |
 | `PlanSucceeded(generation)`  | Planning job finished                                         |
-| `PlanFailed(generation)`     | Planning job threw (e.g. calendar permission revoked, alarm calendar gone, provider error) |
+| `PlanFailed(generation)`     | Planning job threw (e.g. calendar permission revoked, an alarm calendar gone, none chosen, provider error) |
 
 `generation` identifies the planning run. A result whose `generation` differs from the current one is stale.
 
@@ -116,7 +116,7 @@ Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the cur
 | `Remove`             | Re-planning no longer contains this entry                                           |
 | `AnnouncementDone`   | TTS finished (or failed)                                                            |
 | `NewsDone`           | News finished (or failed, e.g. no network)                                          |
-| `StopWakeUp`         | User stops the wake-up automation (sent to every alarm in it), or the recovery sweep ends an interrupted one |
+| `StopWakeUp`         | User stops the wake-up automation or starts other audio (sent to every alarm in it), or the recovery sweep ends an interrupted one |
 
 Guards:
 

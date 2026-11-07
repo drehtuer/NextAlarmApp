@@ -77,7 +77,7 @@ private fun seconds(duration: Duration): String =
 
 private fun failureReason(failure: PlanningFailure): String = when (failure) {
     PlanningFailure.NO_CALENDAR -> "no alarm calendar is chosen"
-    PlanningFailure.CALENDAR_GONE -> "the alarm calendar is no longer on this phone"
+    PlanningFailure.CALENDAR_GONE -> "an alarm calendar is no longer on this phone"
     PlanningFailure.NO_PERMISSION -> "calendar permission was removed"
     PlanningFailure.READ_FAILED -> "the calendar couldn't be read"
     PlanningFailure.APPLY_FAILED -> "the alarms couldn't be updated"
@@ -85,7 +85,7 @@ private fun failureReason(failure: PlanningFailure): String = when (failure) {
 
 private fun failureFix(failure: PlanningFailure): String = when (failure) {
     PlanningFailure.NO_CALENDAR -> "Choose an alarm calendar in the settings to fix it."
-    PlanningFailure.CALENDAR_GONE -> "Choose another alarm calendar in the settings to fix it."
+    PlanningFailure.CALENDAR_GONE -> "Untick it under $ALARM_CALENDARS_TITLE in the settings to fix it."
     PlanningFailure.NO_PERMISSION -> "Allow calendar access again to fix it."
     PlanningFailure.READ_FAILED ->
         "NextAlarm keeps trying. If this lasts, check that the calendar is still on this phone."
@@ -144,11 +144,19 @@ fun diagnosticsSummary(record: PlannerRecord, zone: ZoneId): String {
     }
 }
 
-/** A chosen calendar that cannot be found is not the same as none chosen: the permission may be gone. */
-fun calendarFact(selected: CalendarId?, calendar: DeviceCalendar?, lastFailure: PlanningFailure? = null): String = when {
-    selected == null || calendar != null -> calendarSummary(calendar)
-    lastFailure == PlanningFailure.CALENDAR_GONE -> "No longer on this phone. Choose another"
-    else -> "Can't be read right now"
+/**
+ * What is known about the [selected] calendars, of which [found] are on this phone. A chosen calendar that cannot be
+ * found is not the same as none chosen: the permission may be gone. If others are found, the list can be read, so it
+ * really is gone.
+ */
+fun calendarFact(selected: Set<CalendarId>, found: List<DeviceCalendar>, lastFailure: PlanningFailure? = null): String {
+    val missing = selected.size - found.size
+    return when {
+        missing == 0 -> calendarSummary(found)
+        found.isNotEmpty() -> "${calendarSummary(found)}. $missing no longer on this phone"
+        lastFailure == PlanningFailure.CALENDAR_GONE -> "No longer on this phone. Untick and choose again"
+        else -> "Can't be read right now"
+    }
 }
 
 private const val NOTIFICATIONS_ALLOWED = "On"

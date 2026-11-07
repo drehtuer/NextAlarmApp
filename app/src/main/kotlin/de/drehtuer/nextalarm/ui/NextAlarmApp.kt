@@ -28,7 +28,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.drehtuer.nextalarm.BuildConfig
 import de.drehtuer.nextalarm.data.SUPPORTED_SOUND_MIME_TYPES
 import de.drehtuer.nextalarm.domain.CalendarId
-import de.drehtuer.nextalarm.domain.calendarSummary
+import de.drehtuer.nextalarm.domain.READ_CALENDARS_DESCRIPTION
 import de.drehtuer.nextalarm.ui.screens.AlarmSettingsScreen
 import de.drehtuer.nextalarm.ui.screens.CalendarScreen
 import de.drehtuer.nextalarm.ui.screens.DiagnosticsScreen
@@ -56,7 +56,7 @@ enum class Route { HOME, SETTINGS, CALENDAR, ALARM_SETTINGS, NEWS, DIAGNOSTICS, 
 fun NextAlarmApp(
     state: AppState,
     resumeCount: Int,
-    onSelectCalendar: (CalendarId) -> Unit,
+    onToggleCalendar: (CalendarId, Boolean) -> Unit,
     onCompleteSetup: () -> Unit,
     actions: AppActions,
     diagnosticsRequests: Int = 0,
@@ -73,9 +73,10 @@ fun NextAlarmApp(
         if (diagnosticsRequests > 0) stack = listOf(Route.HOME.name, Route.DIAGNOSTICS.name)
     }
 
-    // Whichever way screen 6 is left: back, the top bar, or a notification that opens another screen.
+    // Whichever way screens 5 and 6 are left: back, the top bar, or a notification that opens another screen.
     LaunchedEffect(route) {
         if (route != Route.NEWS) actions.closeNews()
+        if (route != Route.ALARM_SETTINGS) actions.stopSoundPreview()
     }
 
     when {
@@ -87,8 +88,8 @@ fun NextAlarmApp(
                 onStepChange = { step = it },
                 permissions = permissionCards(resumeCount, canUseFullScreen),
                 calendars = state.calendars,
-                selected = state.selectedCalendar,
-                onSelect = onSelectCalendar,
+                selected = state.selectedCalendars,
+                onToggle = onToggleCalendar,
                 onDone = {
                     onCompleteSetup()
                     step = 0
@@ -97,7 +98,7 @@ fun NextAlarmApp(
             )
         }
         route == Route.SETTINGS -> SettingsScreen(
-            calendarSummary = calendarSummary(state.calendars.find { it.id == state.selectedCalendar }),
+            calendarSummary = state.diagnostics.calendar,
             diagnosticsSummary = state.diagnosticsSummary,
             version = VERSION_TEXT_FORMAT.format(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
             targets = SettingsTargets(
@@ -113,17 +114,20 @@ fun NextAlarmApp(
             val soundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                 if (uri != null) actions.importSound(uri)
             }
+            val phoneSoundPicker = rememberLauncherForActivityResult(PickPhoneSound(), actions::pickPhoneSound)
+            StopWhenHidden(actions, AppActions::stopSoundPreview)
             AlarmSettingsScreen(
                 model = state.alarmSettings,
                 actions = actions,
                 onBack = { stack = stack.dropLast(1) },
+                onPhoneSounds = { phoneSoundPicker.launch(!state.alarmSettings.usesFile) },
                 onChooseFile = { soundPicker.launch(SUPPORTED_SOUND_MIME_TYPES.toTypedArray()) },
                 onNews = { stack = stack + Route.NEWS.name },
             )
         }
         route == Route.NEWS -> {
             LaunchedEffect(Unit) { actions.openNews() }
-            StopNewsTestWhenHidden(actions)
+            StopWhenHidden(actions, AppActions::stopNewsTest)
             NewsScreen(model = state.news, actions = actions, onBack = { stack = stack.dropLast(1) })
         }
         route == Route.DIAGNOSTICS -> {
@@ -141,8 +145,8 @@ fun NextAlarmApp(
         }
         route == Route.CALENDAR -> CalendarScreen(
             calendars = state.calendars,
-            selected = state.selectedCalendar,
-            onSelect = onSelectCalendar,
+            selected = state.selectedCalendars,
+            onToggle = onToggleCalendar,
             onBack = { stack = stack.dropLast(1) },
         )
         else -> HomeScreen(
@@ -153,13 +157,16 @@ fun NextAlarmApp(
     }
 }
 
-/** When the screen can no longer be seen, for instance under a ringing alarm, a test of the news must not play on. */
+/**
+ * When the screen can no longer be seen, for instance under a ringing alarm, in another app or while it is rebuilt after
+ * a rotation, what it plays must not play on: the test of the news, or the alarm sound.
+ */
 @Composable
-private fun StopNewsTestWhenHidden(actions: NewsActions) {
+private fun StopWhenHidden(actions: AppActions, onHidden: (AppActions) -> Unit) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, actions) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) actions.stopNewsTest()
+            if (event == Lifecycle.Event.ON_STOP) onHidden(actions)
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
@@ -195,7 +202,7 @@ private fun permissionCards(resumeCount: Int, canUseFullScreen: (Context) -> Boo
     return listOf(
         PermissionCard(
             title = "Read your calendars",
-            description = "To see the events in your alarm calendar. Only that one calendar is read.",
+            description = READ_CALENDARS_DESCRIPTION,
             granted = context.has(Manifest.permission.READ_CALENDAR),
             deniedNote = if (calendarAsked) {
                 "Calendar access was denied, so NextAlarm can't see any alarms and nothing will ring. Allow it in " +

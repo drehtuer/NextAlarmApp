@@ -3,7 +3,11 @@ package de.drehtuer.nextalarm.ui
 import de.drehtuer.nextalarm.domain.Feed
 import de.drehtuer.nextalarm.domain.FeedEntry
 import de.drehtuer.nextalarm.domain.FeedResult
+import de.drehtuer.nextalarm.domain.AudioFocusHold
+import de.drehtuer.nextalarm.domain.CallWatch
 import de.drehtuer.nextalarm.domain.FeedSource
+import de.drehtuer.nextalarm.ringing.FakeNoFocus
+import de.drehtuer.nextalarm.ringing.NoCalls
 import de.drehtuer.nextalarm.domain.NewsTestPlayer
 import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.domain.PodcastEpisode
@@ -73,6 +77,8 @@ class FakePodcast : PodcastOutput {
 
     override fun position() = position
     override fun duration(): Duration? = null
+    override fun pause() = Unit
+    override fun resume() = Unit
 
     override fun stop() {
         stops++
@@ -107,5 +113,16 @@ class NewsParts(now: () -> Instant) {
     val podcast = FakePodcast()
     val timers = FakeNewsTimers()
     val wakeLock = FakeNewsWakeLock()
-    val ports = NewsPorts(feeds, NewsTestPlayer(speech, podcast, timers, wakeLock, now))
+    val ports = NewsPorts(
+        feeds,
+        NewsTestPlayer(
+            speech,
+            podcast,
+            timers,
+            wakeLock,
+            AudioFocusHold(FakeNoFocus) { _, _ -> },
+            CallWatch(NoCalls) { _, _ -> },
+            now,
+        ),
+    )
 }

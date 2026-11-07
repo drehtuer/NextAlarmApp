@@ -7,10 +7,19 @@ import de.drehtuer.nextalarm.domain.AlarmScheduler
 import de.drehtuer.nextalarm.domain.AlarmSnapshot
 import de.drehtuer.nextalarm.domain.AlarmSound
 import de.drehtuer.nextalarm.domain.AlarmState
+import de.drehtuer.nextalarm.domain.AlarmStream
+import de.drehtuer.nextalarm.domain.AlarmVolumeKeeper
+import de.drehtuer.nextalarm.domain.AudioFocus
+import de.drehtuer.nextalarm.domain.AudioFocusHold
+import de.drehtuer.nextalarm.domain.CallWatch
+import de.drehtuer.nextalarm.domain.PhoneCalls
+import de.drehtuer.nextalarm.domain.RingAudio
+import de.drehtuer.nextalarm.domain.SavedAlarmVolume
 import de.drehtuer.nextalarm.domain.AlarmVibration
 import de.drehtuer.nextalarm.domain.RingTimers
 import de.drehtuer.nextalarm.domain.RingWakeLock
 import de.drehtuer.nextalarm.domain.Settings
+import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.snapshotFor
 import java.time.Duration
@@ -75,9 +84,13 @@ class FakeScheduler : AlarmScheduler {
 class FakeSound : AlarmSound {
     var playing: SoundRef? = null
     var lastResort = false
+    var plays = 0
+    var gain: Float? = null
 
     override fun play(sound: SoundRef, gain: Float) {
         playing = sound
+        plays++
+        this.gain = gain
     }
 
     override fun playLastResort(gain: Float) {
@@ -90,6 +103,80 @@ class FakeSound : AlarmSound {
         playing = null
         lastResort = false
     }
+}
+
+class FakeAlarmStream(var level: Int = 3) : AlarmStream {
+    val sets = mutableListOf<Int>()
+
+    override fun current() = level
+    override fun min() = 1
+    override fun max() = 7
+
+    override fun set(level: Int) {
+        sets += level
+        this.level = level
+    }
+}
+
+class FakeSavedVolume(var level: Int? = null) : SavedAlarmVolume {
+    override fun load() = level
+
+    override fun save(level: Int) {
+        this.level = level
+    }
+
+    override fun clear() {
+        level = null
+    }
+}
+
+object NoCalls : PhoneCalls {
+    override fun active() = false
+    override fun watch(onChange: (Boolean) -> Unit): () -> Unit = {}
+}
+
+object FakeNoFocus : AudioFocus {
+    override fun request(onLostForGood: () -> Unit) = true
+    override fun abandon() = Unit
+}
+
+/** Surroundings of the sound that nobody needs to look at. */
+fun fakeRingAudio(stream: AlarmStream = FakeAlarmStream(), saved: SavedAlarmVolume = FakeSavedVolume()) = RingAudio(
+    AlarmVolumeKeeper(stream, saved) { _, _ -> },
+    AudioFocusHold(FakeNoFocus) { _, _ -> },
+    CallWatch(NoCalls) { _, _ -> },
+    { _, _ -> },
+)
+
+/** Calls that a test can start and end. */
+class SwitchableCalls(var isActive: Boolean = false) : PhoneCalls {
+    private val watching = mutableListOf<(Boolean) -> Unit>()
+
+    override fun active() = isActive
+
+    override fun watch(onChange: (Boolean) -> Unit): () -> Unit {
+        watching += onChange
+        return { watching -= onChange }
+    }
+
+    fun change(active: Boolean) {
+        isActive = active
+        watching.toList().forEach { it(active) }
+    }
+}
+
+/** The preview of screen 5, with nothing of the phone. [sound] says what it plays. */
+class PreviewParts(alarmRinging: () -> Boolean = { false }) {
+    val sound = FakeSound()
+    val calls = SwitchableCalls()
+    val preview = SoundPreview(
+        newSound = { sound },
+        focus = AudioFocusHold(FakeNoFocus) { _, _ -> },
+        calls = CallWatch(calls) { _, _ -> },
+        timers = FakeTimers(),
+        alarmRinging = alarmRinging,
+        onProblem = { _, _ -> },
+    )
 }
 
 class FakeVibration : AlarmVibration {

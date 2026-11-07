@@ -45,7 +45,7 @@ data class NewsSource(
     }
 }
 
-/** An event instance of the alarm calendar. Android types are mapped to this in `:data`. */
+/** An event instance of an alarm calendar. Android types are mapped to this in `:data`. */
 data class CalendarEvent(
     val eventId: Long,
     val instanceBegin: Instant,
@@ -55,11 +55,16 @@ data class CalendarEvent(
 )
 
 data class Settings(
-    val alarmCalendar: CalendarId?,
+    /** Every timed event in these calendars is an alarm. Empty if none is chosen. */
+    val alarmCalendars: Set<CalendarId>,
     val sound: SoundRef,
     val vibrate: Boolean,
     val volumeRampSeconds: Int,
-    /** The player's own gain, between 0 and 1. The system's alarm volume is never changed. Without a value: 1. */
+    /**
+     * What the phone's alarm stream is set to while the alarm rings, between 0 and 1 of its steps. Without a value, the
+     * stream stays as it is. A value of 0 leaves it alone as well and makes the alarm silent. No setting offers that: it
+     * is what the silent device tests use.
+     */
     val maxVolume: Float?,
     val ringTimeoutMinutes: Int = DEFAULT_RING_TIMEOUT_MINUTES,
     val snoozeMinutes: Int = DEFAULT_SNOOZE_MINUTES,
@@ -79,7 +84,7 @@ data class Settings(
 
         /** The settings before the user has changed anything. See docs/architecture.md#data-model. */
         val DEFAULT = Settings(
-            alarmCalendar = null,
+            alarmCalendars = emptySet(),
             sound = SoundRef.SystemDefault,
             vibrate = false,
             volumeRampSeconds = 0,
@@ -89,6 +94,10 @@ data class Settings(
         )
     }
 }
+
+/** These settings with [calendar] ticked or unticked. Doing it twice changes nothing. */
+fun Settings.withAlarmCalendar(calendar: CalendarId, ticked: Boolean): Settings =
+    copy(alarmCalendars = if (ticked) alarmCalendars + calendar else alarmCalendars - calendar)
 
 /** Everything an alarm needs to ring, so that ringing depends on neither the calendar nor the settings. */
 data class AlarmSnapshot(

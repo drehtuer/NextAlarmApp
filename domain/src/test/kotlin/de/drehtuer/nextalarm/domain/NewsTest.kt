@@ -108,6 +108,7 @@ class NewsWordingTest {
         assertEquals("Podcast found.", newsHelper(NewsCheck.Unplayable(PODCAST)))
         assertEquals("This address didn't return a feed.", newsHelper(NewsCheck.Failed(FeedFailure.NotAFeed)))
         assertEquals("This address didn't return a feed.", newsHelper(NewsCheck.Empty))
+        assertEquals("RSS feeds need an https address.", newsHelper(NewsCheck.Failed(FeedFailure.InsecureFeed)))
     }
 
     private fun entries(count: Int, published: Instant?) = List(count) { FeedEntry("Headline $it", null, published) }
@@ -159,6 +160,29 @@ class NewsWordingTest {
 }
 
 class NewsBannerTest {
+    private val insecure = "This RSS feed uses plain http, which NextAlarm only allows for podcasts. Use its https address."
+
+    @Test
+    fun `an RSS feed over plain http says so, and how to fix it`() {
+        val banner = newsFailureBanner(NewsDraft(ADDRESS, check = NewsCheck.Failed(FeedFailure.InsecureFeed)))
+        assertEquals("This feed can't be used.", banner?.title)
+        assertEquals("$insecure Until it works, alarms skip the news.", banner?.body)
+    }
+
+    @Test
+    fun `an RSS feed over plain http leaves another stored feed in use`() {
+        val saved = NewsSource(NewsType.RSS, "https://example.org/feed", 15)
+        val banner = newsFailureBanner(NewsDraft(ADDRESS, saved = saved, check = NewsCheck.Failed(FeedFailure.InsecureFeed)))
+        assertEquals("$insecure Until it works, alarms keep using example.org.", banner?.body)
+    }
+
+    @Test
+    fun `an RSS feed over plain http marks the field as failed`() {
+        val model = buildNews(NewsDraft(ADDRESS, check = NewsCheck.Failed(FeedFailure.InsecureFeed)), null, AT_NOW, ZONE)
+        assertTrue(model.addressFailed)
+        assertEquals("RSS feeds need an https address.", model.helper)
+    }
+
     private fun body(check: NewsCheck, saved: NewsSource? = null) =
         newsFailureBanner(NewsDraft(ADDRESS, saved = saved, check = check))?.body
 
@@ -402,6 +426,8 @@ class NewsTestPlayerTest {
 
         override fun position() = position
         override fun duration(): Duration? = null
+        override fun pause() = Unit
+        override fun resume() = Unit
 
         override fun stop() {
             stops++
@@ -434,7 +460,10 @@ class NewsTestPlayerTest {
     private val timers = FakeTimers()
     private val wakeLock = FakeWakeLock()
     private var now = AT_NOW
-    private val player = NewsTestPlayer(speech, podcast, timers, wakeLock) { now }
+    private val calls = FakeCalls()
+    private val focus = FakeFocus()
+    private val player =
+        NewsTestPlayer(speech, podcast, timers, wakeLock, AudioFocusHold(focus) { _, _ -> }, CallWatch(calls) { _, _ -> }) { now }
     private val ended = mutableListOf<Boolean>()
     private val limit = Duration.ofMinutes(15)
 
@@ -442,6 +471,37 @@ class NewsTestPlayerTest {
         player.play(NewsSource(feed.kind, ADDRESS, minutes), feed) { ended += it }
 
     private val two = RSS.copy(entries = listOf(FeedEntry("One", null, null), FeedEntry("Two", null, null)))
+
+    @Test
+    fun `a test asks for the focus and gives it up at the end`() {
+        play(RSS)
+        assertEquals(1, focus.requests)
+        player.stop()
+        assertEquals(1, focus.abandons)
+    }
+
+    @Test
+    fun `a test during a call plays nothing, and that is no failure of the feed`() {
+        calls.isActive = true
+        play(RSS)
+        assertTrue(speech.said.isEmpty())
+        assertEquals(listOf(true), ended)
+    }
+
+    @Test
+    fun `a call that starts before anything was heard ends the test, which is no failure of the feed`() {
+        play(RSS)
+        calls.change(true)
+        assertEquals(listOf(true), ended)
+    }
+
+    @Test
+    fun `other audio that starts before anything was heard ends the test, which is no failure of the feed`() {
+        play(RSS)
+        focus.onLost()
+        assertEquals(listOf(true), ended)
+        assertEquals(1, focus.abandons)
+    }
 
     private fun reachLimit() {
         now = now.plus(limit)
