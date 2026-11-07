@@ -19,9 +19,13 @@ sonar {
         // Clear-text traffic is allowed on purpose, for podcasts that still use plain http; Android can only allow it for
         // the whole app, and the app refuses it for RSS and Atom feeds itself. See the comment in the manifest and
         // docs/architecture.md#feeds.
-        property("sonar.issue.ignore.multicriteria", "cleartext")
+        property("sonar.issue.ignore.multicriteria", "cleartext,obfuscation")
         property("sonar.issue.ignore.multicriteria.cleartext.ruleKey", "xml:S5332")
         property("sonar.issue.ignore.multicriteria.cleartext.resourceKey", "app/src/main/AndroidManifest.xml")
+        // The source code is public (GPL-3.0), so obfuscating the release APK hides nothing. Shrinking with R8 is a
+        // separate decision: it changes what ships, and needs testing on the phone.
+        property("sonar.issue.ignore.multicriteria.obfuscation.ruleKey", "kotlin:S7204")
+        property("sonar.issue.ignore.multicriteria.obfuscation.resourceKey", "app/build.gradle.kts")
         // The reports are written by the task `coverageReports`, which has to run before `sonar`.
         property(
             "sonar.coverage.jacoco.xmlReportPaths",

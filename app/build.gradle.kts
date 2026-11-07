@@ -122,6 +122,7 @@ androidComponents {
     onVariants { variant ->
         val capitalised = variant.name.replaceFirstChar(Char::uppercase)
         val named = tasks.register<NamedApk>("named${capitalised}Apk") {
+            group = "build"
             description = "Copies the ${variant.name} APK under the name it is shared with."
             apkFolder.set(variant.artifacts.get(SingleArtifact.APK))
             loader.set(variant.artifacts.getBuiltArtifactsLoader())
