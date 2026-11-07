@@ -14,6 +14,9 @@ import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.domain.FallbackSound
+import de.drehtuer.nextalarm.domain.ForegroundGate
+import de.drehtuer.nextalarm.domain.GatedPodcast
+import de.drehtuer.nextalarm.domain.GatedSpeech
 import de.drehtuer.nextalarm.domain.SoundWorker
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
 import de.drehtuer.nextalarm.domain.WakeUpDirector
@@ -127,11 +130,16 @@ object AlarmModule {
 
     @Provides
     @Singleton
+    fun wakeUpGate() = ForegroundGate(HandlerRingTimers())
+
+    @Provides
+    @Singleton
     fun wakeUpForeground(
         @ApplicationContext context: Context,
         notifications: WakeUpNotifications,
         media: WakeUpMedia,
-    ) = WakeUpForeground(notifications, media) {
+        gate: ForegroundGate,
+    ) = WakeUpForeground(notifications, media, gate::open, gate::close) {
         context.startForegroundService(Intent(context, WakeUpService::class.java))
     }
 
@@ -146,12 +154,13 @@ object AlarmModule {
         @ApplicationContext context: Context,
         data: DataComponents,
         foreground: WakeUpForeground,
+        gate: ForegroundGate,
         changes: WakeUpChanges,
         scope: CoroutineScope,
         engine: Lazy<AlarmEngine>,
     ) = WakeUpDirector(
-        speech = TextToSpeechOutput(context),
-        podcast = MediaPlayerPodcastOutput(context),
+        speech = GatedSpeech(TextToSpeechOutput(context), gate),
+        podcast = GatedPodcast(MediaPlayerPodcastOutput(context), gate),
         feeds = ScopedNewsFetcher(scope, data.feeds),
         timers = HandlerRingTimers(),
         wakeLock = AndroidRingWakeLock(context, "NextAlarm:wakeup"),

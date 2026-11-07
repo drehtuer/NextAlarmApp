@@ -342,7 +342,8 @@ sequenceDiagram
   the exact alarm permission, so a phone with that setting on can silence an alarm whose service runs as it should.
   `adb dumpsys audio` and `logcat` show an entry starting with `AudioHardening` for sound that was silenced.
 
-The wake-up automation is media, without the waiver: see [below](#wake-up-automation-and-the-lock-screen).
+The wake-up automation is media, without the waiver: see [below](#wake-up-automation-and-the-lock-screen). Test playback on
+the news screen only runs while the screen can be seen, so a visible activity covers it.
 
 ### Wake-up automation and the lock screen
 
@@ -371,9 +372,14 @@ unlocked. This has consequences, because the phone is usually still locked at th
   `TTS_SERVICE` intent in `queries`, as Android hides the engines from the app otherwise.
 
 `WakeUpDirector` (`domain`) runs the automation; `TextToSpeech`, `MediaPlayer` and the download sit behind thin
-interfaces. `WakeUpService` only keeps the process alive and holds the media notification, and if Android refuses it
-the automation runs on with the notification posted as usual, like `AlarmService`. A partial wake lock is held while
-it runs, as nothing else plays between two utterances.
+interfaces. `WakeUpService` keeps the process alive, holds the media notification, and is what lets its audio be heard, as
+Android 17 silences background audio without it (see
+[Background audio on Android 17](#background-audio-on-android-17)). Audio is `USAGE_MEDIA`, so unlike the alarm sound it has
+no waiver: the service needs while-in-use capability, which it gets if the automation started from the alarm screen or from
+a tap on a notification, and may not get otherwise. `ForegroundGate` holds speech and podcasts back until the service is in
+the foreground, for at most 3 seconds. If Android refuses the service, the notification is posted as usual and the audio
+goes ahead, but it is likely not heard. A partial wake lock is held while it runs, as nothing else plays between two
+utterances.
 
 - **Several alarms share one automation, and only one thing plays at a time.** All titles are spoken one after the
   other, and each alarm gets its `AnnouncementDone`. The news then plays once, also for an alarm that was still

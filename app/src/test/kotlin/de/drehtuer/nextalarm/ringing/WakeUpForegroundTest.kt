@@ -252,12 +252,46 @@ class WakeUpForegroundTest {
     private val media = WakeUpMedia(context, newSession = { MediaSession(context, "test").also { sessions += it } }) {}
     private var starts = 0
     private var refuseStart = false
-    private val foreground = WakeUpForeground(WakeUpNotifications(context) { ZONE }, media) {
+    private var settled = 0
+    private var idle = 0
+    private val foreground = WakeUpForeground(WakeUpNotifications(context) { ZONE }, media, { settled++ }, { idle++ }) {
         check(!refuseStart) { "Foreground services are not allowed now" }
         starts++
     }
 
     private fun posted() = shadowOf(manager).getNotification(WakeUpNotifications.ID)
+
+    @Test
+    fun `audio may start once the service is in the foreground, and not when it is only asked for`() {
+        foreground.changed(speaking())
+        assertEquals(0, settled)
+        foreground.attach(FakeHost())
+        assertEquals(1, settled)
+    }
+
+    @Test
+    fun `audio goes ahead if the service may not start or may not go into the foreground`() {
+        refuseStart = true
+        foreground.changed(speaking())
+        assertEquals(1, settled)
+        foreground.attach(FakeHost(refuse = true))
+        assertEquals(2, settled)
+    }
+
+    @Test
+    fun `a service that starts with nothing to play lets nothing go, and a refusal then neither`() {
+        foreground.attach(FakeHost())
+        foreground.attach(FakeHost(refuse = true))
+        assertEquals(0, settled)
+    }
+
+    @Test
+    fun `the end of the automation is reported, so that the next one waits for its service`() {
+        foreground.changed(speaking())
+        assertEquals(0, idle)
+        foreground.changed(WakeUpStatus.IDLE)
+        assertEquals(1, idle)
+    }
 
     @Test
     fun `an automation that starts starts the service, and its controls are there at once`() {

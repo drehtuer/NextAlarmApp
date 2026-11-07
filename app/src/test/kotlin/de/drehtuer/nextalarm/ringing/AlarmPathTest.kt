@@ -195,6 +195,14 @@ class AlarmPathTest {
 
     private fun ttsEngine() = shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance())
 
+    /** The title is spoken once the service is in the foreground. */
+    private fun wakeUpServiceUp() {
+        parts.wakeUpForeground.attach(object : WakeUpForegroundHost {
+            override fun showForeground(id: Int, notification: Notification) = Unit
+            override fun finishWakeUp() = Unit
+        })
+    }
+
     /** The automation runs under the engine's lock and reports through a coroutine, so waiting here shows it does not hang. */
     @Test
     fun `the title of a dismissed alarm is spoken, before the first unlock, and the service joins in`(): Unit = runBlocking {
@@ -205,6 +213,7 @@ class AlarmPathTest {
         val application = shadowOf(real as Application)
         val started = generateSequence { application.nextStartedService }.map { it.component?.className }.toList()
         assertTrue(WakeUpService::class.java.name in started)
+        wakeUpServiceUp()
         ttsEngine().onInitListener.onInit(TextToSpeech.SUCCESS)
         assertEquals("Gym", ttsEngine().lastSpokenText)
         assertEquals(snapshot.reason, parts.wakeUpChanges.status.value.titles.single())
@@ -219,6 +228,8 @@ class AlarmPathTest {
         val alarm = created(Instant.now())
         engine.fire(alarm.id)
         engine.sendToRinging(AlarmEvent.Dismiss)
+        // Without the service coming up, the title is spoken after a moment anyway.
+        idleFor(Duration.ofSeconds(3))
         ttsEngine().onInitListener.onInit(TextToSpeech.ERROR)
         awaitUntil { state(alarm.id) == AlarmState.Done }
     }
@@ -238,6 +249,7 @@ class AlarmPathTest {
         val alarm = created(Instant.now())
         engine.fire(alarm.id)
         engine.sendToRinging(AlarmEvent.Dismiss)
+        wakeUpServiceUp()
         parts.wakeUpMedia.callback.onStop()
         awaitUntil { state(alarm.id) == AlarmState.Done }
         assertTrue(ttsEngine().isShutdown)
@@ -308,9 +320,10 @@ private class AlarmPathParts(context: Context, data: DataComponents) {
         AlarmModule.ringer(context, data, foreground, changes, notifications, AlarmModule.soundWorker(scope), scope, lazyEngine)
     private val wakeUpNotifications = AlarmModule.wakeUpNotifications(context)
     val wakeUpMedia = AlarmModule.wakeUpMedia(context, scope, lazyEngine)
-    private val wakeUpForeground = AlarmModule.wakeUpForeground(context, wakeUpNotifications, wakeUpMedia)
+    private val wakeUpGate = AlarmModule.wakeUpGate()
+    val wakeUpForeground = AlarmModule.wakeUpForeground(context, wakeUpNotifications, wakeUpMedia, wakeUpGate)
     val wakeUpChanges = AlarmModule.wakeUpChanges()
-    val director = AlarmModule.wakeUpDirector(context, data, wakeUpForeground, wakeUpChanges, scope, lazyEngine)
+    val director = AlarmModule.wakeUpDirector(context, data, wakeUpForeground, wakeUpGate, wakeUpChanges, scope, lazyEngine)
     private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(director))
     val engine: AlarmEngine = AlarmModule.engine(context, data, effects)
     private val controllerData = data

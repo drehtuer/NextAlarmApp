@@ -167,42 +167,32 @@ class WakeUpMedia(
 }
 
 /**
- * Keeps `WakeUpService` and the media notification in step with the automation, which itself runs in `WakeUpDirector`,
- * in the app's process. Like `AlarmForeground`, it copes with Android refusing the service: the automation then runs on
- * as long as the process lives, and its notification is posted as usual.
+ * Keeps `WakeUpService` and the media notification in step with the automation, which itself runs in `WakeUpDirector`, in
+ * the app's process. Android silences media without the service, so [onSettled] lets the audio start once the service is in
+ * the foreground. If Android refuses the service, the audio is let go anyway, as there is nothing better to do, but it is
+ * likely not heard, and it does not have the alarm sound's waiver. The notification still offers Stop in that case.
  */
 class WakeUpForeground(
     private val notifications: WakeUpNotifications,
     private val media: WakeUpMedia,
+    private val onSettled: () -> Unit = {},
+    private val onIdle: () -> Unit = {},
     private val startService: () -> Unit,
 ) {
     private var host: WakeUpForegroundHost? = null
     private var status = WakeUpStatus.IDLE
+    private var settled = false
 
-    @Synchronized
-    fun changed(status: WakeUpStatus) {
+    fun changed(status: WakeUpStatus) = locked {
         this.status = status
-        sync()
+        syncNow()
     }
 
     /** Also when the wake-up screen comes up: an app in the foreground can start a service that was refused before. */
-    @Synchronized
-    fun sync() {
-        val current = host
-        when {
-            !status.running -> {
-                if (current != null) finish(current)
-                notifications.cancel()
-                media.release()
-            }
-            current != null -> show(current)
-            else -> start()
-        }
-    }
+    fun sync() = locked { syncNow() }
 
     /** The service started. Android demands that it goes into the foreground now, even if nothing is left to play. */
-    @Synchronized
-    fun attach(service: WakeUpForegroundHost) {
+    fun attach(service: WakeUpForegroundHost) = locked {
         host = service
         if (status.running) {
             show(service)
@@ -215,6 +205,29 @@ class WakeUpForeground(
     @Synchronized
     fun detach(service: WakeUpForegroundHost) {
         if (host === service) host = null
+    }
+
+    /** What is let go can call back into the director, whose lock comes before this one, so it runs outside this one. */
+    private fun locked(work: () -> Unit) {
+        val tell = synchronized(this) {
+            work()
+            settled.also { settled = false }
+        }
+        if (tell) onSettled()
+    }
+
+    private fun syncNow() {
+        val current = host
+        when {
+            !status.running -> {
+                if (current != null) finish(current)
+                notifications.cancel()
+                media.release()
+                onIdle()
+            }
+            current != null -> show(current)
+            else -> start()
+        }
     }
 
     private fun show(service: WakeUpForegroundHost) {
@@ -231,8 +244,10 @@ class WakeUpForeground(
     private fun foreground(service: WakeUpForegroundHost, notification: () -> Notification) {
         try {
             service.showForeground(WakeUpNotifications.ID, notification())
+            settled = status.running
         } catch (refused: IllegalStateException) {
             Log.w(TAG, "The wake-up service could not go into the foreground", refused)
+            settled = status.running
             postWithoutService()
         }
     }
@@ -242,6 +257,7 @@ class WakeUpForeground(
             startService()
         } catch (refused: IllegalStateException) {
             Log.w(TAG, "The wake-up service could not start", refused)
+            settled = true
         }
         // The controls should be there at once, and the service takes this notification over when it comes up.
         postWithoutService()

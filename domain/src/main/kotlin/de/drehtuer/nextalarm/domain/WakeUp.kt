@@ -28,6 +28,76 @@ interface PodcastOutput {
     fun stop()
 }
 
+/**
+ * Holds audio back until the wake-up service is in the foreground, as Android 17 silences it otherwise, with no error. Only
+ * one thing plays at a time, so only the latest action waits. After [limit] it goes ahead anyway, as a chance of sound beats
+ * none. See docs/architecture.md#background-audio-on-android-17.
+ */
+class ForegroundGate(
+    private val timers: RingTimers,
+    private val limit: Duration = Duration.ofSeconds(3),
+) {
+    private var isOpen = false
+    private var waiting: (() -> Unit)? = null
+    private var cancelLimit: () -> Unit = {}
+
+    /** Runs [action] when the service is up, which can be now. It runs outside this class's lock. */
+    fun whenOpen(action: () -> Unit) {
+        val now = synchronized(this) {
+            if (!isOpen) {
+                waiting = action
+                cancelLimit()
+                cancelLimit = timers.after(limit, ::open)
+            }
+            isOpen
+        }
+        if (now) action()
+    }
+
+    fun open() {
+        val action = synchronized(this) {
+            isOpen = true
+            cancelLimit()
+            waiting.also { waiting = null }
+        }
+        action?.invoke()
+    }
+
+    /** The service has gone, or what waited is no longer wanted. */
+    @Synchronized
+    fun close() {
+        isOpen = false
+        forget()
+    }
+
+    @Synchronized
+    fun forget() {
+        cancelLimit()
+        waiting = null
+    }
+}
+
+/** Speech that starts when [gate] lets it. */
+class GatedSpeech(private val output: SpeechOutput, private val gate: ForegroundGate) : SpeechOutput {
+    override fun speak(text: String, onDone: (Boolean) -> Unit) = gate.whenOpen { output.speak(text, onDone) }
+
+    override fun stop() {
+        gate.forget()
+        output.stop()
+    }
+}
+
+/** A podcast that starts when [gate] lets it. */
+class GatedPodcast(private val output: PodcastOutput, private val gate: ForegroundGate) : PodcastOutput by output {
+    override fun play(url: String, onStarted: () -> Unit, onEnded: () -> Unit) =
+        gate.whenOpen { output.play(url, onStarted, onEnded) }
+
+    override fun stop() {
+        gate.forget()
+        output.stop()
+    }
+}
+
 /** Fetches a feed in the background. The result cancels it. */
 fun interface NewsFetcher {
     fun fetch(url: String, onResult: (FeedResult) -> Unit): () -> Unit

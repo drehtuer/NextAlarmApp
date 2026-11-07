@@ -8,6 +8,108 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+class ForegroundGateTest {
+    private class Timers : RingTimers {
+        val blocks = mutableListOf<() -> Unit>()
+        var cancelled = 0
+
+        override fun after(delay: Duration, block: () -> Unit): () -> Unit {
+            blocks += block
+            return { cancelled++ }
+        }
+    }
+
+    private val timers = Timers()
+    private val gate = ForegroundGate(timers)
+    private val log = mutableListOf<String>()
+
+    private val speech = object : SpeechOutput {
+        override fun speak(text: String, onDone: (Boolean) -> Unit) {
+            log += "speak:$text"
+        }
+
+        override fun stop() {
+            log += "stopSpeech"
+        }
+    }
+    private val podcast = object : PodcastOutput {
+        override fun play(url: String, onStarted: () -> Unit, onEnded: () -> Unit) {
+            log += "play:$url"
+        }
+
+        override fun position(): Duration = Duration.ofSeconds(7)
+        override fun duration(): Duration? = null
+        override fun stop() {
+            log += "stopPodcast"
+        }
+    }
+
+    @Test
+    fun `speech waits until the service is up`() {
+        GatedSpeech(speech, gate).speak("Gym") {}
+        assertTrue(log.isEmpty())
+        gate.open()
+        assertEquals(listOf("speak:Gym"), log)
+    }
+
+    @Test
+    fun `a podcast waits until the service is up, and the rest goes straight through`() {
+        val gated = GatedPodcast(podcast, gate)
+        gated.play("url", {}, {})
+        assertTrue(log.isEmpty())
+        assertEquals(Duration.ofSeconds(7), gated.position())
+        gate.open()
+        assertEquals(listOf("play:url"), log)
+    }
+
+    @Test
+    fun `with the service up nothing waits`() {
+        gate.open()
+        GatedSpeech(speech, gate).speak("Gym") {}
+        assertEquals(listOf("speak:Gym"), log)
+        assertTrue(timers.blocks.isEmpty())
+    }
+
+    @Test
+    fun `it goes ahead anyway if the service takes too long`() {
+        GatedSpeech(speech, gate).speak("Gym") {}
+        timers.blocks.single().invoke()
+        assertEquals(listOf("speak:Gym"), log)
+    }
+
+    @Test
+    fun `stopping forgets what waits, for speech and podcasts alike`() {
+        val gatedSpeech = GatedSpeech(speech, gate)
+        gatedSpeech.speak("Gym") {}
+        gatedSpeech.stop()
+        val gatedPodcast = GatedPodcast(podcast, gate)
+        gatedPodcast.play("url", {}, {})
+        gatedPodcast.stop()
+        gate.open()
+        assertEquals(listOf("stopSpeech", "stopPodcast"), log)
+    }
+
+    @Test
+    fun `only the latest waits`() {
+        val gated = GatedSpeech(speech, gate)
+        gated.speak("One") {}
+        gated.speak("Two") {}
+        gate.open()
+        assertEquals(listOf("speak:Two"), log)
+    }
+
+    @Test
+    fun `once the service has gone, it waits again`() {
+        gate.open()
+        gate.close()
+        GatedSpeech(speech, gate).speak("Gym") {}
+        assertTrue(log.isEmpty())
+        gate.close()
+        gate.open()
+        assertTrue(log.isEmpty())
+    }
+}
+
 class WakeUpDirectorTest {
     private class FakeSpeech : SpeechOutput {
         val said = mutableListOf<String>()
