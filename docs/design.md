@@ -311,6 +311,21 @@ From top to bottom, under the status-bar inset plus 48 dp:
 
 Both buttons act on every ringing alarm. Dismiss stops the sound at once.
 
+Details decided while building this screen:
+
+- The time is at most `displayLarge`. A time with seconds doesn't fit at 112 sp ("06:00:30" would be about 420 dp wide,
+  and 363 dp are available), so the time shrinks until it fits on one line (about 97 sp). Its line stays 120 sp high, so
+  nothing else moves.
+- A title is long above 60 characters: about three lines at the size of a single title.
+- The date and the line "3 alarms" are `titleMedium`.
+- The labels are larger than the `labelLarge` of other buttons, because this screen is read half asleep: "Snooze" is
+  `headlineSmall`, "Rings again at 06:10" (inside the button) is `bodyLarge`, and "Dismiss" is `titleLarge` at weight
+  500.
+- The buttons are minimum heights: at a very large font size they grow rather than cut off their labels. Dismiss ends
+  24 dp above the bottom inset. The buttons are always on screen, and only the titles scroll.
+- "Rings again" gives the earliest time if the ringing alarms have different snooze lengths. Like every time, it shows
+  seconds if they are not zero.
+
 ### 9 Wake-up screen (night)
 
 1. "Good morning · Saturday 7 November", then the time in `displaySmall`.

@@ -79,6 +79,19 @@ val DarkColors = darkColorScheme(
     onErrorContainer = Color(0xFFFFDAD6),
 )
 
+/** Screens 8 and 9. The roles without a night value keep their dark value. */
+val NightColors = DarkColors.copy(
+    primary = Color(0xFF99CBFF),
+    onPrimary = Color(0xFF003354),
+    background = Color(0xFF000000),
+    onBackground = Color(0xFFE6E6E6),
+    surface = Color(0xFF000000),
+    onSurface = Color(0xFFE6E6E6),
+    surfaceContainer = Color(0xFF1A1A1A),
+    onSurfaceVariant = Color(0xFFA8A8A8),
+    outline = Color(0xFF474747),
+)
+
 @Immutable
 data class ExtraColors(
     val success: Color,
@@ -119,6 +132,9 @@ val NextAlarmTypography = Typography(
 /** Times in lists. */
 val ListTimeStyle = style(20, 28, FontWeight.Medium).copy(fontFeatureSettings = TABULAR_FIGURES)
 
+/** A long title on the alarm screen. */
+val LongAlarmTitleStyle = style(24, 32, FontWeight.Medium)
+
 val NextAlarmShapes = Shapes(
     small = RoundedCornerShape(8.dp),
     medium = RoundedCornerShape(12.dp),
@@ -142,5 +158,12 @@ fun NextAlarmTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable (
 /** Screens 8 and 9: always night, whatever the system setting. */
 @Composable
 fun NightTheme(content: @Composable () -> Unit) {
-    TODO("Step 6.3: $content")
+    CompositionLocalProvider(LocalExtraColors provides DarkExtraColors) {
+        MaterialTheme(
+            colorScheme = NightColors,
+            typography = NextAlarmTypography,
+            shapes = NextAlarmShapes,
+            content = content,
+        )
+    }
 }
