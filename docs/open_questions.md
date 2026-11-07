@@ -15,6 +15,8 @@ question is answered, move the decision into the relevant document and remove it
 |------|----------|------------------|
 | Q-W1 | The wake-up audio does not ask for audio focus, so it does not pause other media and talks on during a phone call. Should it? | Ask for focus (`AUDIOFOCUS_GAIN`) and stop the automation when it is lost for good. Decide after using it for a few mornings in step 9.5. |
 | Q-W2 | An alarm that rings while the news of an earlier one still plays is heard together with it, as the news is only stopped by a new title to speak. Should a ringing alarm silence it? | Leave it: it is rare, and the alarm is what has to be heard. |
+| Q-W3 | A test on the news screen and a running wake-up automation are not aware of each other, so both can be heard if the user starts a test while the automation plays (it can run without its screen). Should a test be refused then? | Leave it: the user has just asked for it, and Stop ends either. |
+| Q-W4 | The "News" row on screen 5 names the feed's host, as the feed's own title ("Der Tag") isn't stored and storing it would change the schema. Should it be stored? | Leave it until the schema changes for another reason. |
 
 ## Philips Hue (after the MVP)
 

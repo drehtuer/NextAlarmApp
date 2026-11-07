@@ -12,6 +12,10 @@ import de.drehtuer.nextalarm.data.SoundFiles
 import de.drehtuer.nextalarm.data.SoundImportResult
 import de.drehtuer.nextalarm.domain.AlarmAction
 import de.drehtuer.nextalarm.domain.AlarmVolume
+import de.drehtuer.nextalarm.domain.FeedFailure
+import de.drehtuer.nextalarm.domain.FeedResult
+import de.drehtuer.nextalarm.domain.NewsSource
+import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.domain.LOG_FAILED_NOTE
 import de.drehtuer.nextalarm.domain.LOG_SAVED_NOTE
 import de.drehtuer.nextalarm.domain.LOG_TITLES_NOTE
@@ -66,6 +70,7 @@ import org.robolectric.annotation.LooperMode
 
 private val NOW: Instant = Instant.parse("2026-11-06T19:00:00Z")
 private val CALENDAR = DeviceCalendar(CalendarId(1), "NextAlarm", "me", "bitfire.at.davdroid", null)
+private const val FEED_ADDRESS = "https://www.tagesschau.de/feed"
 
 private class FakeCalendars(var result: () -> List<DeviceCalendar> = { listOf(CALENDAR) }) : CalendarRepository {
     var reads = 0
@@ -117,6 +122,7 @@ class AppViewModelTest {
     private val sounds = FakeSounds(data.settings)
     private val logs = FakeLogs()
     private var fullScreen = true
+    private val news = NewsParts { NOW }
     private val viewModel = AppViewModel(
         AppPorts(
             settings = data.settings,
@@ -127,6 +133,7 @@ class AppViewModelTest {
             alarmEngine = alarmEngine,
             planningChanges = changes,
             phone = PhonePorts(audio, sounds, logs) { fullScreen },
+            news = news.ports,
             io = Dispatchers.Unconfined,
             now = { NOW },
             zone = { ZoneId.of("Europe/Berlin") },
@@ -388,6 +395,87 @@ class AppViewModelTest {
         awaitState { it.alarmSettings.soundRejection == null }
     }
 
+    /** Detection waits until the typing has paused, on a clock that only moves when the test says so. */
+    private fun detectNews(address: String) {
+        viewModel.setNewsAddress(address)
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+    }
+
+    @Test
+    fun `screen 6 starts from what is stored`() = runBlocking {
+        data.settings.save(Settings.DEFAULT.copy(news = NewsSource(NewsType.PODCAST, FEED_ADDRESS, 20)))
+        news.feeds.result = FeedResult.Found(PODCAST_FEED)
+        viewModel.openNews()
+        val state = awaitState { it.news.detected != null }
+        assertEquals(FEED_ADDRESS, state.news.address)
+        assertEquals("20 min", state.news.minutes)
+    }
+
+    @Test
+    fun `a feed that was found is stored, asks for a new plan and shows in the row of screen 5`() = runBlocking {
+        engine.setupCompleted()
+        val runs = effects.started.size
+        detectNews(FEED_ADDRESS)
+        val state = awaitState { it.alarmSettings.news == "RSS · tagesschau.de" }
+        assertEquals("RSS feed found.", state.news.helper)
+        assertEquals(NewsSource(NewsType.RSS, FEED_ADDRESS, 15), data.settings.load().news)
+        assertEquals(runs + 1, effects.started.size)
+    }
+
+    @Test
+    fun `an address that gives no feed stores nothing and asks for no new plan`() = runBlocking {
+        engine.setupCompleted()
+        val runs = effects.started.size
+        news.feeds.result = FeedResult.Failed(FeedFailure.Http(404, "Not Found"))
+        viewModel.setNewsAddress(FEED_ADDRESS)
+        viewModel.toggleNewsTest()
+        val state = awaitState { it.news.failure != null }
+        assertTrue(state.news.addressFailed)
+        assertNull(data.settings.load().news)
+        assertEquals(runs, effects.started.size)
+    }
+
+    @Test
+    fun `the stepper changes what is stored and asks for a new plan`() {
+        detectNews(FEED_ADDRESS)
+        awaitState { it.alarmSettings.news != "Off" }
+        assertChanges({ viewModel.lengthenNews() }) { it.news?.maxMinutes == 20 }
+        assertChanges({ viewModel.shortenNews() }) { it.news?.maxMinutes == 15 }
+    }
+
+    @Test
+    fun `turning off stores no news and asks for a new plan`() {
+        detectNews(FEED_ADDRESS)
+        awaitState { it.alarmSettings.news != "Off" }
+        assertChanges({ viewModel.turnOffNews() }) { it.news == null }
+        awaitState { it.alarmSettings.news == "Off" }
+    }
+
+    @Test
+    fun `a test plays, and stops at stop`() {
+        viewModel.setNewsAddress(FEED_ADDRESS)
+        viewModel.toggleNewsTest()
+        awaitState { it.news.testing && news.speech.pending != null }
+        viewModel.stopNewsTest()
+        val state = awaitState { !it.news.testing }
+        assertNull(state.news.testLine)
+        assertNull(news.speech.pending)
+    }
+
+    @Test
+    fun `closing screen 6 stops a test, and the next visit starts from what is stored`() = runBlocking {
+        viewModel.setNewsAddress(FEED_ADDRESS)
+        viewModel.toggleNewsTest()
+        awaitState { it.news.testing && news.speech.pending != null }
+        data.settings.save(Settings.DEFAULT)
+        viewModel.closeNews()
+        awaitState { !it.news.testing }
+        assertNull(news.speech.pending)
+        viewModel.openNews()
+        awaitState { it.news.address.isEmpty() }
+        Unit
+    }
+
     @Test
     fun `the diagnostics show the planner, the facts and the past alarms`() = runBlocking {
         val at = NOW.minus(Duration.ofDays(1))
@@ -640,6 +728,8 @@ class AppPlannerEffectsTest {
         val ports = PlanningModule.appPorts(context, data, engine, alarmEngine)
         assertEquals(alarmEngine, ports.alarmEngine)
         assertEquals(data.sounds, ports.phone.sounds)
+        assertEquals(data.feeds, ports.news.feeds)
+        assertNull(ports.news.player.playing())
         assertEquals(context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent(), ports.phone.fullScreenAllowed())
         assertEquals(PlannerState.Unconfigured, ports.planner.load().state)
         assertTrue(ports.alarms.all().isEmpty())

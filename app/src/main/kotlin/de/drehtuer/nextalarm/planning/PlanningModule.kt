@@ -15,10 +15,16 @@ import de.drehtuer.nextalarm.data.AlarmIntents
 import de.drehtuer.nextalarm.data.DataComponents
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.EngineLock
+import de.drehtuer.nextalarm.domain.NewsTestPlayer
 import de.drehtuer.nextalarm.domain.PlannerEngine
+import de.drehtuer.nextalarm.ringing.AndroidRingWakeLock
+import de.drehtuer.nextalarm.ringing.HandlerRingTimers
+import de.drehtuer.nextalarm.ringing.MediaPlayerPodcastOutput
+import de.drehtuer.nextalarm.ringing.TextToSpeechOutput
 import de.drehtuer.nextalarm.ui.AndroidPhoneAudio
 import de.drehtuer.nextalarm.ui.AppPorts
 import de.drehtuer.nextalarm.ui.ContentResolverLogDocuments
+import de.drehtuer.nextalarm.ui.NewsPorts
 import de.drehtuer.nextalarm.ui.PhonePorts
 import de.drehtuer.nextalarm.ui.canUseFullScreenIntent
 import java.time.Instant
@@ -108,6 +114,16 @@ object PlanningModule {
             sounds = data.sounds,
             logs = ContentResolverLogDocuments(context.contentResolver),
             fullScreenAllowed = { canUseFullScreenIntent(context) },
+        ),
+        news = NewsPorts(
+            feeds = data.feeds,
+            player = NewsTestPlayer(
+                speech = TextToSpeechOutput(context),
+                podcast = MediaPlayerPodcastOutput(context),
+                timers = HandlerRingTimers(),
+                wakeLock = AndroidRingWakeLock(context, "NextAlarm:newstest"),
+                now = Instant::now,
+            ),
         ),
         io = Dispatchers.IO,
     )

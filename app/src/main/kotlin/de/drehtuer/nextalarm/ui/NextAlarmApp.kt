@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -21,6 +22,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.drehtuer.nextalarm.BuildConfig
 import de.drehtuer.nextalarm.data.SUPPORTED_SOUND_MIME_TYPES
 import de.drehtuer.nextalarm.domain.CalendarId
@@ -29,6 +33,7 @@ import de.drehtuer.nextalarm.ui.screens.AlarmSettingsScreen
 import de.drehtuer.nextalarm.ui.screens.CalendarScreen
 import de.drehtuer.nextalarm.ui.screens.DiagnosticsScreen
 import de.drehtuer.nextalarm.ui.screens.HomeScreen
+import de.drehtuer.nextalarm.ui.screens.NewsScreen
 import de.drehtuer.nextalarm.ui.screens.OnboardingScreen
 import de.drehtuer.nextalarm.ui.screens.PermissionCard
 import de.drehtuer.nextalarm.ui.screens.SettingsScreen
@@ -40,7 +45,7 @@ const val VERSION_TEXT_FORMAT = "%s (build %d)"
 
 const val LOG_MIME_TYPE = "text/plain"
 
-enum class Route { HOME, SETTINGS, CALENDAR, ALARM_SETTINGS, DIAGNOSTICS, SETUP }
+enum class Route { HOME, SETTINGS, CALENDAR, ALARM_SETTINGS, NEWS, DIAGNOSTICS, SETUP }
 
 /**
  * The screens and how they connect. See the navigation diagram in docs/screens.md.
@@ -66,6 +71,11 @@ fun NextAlarmApp(
 
     LaunchedEffect(diagnosticsRequests) {
         if (diagnosticsRequests > 0) stack = listOf(Route.HOME.name, Route.DIAGNOSTICS.name)
+    }
+
+    // Whichever way screen 6 is left: back, the top bar, or a notification that opens another screen.
+    LaunchedEffect(route) {
+        if (route != Route.NEWS) actions.closeNews()
     }
 
     when {
@@ -108,9 +118,13 @@ fun NextAlarmApp(
                 actions = actions,
                 onBack = { stack = stack.dropLast(1) },
                 onChooseFile = { soundPicker.launch(SUPPORTED_SOUND_MIME_TYPES.toTypedArray()) },
-                // Screen 6 does not exist yet. This is where it gets connected.
-                onNews = {},
+                onNews = { stack = stack + Route.NEWS.name },
             )
+        }
+        route == Route.NEWS -> {
+            LaunchedEffect(Unit) { actions.openNews() }
+            StopNewsTestWhenHidden(actions)
+            NewsScreen(model = state.news, actions = actions, onBack = { stack = stack.dropLast(1) })
         }
         route == Route.DIAGNOSTICS -> {
             val logDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(LOG_MIME_TYPE)) { uri ->
@@ -136,6 +150,19 @@ fun NextAlarmApp(
             onSettings = { stack = stack + Route.SETTINGS.name },
             onDiagnostics = { stack = stack + Route.DIAGNOSTICS.name },
         )
+    }
+}
+
+/** When the screen can no longer be seen, for instance under a ringing alarm, a test of the news must not play on. */
+@Composable
+private fun StopNewsTestWhenHidden(actions: NewsActions) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, actions) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) actions.stopNewsTest()
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 }
 

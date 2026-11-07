@@ -35,10 +35,7 @@ import de.drehtuer.nextalarm.domain.AlarmSettingsModel
 import de.drehtuer.nextalarm.domain.ValuePicker
 import de.drehtuer.nextalarm.ui.AlarmSettingsActions
 
-/**
- * Screen 5. [onChooseFile] opens the file picker. [onNews] is where the "News" row leads: screen 6, which does not
- * exist yet, so for now it is connected to nothing.
- */
+/** Screen 5. [onChooseFile] opens the file picker. [onNews] is where the "News" row leads: screen 6. */
 @Composable
 fun AlarmSettingsScreen(
     model: AlarmSettingsModel,

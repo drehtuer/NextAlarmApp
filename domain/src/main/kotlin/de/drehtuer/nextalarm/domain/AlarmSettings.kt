@@ -97,7 +97,7 @@ private fun rampLabel(seconds: Int): String {
     }
 }
 
-private fun minutesLabel(minutes: Int) = "$minutes min"
+internal fun minutesLabel(minutes: Int) = "$minutes min"
 
 private fun volumeLabel(volume: Float?): String =
     if (volume != null) "${(volume * PERCENT).roundToInt()}%" else "Not set"
