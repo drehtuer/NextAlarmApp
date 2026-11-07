@@ -6,9 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.graphics.drawable.Icon
-import de.drehtuer.nextalarm.MainActivity
-import de.drehtuer.nextalarm.R
 import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.NotificationText
 import de.drehtuer.nextalarm.domain.RINGING_PLACEHOLDER_TEXT
@@ -19,7 +16,9 @@ import de.drehtuer.nextalarm.domain.snoozedText
 import de.drehtuer.nextalarm.domain.unansweredText
 import de.drehtuer.nextalarm.planning.AppNotifications
 import de.drehtuer.nextalarm.planning.alarmUri
+import de.drehtuer.nextalarm.planning.notificationAction
 import de.drehtuer.nextalarm.planning.notificationBuilder
+import de.drehtuer.nextalarm.planning.openDiagnosticsIntent
 import java.time.ZoneId
 
 /**
@@ -81,15 +80,9 @@ class AlarmNotifications(
 
     private fun showNotice(id: Int, text: NotificationText) {
         ensureChannels()
-        val history = PendingIntent.getActivity(
-            context,
-            REQUEST_HISTORY,
-            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
         val notification = notificationBuilder(context, AppNotifications.WARNING_CHANNEL, text.title, text.text)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .addAction(action("Open history", history))
+            .addAction(action("Open history", openDiagnosticsIntent(context)))
             .build()
         manager.notify(id, notification)
     }
@@ -124,7 +117,7 @@ class AlarmNotifications(
     }
 
     private fun action(title: String, intent: PendingIntent): Notification.Action =
-        Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_stat_alarm), title, intent).build()
+        notificationAction(context, title, intent)
 
     /** The service plays the sound and vibrates, so the channels of a ringing and a snoozed alarm stay silent. */
     private fun ensureChannels() {
@@ -151,7 +144,6 @@ class AlarmNotifications(
 
         private const val REQUEST_SCREEN = 1
         private const val REQUEST_ACTION = 2
-        private const val REQUEST_HISTORY = 3
 
         private const val FIRST_ALARM_ID = 100
         private const val KINDS = 4

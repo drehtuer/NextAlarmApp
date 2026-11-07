@@ -34,6 +34,7 @@ interface AlarmRepository {
     /** Stores a new alarm in [AlarmState.Scheduled]. */
     suspend fun create(key: AlarmKey, triggerAt: Instant, snapshot: AlarmSnapshot): AlarmInstance
     suspend fun update(instance: AlarmInstance)
+    suspend fun delete(id: Long)
 }
 
 enum class PlanningFailure { NO_CALENDAR, NO_PERMISSION, READ_FAILED, APPLY_FAILED }

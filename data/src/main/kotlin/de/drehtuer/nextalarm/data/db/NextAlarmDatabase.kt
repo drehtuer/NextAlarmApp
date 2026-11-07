@@ -25,6 +25,9 @@ interface AlarmDao {
 
     @Update
     suspend fun update(entity: AlarmInstanceEntity)
+
+    @Query("DELETE FROM alarm_instance WHERE id = :id")
+    suspend fun delete(id: Long)
 }
 
 @Dao

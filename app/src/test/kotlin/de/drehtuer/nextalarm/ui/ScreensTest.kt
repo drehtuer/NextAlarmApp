@@ -1,12 +1,15 @@
 package de.drehtuer.nextalarm.ui
 
 import android.Manifest
+import android.app.Activity
 import android.app.Application
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.Settings
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -16,7 +19,9 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
+import de.drehtuer.nextalarm.data.SUPPORTED_SOUND_MIME_TYPES
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import de.drehtuer.nextalarm.domain.HomeDay
@@ -28,6 +33,7 @@ import de.drehtuer.nextalarm.ui.screens.HomeScreen
 import de.drehtuer.nextalarm.ui.screens.OnboardingScreen
 import de.drehtuer.nextalarm.ui.screens.PermissionCard
 import de.drehtuer.nextalarm.ui.screens.SettingsScreen
+import de.drehtuer.nextalarm.ui.screens.SettingsTargets
 import de.drehtuer.nextalarm.ui.theme.DarkColors
 import de.drehtuer.nextalarm.ui.theme.DarkExtraColors
 import de.drehtuer.nextalarm.ui.theme.LightColors
@@ -43,6 +49,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowActivity
 
 private val ALARMS = DeviceCalendar(CalendarId(1), "NextAlarm", "me@cloud.example", "bitfire.at.davdroid", 0xFF00639B.toInt())
 private val PLAIN = DeviceCalendar(CalendarId(2), "Phone", "local", "LOCAL", null)
@@ -55,8 +62,8 @@ class ScreensTest {
 
     private val empty = HomeModel(null, emptyList(), "Nothing is planned until Sunday 20:00.", null, null)
 
-    private fun home(model: HomeModel, onSettings: () -> Unit = {}) {
-        rule.setContent { NextAlarmTheme(dark = false) { HomeScreen(model, onSettings) } }
+    private fun home(model: HomeModel, onDiagnostics: () -> Unit = {}, onSettings: () -> Unit = {}) {
+        rule.setContent { NextAlarmTheme(dark = false) { HomeScreen(model, onSettings, onDiagnostics) } }
     }
 
     @Test
@@ -105,9 +112,18 @@ class ScreensTest {
 
     @Test
     fun `home warns in fail-safe`() {
-        home(empty.copy(failSafeBody = "The alarms below will still ring."))
+        var opened = false
+        home(empty.copy(failSafeBody = "The alarms below will still ring."), onDiagnostics = { opened = true })
         rule.onNodeWithText("New alarms aren't being added").assertIsDisplayed()
         rule.onNodeWithText("The alarms below will still ring.").assertIsDisplayed()
+        rule.onNodeWithText("See what went wrong").performClick()
+        assertTrue(opened)
+    }
+
+    @Test
+    fun `home has no way to diagnostics of its own when nothing is wrong`() {
+        home(empty)
+        rule.onNodeWithText("See what went wrong").assertDoesNotExist()
     }
 
     @Test
@@ -147,20 +163,29 @@ class ScreensTest {
             NextAlarmTheme {
                 SettingsScreen(
                     "NextAlarm · DAVx⁵",
+                    "Last check 19:58 · all good",
                     "0.1.0 (build 1)",
-                    { calls += "back" },
-                    { calls += "calendar" },
-                    { calls += "setup" },
-                    { calls += "source" },
+                    SettingsTargets(
+                        onBack = { calls += "back" },
+                        onAlarmCalendar = { calls += "calendar" },
+                        onAlarmSettings = { calls += "alarm settings" },
+                        onDiagnostics = { calls += "diagnostics" },
+                        onRunSetup = { calls += "setup" },
+                        onSourceCode = { calls += "source" },
+                    ),
                 )
             }
         }
         rule.onNodeWithText("NextAlarm · DAVx⁵").performClick()
+        rule.onNodeWithText("Alarm settings").performClick()
+        rule.onNodeWithText("Sound, snooze, speech and news").assertIsDisplayed()
+        rule.onNodeWithText("Diagnostics & history").performClick()
+        rule.onNodeWithText("Last check 19:58 · all good").assertIsDisplayed()
         rule.onNodeWithText("Run setup again").performClick()
         rule.onNodeWithText("0.1.0 (build 1)").assertIsDisplayed()
         rule.onNodeWithText("github.com/drehtuer/NextAlarmApp").performClick()
         rule.onNodeWithContentDescription("Back").performClick()
-        assertEquals(listOf("calendar", "setup", "source", "back"), calls)
+        assertEquals(listOf("calendar", "alarm settings", "diagnostics", "setup", "source", "back"), calls)
     }
 
     private fun card(
@@ -295,13 +320,20 @@ class NextAlarmAppTest {
     private val application = ApplicationProvider.getApplicationContext<Application>()
     private val ready = AppState(loaded = true, setupDone = true, calendars = listOf(ALARMS), selectedCalendar = ALARMS.id)
     private val completed = mutableListOf<String>()
+    private val actions = RecordingActions()
+    private val requests = mutableIntStateOf(0)
 
     private fun show(state: AppState) {
         rule.setContent {
             NextAlarmTheme(dark = false) {
-                NextAlarmApp(state, 0, { completed += "choose:${it.value}" }, { completed += "complete" })
+                NextAlarmApp(state, 0, { completed += "choose:${it.value}" }, { completed += "complete" }, actions, requests.intValue)
             }
         }
+    }
+
+    private fun openFromSettings(row: String) {
+        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithText(row).performClick()
     }
 
     private fun nextActivity(): Intent = shadowOf(application).nextStartedActivity
@@ -354,6 +386,73 @@ class NextAlarmAppTest {
     }
 
     @Test
+    fun `settings lead to the alarm settings, which report to the actions and come back`() {
+        show(ready)
+        openFromSettings("Alarm settings")
+        rule.onNodeWithText("These apply to every alarm.").assertIsDisplayed()
+        rule.onNodeWithText("Vibration").performScrollTo().performClick()
+        assertEquals(listOf("vibrate:true"), actions.calls)
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithText("Run setup again").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the news row opens nothing yet`() {
+        show(ready)
+        openFromSettings("Alarm settings")
+        rule.onNodeWithText("News").performScrollTo().performClick()
+        rule.onNodeWithText("These apply to every alarm.").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `settings show the state of the last check and lead to diagnostics, which come back`() {
+        show(ready.copy(diagnosticsSummary = "Last check failed"))
+        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithText("Last check failed").performClick()
+        rule.onNodeWithText("Past alarms").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithText("Run setup again").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the test alarm goes to the actions`() {
+        show(ready)
+        openFromSettings("Diagnostics & history")
+        rule.onNodeWithText("Ring a test alarm").performScrollTo().performClick()
+        assertEquals(listOf("test"), actions.calls)
+    }
+
+    @Test
+    fun `the fail-safe banner leads to diagnostics, and back to home`() {
+        show(ready.copy(home = HomeModel(null, emptyList(), null, "Something is wrong.", null)))
+        rule.onNodeWithText("See what went wrong").performClick()
+        rule.onNodeWithText("Past alarms").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithText("See what went wrong").assertIsDisplayed()
+    }
+
+    @Test
+    fun `a request from outside opens diagnostics, each time, with home behind it`() {
+        show(ready)
+        rule.onNodeWithContentDescription("Settings").assertIsDisplayed()
+        requests.intValue = 1
+        rule.waitForIdle()
+        rule.onNodeWithText("Past alarms").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.onNodeWithContentDescription("Settings").assertIsDisplayed()
+        requests.intValue = 2
+        rule.waitForIdle()
+        rule.onNodeWithText("Past alarms").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `setup comes first, even if a request asks for diagnostics`() {
+        requests.intValue = 1
+        show(AppState(loaded = true))
+        rule.onNodeWithText("Get started").assertIsDisplayed()
+    }
+
+    @Test
     fun `choosing a calendar is reported`() {
         show(ready.copy(calendars = listOf(ALARMS, PLAIN)))
         rule.onNodeWithContentDescription("Settings").performClick()
@@ -386,6 +485,88 @@ class NextAlarmAppTest {
     }
 }
 
+/** Answers the file pickers the way Android does, from a real activity. */
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class, qualifiers = "w411dp-h923dp")
+class DocumentPickersTest {
+    @get:Rule
+    val rule = createAndroidComposeRule<ComponentActivity>()
+
+    private val actions = RecordingActions()
+    private val ready = AppState(loaded = true, setupDone = true)
+    private val picked = Uri.parse("content://docs/picked")
+
+    private fun open(row: String) {
+        rule.setContent {
+            NextAlarmTheme(dark = false) { NextAlarmApp(ready, 0, {}, {}, actions) }
+        }
+        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithText(row).performClick()
+    }
+
+    private fun answer(request: ShadowActivity.IntentForResult, result: Uri?) {
+        rule.runOnUiThread {
+            rule.activity.activityResultRegistry.dispatchResult(
+                request.requestCode,
+                if (result != null) Activity.RESULT_OK else Activity.RESULT_CANCELED,
+                result?.let { Intent().setData(it) },
+            )
+        }
+        rule.waitForIdle()
+    }
+
+    private fun chooseFile(): ShadowActivity.IntentForResult {
+        open("Alarm settings")
+        rule.onNodeWithText("Choose file").performScrollTo().performClick()
+        return shadowOf(rule.activity).nextStartedActivityForResult
+    }
+
+    private fun exportLog(): ShadowActivity.IntentForResult {
+        open("Diagnostics & history")
+        rule.onNodeWithText("Export log").performScrollTo().performClick()
+        return shadowOf(rule.activity).nextStartedActivityForResult
+    }
+
+    @Test
+    fun `the sound picker offers only the supported types`() {
+        val intent = chooseFile().intent
+        assertEquals(Intent.ACTION_OPEN_DOCUMENT, intent.action)
+        assertEquals(SUPPORTED_SOUND_MIME_TYPES, intent.getStringArrayExtra(Intent.EXTRA_MIME_TYPES)?.toSet())
+    }
+
+    @Test
+    fun `a picked sound goes to the actions`() {
+        answer(chooseFile(), picked)
+        assertEquals(listOf("import:$picked"), actions.calls)
+    }
+
+    @Test
+    fun `leaving the sound picker changes nothing`() {
+        answer(chooseFile(), null)
+        assertTrue(actions.calls.isEmpty())
+    }
+
+    @Test
+    fun `the log is offered as a plain text file with its suggested name`() {
+        val intent = exportLog().intent
+        assertEquals(Intent.ACTION_CREATE_DOCUMENT, intent.action)
+        assertEquals("text/plain", intent.type)
+        assertEquals(ready.diagnostics.logFileName, intent.getStringExtra(Intent.EXTRA_TITLE))
+    }
+
+    @Test
+    fun `a chosen document gets the log`() {
+        answer(exportLog(), picked)
+        assertEquals(listOf("export:$picked"), actions.calls)
+    }
+
+    @Test
+    fun `leaving the document picker exports nothing`() {
+        answer(exportLog(), null)
+        assertTrue(actions.calls.isEmpty())
+    }
+}
+
 /** Answers permission requests the way Android does, from a real activity. */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, qualifiers = "w411dp-h923dp")
@@ -398,7 +579,7 @@ class PermissionRequestsTest {
     private fun showPermissions() {
         rule.setContent {
             NextAlarmTheme(dark = false) {
-                NextAlarmApp(AppState(loaded = true), 0, {}, {}, canUseFullScreen = { false })
+                NextAlarmApp(AppState(loaded = true), 0, {}, {}, RecordingActions(), canUseFullScreen = { false })
             }
         }
         rule.onNodeWithText("Get started").performClick()

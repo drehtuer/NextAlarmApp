@@ -6,6 +6,7 @@ import java.time.Instant
 class FakeAlarmRepository : AlarmRepository {
     val stored = linkedMapOf<Long, AlarmInstance>()
     var failOnCreate = false
+    var failOnDelete = false
     private var nextId = 1L
 
     override suspend fun all() = stored.values.toList()
@@ -20,6 +21,11 @@ class FakeAlarmRepository : AlarmRepository {
 
     override suspend fun update(instance: AlarmInstance) {
         stored[instance.id] = instance
+    }
+
+    override suspend fun delete(id: Long) {
+        check(!failOnDelete) { "storage failed" }
+        stored.remove(id)
     }
 
     fun add(instance: AlarmInstance): AlarmInstance {

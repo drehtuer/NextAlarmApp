@@ -9,7 +9,24 @@ value class CalendarId(val value: Long)
 /** The alarm sound: the phone's default alarm sound, or a copy of the file the user picked. */
 sealed interface SoundRef {
     data object SystemDefault : SoundRef
-    data class File(val name: String) : SoundRef
+    data class File(val name: String) : SoundRef {
+        /** What the user knows the file by. The name of the copy has it after a unique part: see [forCopy]. */
+        val displayName: String
+            get() = COPY_NAME.matchEntire(name)?.groupValues?.get(1) ?: name
+
+        companion object {
+            private const val MAX_DISPLAY_NAME = 64
+            private val COPY_NAME = Regex("sound-[0-9a-fA-F-]{36}-(.+)")
+            private val NOT_IN_FILE_NAMES = Regex("[/\\\\\\p{Cntrl}]")
+
+            /**
+             * The sound for a new copy of the file [displayName]. The settings keep only this name, so that is where
+             * the file's own name is kept too. At most 64 characters of it fit, within the 255 bytes of a file name.
+             */
+            fun forCopy(uniqueId: String, displayName: String): File =
+                File("sound-$uniqueId-${displayName.replace(NOT_IN_FILE_NAMES, "_").take(MAX_DISPLAY_NAME)}")
+        }
+    }
 }
 
 enum class NewsType { RSS, PODCAST }

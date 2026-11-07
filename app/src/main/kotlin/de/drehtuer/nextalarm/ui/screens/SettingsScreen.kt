@@ -22,20 +22,26 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import de.drehtuer.nextalarm.R
 
-/**
- * Screen 3. It has only what exists so far: the rows for alarm settings and diagnostics come with steps 8.2 and 8.4.
- */
+/** Where the rows of screen 3 lead. */
+class SettingsTargets(
+    val onBack: () -> Unit,
+    val onAlarmCalendar: () -> Unit,
+    val onAlarmSettings: () -> Unit,
+    val onDiagnostics: () -> Unit,
+    val onRunSetup: () -> Unit,
+    val onSourceCode: () -> Unit,
+)
+
+/** Screen 3. */
 @Composable
 fun SettingsScreen(
     calendarSummary: String,
+    diagnosticsSummary: String,
     version: String,
-    onBack: () -> Unit,
-    onAlarmCalendar: () -> Unit,
-    onRunSetup: () -> Unit,
-    onSourceCode: () -> Unit,
+    targets: SettingsTargets,
 ) {
     Scaffold(
-        topBar = { NextAlarmTopBar("Settings", onBack) },
+        topBar = { NextAlarmTopBar("Settings", targets.onBack) },
         contentWindowInsets = WindowInsets.safeDrawing,
     ) { padding ->
         Column(
@@ -43,8 +49,10 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            SettingsRow("Alarm calendar", calendarSummary, onAlarmCalendar)
-            SettingsRow("Run setup again", "Explanation, permissions and calendar", onRunSetup)
+            SettingsRow("Alarm calendar", calendarSummary, targets.onAlarmCalendar)
+            SettingsRow("Alarm settings", "Sound, snooze, speech and news", targets.onAlarmSettings)
+            SettingsRow("Diagnostics & history", diagnosticsSummary, targets.onDiagnostics)
+            SettingsRow("Run setup again", "Explanation, permissions and calendar", targets.onRunSetup)
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
             Text(
                 "About",
@@ -66,7 +74,7 @@ fun SettingsScreen(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onSourceCode)
+                    .clickable(onClick = targets.onSourceCode)
                     .heightIn(min = 56.dp)
                     .padding(horizontal = 24.dp, vertical = 8.dp),
                 Arrangement.SpaceBetween,

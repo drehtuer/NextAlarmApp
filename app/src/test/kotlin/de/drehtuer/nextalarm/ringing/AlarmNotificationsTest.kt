@@ -116,7 +116,14 @@ class AlarmNotificationsTest {
         assertEquals("An alarm rang 7 min late", notification.title())
         assertEquals("“Train to Cologne” was due at 06:45, but the phone was off.", notification.text())
         assertEquals(listOf("Open history"), notification.actionTitles())
-        assertEquals(MainActivity::class.java.name, notification.intentOfAction(0).component?.className)
+        assertOpensDiagnostics(notification)
+    }
+
+    private fun assertOpensDiagnostics(notification: Notification) {
+        val intent = notification.intentOfAction(0)
+        assertEquals(MainActivity::class.java.name, intent.component?.className)
+        assertEquals(MainActivity.ACTION_OPEN_DIAGNOSTICS, intent.action)
+        assertTrue(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP != 0, "so that a running app gets it")
     }
 
     @Test
@@ -126,6 +133,7 @@ class AlarmNotificationsTest {
         assertEquals("An alarm didn't ring", notification.title())
         assertEquals("“Brunch with Lea” at 06:45 was missed because the phone was off.", notification.text())
         assertEquals(listOf("Open history"), notification.actionTitles())
+        assertOpensDiagnostics(notification)
     }
 
     @Test
@@ -135,6 +143,7 @@ class AlarmNotificationsTest {
         assertEquals("An alarm wasn't answered", notification.title())
         assertEquals("“Gym” at 06:45 rang twice with no response. It won't ring again.", notification.text())
         assertEquals(listOf("Open history"), notification.actionTitles())
+        assertOpensDiagnostics(notification)
     }
 
     @Test

@@ -232,7 +232,9 @@ Below the rows come a divider and a section headed "About". It is always present
 - **Lead:** "These apply to every alarm."
 - **Low-volume banner** (`secondaryContainer`, muted-speaker icon), shown when the alarm stream volume is at or below
   2 steps: "**Your phone's alarm volume is low (1 of 7).** Alarms may be too quiet to wake you. Turn it up in the phone's
-  sound settings, or set a maximum volume below."
+  sound settings." The delivered wording went on "or set a maximum volume below". That is left out, because the maximum
+  volume only lowers the player's own gain and can never make an alarm louder. See Q-S1 in
+  [Open questions](open_questions.md).
 - **Section "Sound":**
   - "Alarm sound": "Phone default (<sound name>)" or the file name. On the right, an outlined "Choose file" button. When
     a file is set, a text button "Use the phone's default sound" appears below.
@@ -248,9 +250,23 @@ Below the rows come a divider and a section headed "About". It is always present
   - "Snooze length": "10 min".
 - **Section "After you dismiss":**
   - "Speak the title" / "Reads the event title aloud", with a switch.
-  - "News" / "Off", "RSS · tagesschau.de" or "Podcast · Der Tag", with a chevron that opens screen 6.
+  - "News" / "Off", "RSS · tagesschau.de" or "Podcast · example.org", with a chevron that opens screen 6.
 
 Values open the standard Material 3 pickers.
+
+Details decided while building this screen:
+
+- A picker is a Material 3 dialog with one radio button per value, and "Cancel":
+  - Volume ramp: "None", 15 s, 30 s, 1, 2 or 5 min.
+  - Maximum volume: "Not set", then 90% down to 10% in steps of 10. There is no 0%, because an alarm must not be silent.
+    100% would be the same as "Not set".
+  - Ring for: 1, 2, 3, 5, 10 or 15 min.
+  - Snooze length: 1, 5, 10, 15, 20 or 30 min.
+- "Maximum volume" keeps its secondary line also when a value is set, as an explanation of "Not set".
+- The file's own name is kept in the name of the app's copy (`sound-<unique id>-<file name>`), because the settings only
+  store that one name. It shows at most 64 characters of the file name.
+- The "News" row names the feed's host name, without "www.", for both kinds. A feed's own title ("Der Tag") isn't stored.
+- If the phone doesn't say what its default sound is called, the row says "Phone default".
 
 ### 6 News
 
@@ -278,8 +294,8 @@ Values open the standard Material 3 pickers.
 - **Status card**, one per planner state:
   - `Planned` (`successContainer`, check icon): "Alarms are planned" / "Last check today at 19:58 took 0.4 s and found
     4 alarms in the next 48 hours."
-  - `Planning` (`primaryContainer`, refresh icon, indeterminate progress bar): "Checking the calendar…" / "Started at
-    20:00. Alarms already planned stay in place."
+  - `Planning` (`primaryContainer`, refresh icon, indeterminate progress bar): "Checking the calendar…" / "Alarms
+    already planned stay in place." It doesn't say when the check started, because the planner doesn't store that.
   - `FailSafe` (`errorContainer`, warning icon): "Last check failed" / "Today at 19:58: calendar permission was removed.
     The 4 alarms already planned will still ring, but changes in the calendar are not picked up." The second sentence is
     followed by the matching fix, for example "Allow calendar access again to fix it."
@@ -294,6 +310,34 @@ Values open the standard Material 3 pickers.
 | `Unanswered` | "Not answered (rang twice)" | `secondaryContainer`, warning icon |
 | `Cancelled` | "Event moved or deleted before it rang" | `surfaceVariant`, cross icon |
 | `Missed` | "Missed: phone was off" | `errorContainer`, cross icon |
+
+Details decided while building this screen:
+
+- `Unconfigured` has a neutral card too (`surfaceContainer`, settings icon): "Not set up yet" / "Finish setup to plan
+  alarms." The app shows setup first, so it should not normally be seen.
+- The failure line and the fix for each `PlanningFailure`:
+
+| Failure | Line | Fix |
+|---------|------|-----|
+| `NO_PERMISSION` | "calendar permission was removed" | "Allow calendar access again to fix it." |
+| `NO_CALENDAR` | "no alarm calendar is chosen" | "Choose an alarm calendar in the settings to fix it." |
+| `READ_FAILED` | "the calendar couldn't be read" | "NextAlarm keeps trying. If this lasts, check that the calendar is still on this phone." |
+| `APPLY_FAILED` | "the alarms couldn't be updated" | "NextAlarm keeps trying. If this lasts, restart the phone." |
+
+- "No alarms are planned, and changes in the calendar are not picked up." replaces the sentence about what still rings
+  when nothing is waiting.
+- In the settings, "Diagnostics & history" says "Not checked yet" before the first finished check.
+- "Calendar" says "Can't be read right now" if the chosen calendar can't be found, for example without the permission.
+  "Full-screen alarms" says "Allowed" or "Not allowed: alarms ring as a notification".
+- A past alarm is listed at the time of its event, not of its last snooze; a test alarm has no event, and shows its own
+  time with its seconds. A `Done` alarm that rang late shows that rather than its snoozes. The newest comes first. An
+  empty list says "No alarms have ended yet."
+- **Test alarm:** it is an alarm titled "Test alarm", with the current settings, 5 seconds ahead. Until then, the button
+  is disabled and a line below it says "“Test alarm” rings in about 5 seconds, with your current settings."
+- **Export log:** a plain text file, suggested name `nextalarm-log-2026-11-06.txt`. It has the planner state, the failures
+  in a row, the last check and the past alarms. Calendar, account and sound names stay out. Under the button, and at the
+  top of the file: "The log includes the titles of your alarms, and nothing else personal." After an export, a second
+  line under the button says "Log saved." or "The log couldn't be saved. Try again."
 
 ### 8 Alarm screen (night)
 

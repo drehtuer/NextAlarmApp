@@ -155,6 +155,23 @@ class RoomRepositoriesTest {
     }
 
     @Test
+    fun `deleting an alarm removes only that one, and its id is not used again`() = runBlocking {
+        val first = alarms.create(key, time, SNAPSHOT)
+        val second = alarms.create(key, time, SNAPSHOT)
+        alarms.delete(second.id)
+        assertNull(alarms.find(second.id))
+        assertEquals(listOf(first.id), alarms.all().map { it.id })
+        assertTrue(alarms.create(key, time, SNAPSHOT).id > second.id)
+    }
+
+    @Test
+    fun `deleting an unknown alarm does nothing`() = runBlocking {
+        val kept = alarms.create(key, time, SNAPSHOT)
+        alarms.delete(404)
+        assertEquals(listOf(kept.id), alarms.all().map { it.id })
+    }
+
+    @Test
     fun `a restored event can have a second alarm with the same key`() = runBlocking {
         val first = alarms.create(key, time, SNAPSHOT)
         alarms.update(first.copy(state = AlarmState.Cancelled))

@@ -16,9 +16,14 @@ import de.drehtuer.nextalarm.data.DataComponents
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.EngineLock
 import de.drehtuer.nextalarm.domain.PlannerEngine
+import de.drehtuer.nextalarm.ui.AndroidPhoneAudio
 import de.drehtuer.nextalarm.ui.AppPorts
+import de.drehtuer.nextalarm.ui.ContentResolverLogDocuments
+import de.drehtuer.nextalarm.ui.PhonePorts
+import de.drehtuer.nextalarm.ui.canUseFullScreenIntent
 import java.time.Instant
 import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -89,12 +94,21 @@ object PlanningModule {
         @ApplicationContext context: Context,
         data: DataComponents,
         engine: PlannerEngine,
+        alarmEngine: AlarmEngine,
     ) = AppPorts(
         settings = data.settings,
         planner = data.planner,
         alarms = data.alarms,
         calendars = data.calendars,
         engine = engine,
+        alarmEngine = alarmEngine,
         planningChanges = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(PlanningWork.PLAN_WORK),
+        phone = PhonePorts(
+            audio = AndroidPhoneAudio(context),
+            sounds = data.sounds,
+            logs = ContentResolverLogDocuments(context.contentResolver),
+            fullScreenAllowed = { canUseFullScreenIntent(context) },
+        ),
+        io = Dispatchers.IO,
     )
 }

@@ -170,7 +170,12 @@ The diff decides per key:
 | `Cancelled`                                      | `Create`: the event was restored              | Nothing                                 |
 
 Alarm instances that do not come from the calendar, which is only the test alarm (key `test:<id>`), are left out of
-the diff.
+the diff. The test alarm is created through `AlarmEngine`, 5 seconds ahead and with the current settings, so it rings
+the normal way.
+
+At the end of a successful run, `AlarmEngine` deletes terminal instances whose trigger time is more than 7 days ago. A
+failure to delete does not fail the run; the next run tries again. An event that old is outside the plan, so its alarm
+cannot come back.
 
 ## Re-planning triggers
 
@@ -252,7 +257,8 @@ sequenceDiagram
   `audio/mpeg`, `audio/wav`, `audio/x-wav`, `audio/ogg`, `audio/mp4`, `audio/x-m4a`), i.e. MP3, WAV, OGG and M4A. The app copies the file into
   its device-protected storage, so it can be played before the first unlock and keeps working if the original
   file is moved or deleted. Unsupported or unreadable files are rejected in the picker flow. The
-  copy lives as long as the file is selected: unselecting or replacing the sound deletes it. The user's original is
+  copy lives as long as the file is selected: unselecting or replacing the sound saves the settings first and then
+  deletes it. The copy's name includes the file's own name, for the alarm settings to show. The user's original is
   never changed. A snoozed alarm whose copy was deleted this way rings with the next sound in the order below.
 - **If a sound cannot be played**, the next one is used: the picked file, then the phone's default alarm sound, then
   a sound bundled with the app. An alarm therefore always rings, also if the phone's default is set to silent.

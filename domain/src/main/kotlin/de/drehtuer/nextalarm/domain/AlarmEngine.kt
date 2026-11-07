@@ -72,6 +72,11 @@ class AlarmEngine(
         showNextAlarm()
     }
 
+    /** Deletes the alarms the history no longer keeps. See [expiredAlarms]. */
+    suspend fun removeExpired() = lock.withLock {
+        expiredAlarms(alarms.all(), now()).forEach { alarms.delete(it.id) }
+    }
+
     private suspend fun send(instanceId: Long, event: AlarmEvent) {
         val instance = alarms.find(instanceId) ?: return
         val context = AlarmContext(instance.autoSnoozed, instance.snapshot)

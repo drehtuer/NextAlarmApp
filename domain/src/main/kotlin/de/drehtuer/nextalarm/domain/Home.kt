@@ -65,6 +65,20 @@ fun formatTime(instant: Instant, zone: ZoneId): String {
     return time.format(if (time.second == 0) TIME else TIME_WITH_SECONDS)
 }
 
+/** A time without its seconds, for when something happened rather than when something rings. */
+internal fun formatMinute(instant: Instant, zone: ZoneId): String = instant.atZone(zone).format(TIME)
+
+/** "today at 19:58", "yesterday at 19:58" or "Thursday at 19:58". */
+internal fun relativeDayAndTime(instant: Instant, today: LocalDate, zone: ZoneId): String {
+    val time = instant.atZone(zone)
+    val day = when (time.toLocalDate()) {
+        today -> "today"
+        today.minusDays(1) -> "yesterday"
+        else -> time.format(WEEKDAY)
+    }
+    return "$day at ${time.format(TIME)}"
+}
+
 /** The alarms that are still to ring, in order. */
 fun waitingAlarms(alarms: List<AlarmInstance>, now: Instant): List<AlarmInstance> = alarms
     .filter { (it.state == AlarmState.Scheduled || it.state == AlarmState.Snoozed) && it.triggerAt > now }
@@ -164,12 +178,7 @@ private fun failSafeBody(record: PlannerRecord, zone: ZoneId): String {
 private fun homeFooter(now: Instant, zone: ZoneId, record: PlannerRecord, calendar: DeviceCalendar?): String? {
     val source = calendar?.let { "From the calendar “${it.name}”${calendarSource(it)?.let { name -> " ($name)" }.orEmpty()}." }
     val checked = record.lastRun?.let {
-        val day = when (it.startedAt.atZone(zone).toLocalDate()) {
-            now.atZone(zone).toLocalDate() -> "today"
-            now.atZone(zone).toLocalDate().minusDays(1) -> "yesterday"
-            else -> it.startedAt.atZone(zone).format(WEEKDAY)
-        }
-        "Checked $day at ${it.startedAt.atZone(zone).format(TIME)}."
+        "Checked ${relativeDayAndTime(it.startedAt, now.atZone(zone).toLocalDate(), zone)}."
     }
     return listOfNotNull(source, checked).joinToString(" ").ifEmpty { null }
 }

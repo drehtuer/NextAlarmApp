@@ -47,4 +47,6 @@ class RoomAlarmRepository(private val dao: AlarmDao) : AlarmRepository {
     }
 
     override suspend fun update(instance: AlarmInstance) = dao.update(instance.toEntity())
+
+    override suspend fun delete(id: Long) = dao.delete(id)
 }
