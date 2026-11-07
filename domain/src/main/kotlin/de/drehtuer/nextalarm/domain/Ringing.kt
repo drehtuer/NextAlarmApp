@@ -25,7 +25,7 @@ interface AlarmVibration {
     fun stop()
 }
 
-interface RingTimers {
+fun interface RingTimers {
     /** Runs [block] after [delay], also if the screen is off. The result cancels it. */
     fun after(delay: Duration, block: () -> Unit): () -> Unit
 }
