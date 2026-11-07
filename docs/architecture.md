@@ -301,9 +301,16 @@ sequenceDiagram
 - **Alarm sound:** by default, the phone's default alarm sound. The system setting is read when the alarm rings, so
   changing it there applies straight away. Alternatively the user picks an audio file with the Android file picker
   (`ACTION_OPEN_DOCUMENT`, MIME types
-  `audio/mpeg`, `audio/wav`, `audio/x-wav`, `audio/ogg`, `audio/mp4`, `audio/x-m4a`), i.e. MP3, WAV, OGG and M4A. The app copies the file into
+  `audio/mpeg`, `audio/wav`, `audio/x-wav`, `audio/ogg`, `audio/mp4`, `audio/x-m4a`), i.e. MP3, WAV, OGG and M4A.
+  Or the user picks one of the sounds that come with the phone, which live in the media store's internal storage and
+  which the file picker doesn't show, with Android's own picker (`RingtoneManager.ACTION_RINGTONE_PICKER`, `TYPE_ALARM`,
+  with the "Default" entry and without "None"). Its "Default" entry (`Settings.System.DEFAULT_ALARM_ALERT_URI`) means
+  the phone's default sound, so it is stored as that and not copied. Any other sound goes the same way as a picked file:
+  the type the resolver reports for it must be one of the above (the phone's own sounds are OGG, `audio/ogg`), and it
+  is named by its media title (`MediaStore.MediaColumns.TITLE`), else by its display name. The app copies the file into
   its device-protected storage, so it can be played before the first unlock and keeps working if the original
-  file is moved or deleted. Unsupported or unreadable files are rejected in the picker flow. The
+  file is moved or deleted. This is also why a phone sound is copied: the media store may not be readable before the
+  first unlock. Unsupported or unreadable files are rejected in the picker flow. The
   copy lives as long as the file is selected: unselecting or replacing the sound saves the settings first and then
   deletes it. The copy's name includes the file's own name, for the alarm settings to show. The user's original is
   never changed. A snoozed alarm whose copy was deleted this way rings with the next sound in the order below.

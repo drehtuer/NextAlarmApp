@@ -113,10 +113,12 @@ fun NextAlarmApp(
             val soundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                 if (uri != null) actions.importSound(uri)
             }
+            val phoneSoundPicker = rememberLauncherForActivityResult(PickPhoneSound(), actions::pickPhoneSound)
             AlarmSettingsScreen(
                 model = state.alarmSettings,
                 actions = actions,
                 onBack = { stack = stack.dropLast(1) },
+                onPhoneSounds = { phoneSoundPicker.launch(!state.alarmSettings.usesFile) },
                 onChooseFile = { soundPicker.launch(SUPPORTED_SOUND_MIME_TYPES.toTypedArray()) },
                 onNews = { stack = stack + Route.NEWS.name },
             )

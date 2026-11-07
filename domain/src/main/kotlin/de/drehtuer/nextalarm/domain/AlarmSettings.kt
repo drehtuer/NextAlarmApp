@@ -80,6 +80,34 @@ fun soundRejectionText(reason: SoundRejection, fileName: String): String = when 
     SoundRejection.NOT_PLAYABLE -> "“$fileName” has no sound NextAlarm can play. Choose another file."
 }
 
+/** The button of the "Alarm sound" row that opens the phone's own picker of alarm sounds. */
+const val PHONE_SOUNDS_BUTTON = "Phone sounds"
+
+/** The title of the phone's picker of alarm sounds. */
+const val PHONE_SOUNDS_TITLE = "Alarm sound"
+
+/** What the phone's own picker of alarm sounds gave back. */
+sealed interface PhoneSoundPick {
+    /** Closed without a choice. Nothing changes. */
+    data object Cancelled : PhoneSoundPick
+
+    /** Its "Default" entry, which is the same as "Use the phone's default sound". */
+    data object PhoneDefault : PhoneSoundPick
+
+    /** One of the phone's sounds, at [address]. It is copied like a picked file. */
+    data class Sound(val address: String) : PhoneSoundPick
+}
+
+/**
+ * Reads the picker's answer. [picked] is the address it gave back, or null if it was closed without a choice.
+ * [defaultAddress] is the address that stands for its "Default" entry.
+ */
+fun phoneSoundPick(picked: String?, defaultAddress: String): PhoneSoundPick = when (picked) {
+    null -> PhoneSoundPick.Cancelled
+    defaultAddress -> PhoneSoundPick.PhoneDefault
+    else -> PhoneSoundPick.Sound(picked)
+}
+
 /** The value of the "Alarm sound" row. [defaultName] is empty if the phone does not say what its default is called. */
 fun soundName(sound: SoundRef, defaultName: String?): String = when (sound) {
     SoundRef.SystemDefault -> if (defaultName != null) "Phone default ($defaultName)" else "Phone default"

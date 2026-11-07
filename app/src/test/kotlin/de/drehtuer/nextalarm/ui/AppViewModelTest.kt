@@ -19,6 +19,7 @@ import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.domain.LOG_FAILED_NOTE
 import de.drehtuer.nextalarm.domain.LOG_SAVED_NOTE
 import de.drehtuer.nextalarm.domain.LOG_TITLES_NOTE
+import de.drehtuer.nextalarm.domain.PhoneSoundPick
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.PlanningRun
 import de.drehtuer.nextalarm.domain.SettingsRepository
@@ -41,6 +42,7 @@ import de.drehtuer.nextalarm.domain.EngineLock
 import de.drehtuer.nextalarm.domain.PlannerState
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.snapshotFor
+import de.drehtuer.nextalarm.domain.soundRejectionText
 import de.drehtuer.nextalarm.planning.AppNotifications
 import de.drehtuer.nextalarm.planning.AppPlannerEffects
 import de.drehtuer.nextalarm.planning.PlanningModule
@@ -71,6 +73,7 @@ import org.robolectric.annotation.LooperMode
 private val NOW: Instant = Instant.parse("2026-11-06T19:00:00Z")
 private val CALENDAR = DeviceCalendar(CalendarId(1), "NextAlarm", "me", "bitfire.at.davdroid", null)
 private const val FEED_ADDRESS = "https://www.tagesschau.de/feed"
+private const val PHONE_SOUND = "content://media/internal/audio/media/37"
 
 private class FakeCalendars(var result: () -> List<DeviceCalendar> = { listOf(CALENDAR) }) : CalendarRepository {
     var reads = 0
@@ -433,6 +436,64 @@ class AppViewModelTest {
         awaitState { it.alarmSettings.soundRejection == null }
     }
 
+    @Test
+    fun `a phone sound is copied like a file, and the old copy is deleted only after the settings are saved`() = runBlocking {
+        val old = SoundRef.File("old")
+        val oxygen = SoundRef.File.forCopy("0".repeat(36), "Oxygen")
+        data.settings.save(Settings.DEFAULT.copy(sound = old))
+        engine.setupCompleted()
+        val runs = effects.started.size
+        sounds.result = SoundImportResult.Imported(oxygen)
+        viewModel.pickPhoneSound(PhoneSoundPick.Sound(PHONE_SOUND))
+        awaitState { it.alarmSettings.soundName == "Oxygen" }
+        assertEquals(oxygen, data.settings.load().sound)
+        assertEquals(listOf(Uri.parse(PHONE_SOUND)), sounds.importedPhoneSounds)
+        assertTrue(sounds.imported.isEmpty())
+        assertEquals(listOf<SoundRef>(old), sounds.deleted)
+        assertEquals(oxygen, sounds.storedAtDelete.single())
+        assertEquals(runs + 1, effects.started.size)
+    }
+
+    @Test
+    fun `a rejected phone sound changes nothing and says why with the same words as a file`() = runBlocking {
+        val old = SoundRef.File("old")
+        data.settings.save(Settings.DEFAULT.copy(sound = old))
+        sounds.result = SoundImportResult.Rejected(SoundRejection.UNREADABLE, "Oxygen")
+        viewModel.pickPhoneSound(PhoneSoundPick.Sound(PHONE_SOUND))
+        val rejected = awaitState { it.alarmSettings.soundRejection != null }
+        assertEquals(soundRejectionText(SoundRejection.UNREADABLE, "Oxygen"), rejected.alarmSettings.soundRejection)
+        assertEquals(old, data.settings.load().sound)
+        assertTrue(sounds.deleted.isEmpty())
+    }
+
+    @Test
+    fun `the phone picker's default entry goes back to the default, and deletes the copy after saving`() = runBlocking {
+        val old = SoundRef.File("old")
+        data.settings.save(Settings.DEFAULT.copy(sound = old))
+        assertTrue(load().alarmSettings.usesFile)
+        viewModel.pickPhoneSound(PhoneSoundPick.PhoneDefault)
+        awaitState { !it.alarmSettings.usesFile }
+        assertEquals(SoundRef.SystemDefault, data.settings.load().sound)
+        assertEquals(listOf<SoundRef>(old), sounds.deleted)
+        assertEquals(SoundRef.SystemDefault, sounds.storedAtDelete.single())
+        assertTrue(sounds.importedPhoneSounds.isEmpty())
+    }
+
+    @Test
+    fun `leaving the phone picker changes nothing, not even a rejection`() = runBlocking {
+        val old = SoundRef.File("old")
+        data.settings.save(Settings.DEFAULT.copy(sound = old))
+        sounds.result = SoundImportResult.Rejected(SoundRejection.UNREADABLE, "a.mp3")
+        viewModel.importSound(picked)
+        awaitState { it.alarmSettings.soundRejection != null }
+        viewModel.pickPhoneSound(PhoneSoundPick.Cancelled)
+        val after = load()
+        assertNotNull(after.alarmSettings.soundRejection)
+        assertEquals(old, data.settings.load().sound)
+        assertTrue(sounds.importedPhoneSounds.isEmpty())
+        assertTrue(sounds.deleted.isEmpty())
+    }
+
     /** Detection waits until the typing has paused, on a clock that only moves when the test says so. */
     private fun detectNews(address: String) {
         viewModel.setNewsAddress(address)
@@ -652,11 +713,17 @@ private class FakeAudio : PhoneAudio {
 private class FakeSounds(private val settings: SettingsRepository) : SoundFiles {
     var result: SoundImportResult = SoundImportResult.Rejected(SoundRejection.UNREADABLE, "none")
     val imported = mutableListOf<Uri>()
+    val importedPhoneSounds = mutableListOf<Uri>()
     val deleted = mutableListOf<SoundRef>()
     val storedAtDelete = mutableListOf<SoundRef>()
 
     override suspend fun import(uri: Uri): SoundImportResult {
         imported += uri
+        return result
+    }
+
+    override suspend fun importPhoneSound(uri: Uri): SoundImportResult {
+        importedPhoneSounds += uri
         return result
     }
 

@@ -16,6 +16,7 @@ import androidx.compose.ui.test.performScrollTo
 import de.drehtuer.nextalarm.domain.AlarmVolume
 import de.drehtuer.nextalarm.domain.NewsSource
 import de.drehtuer.nextalarm.domain.NewsType
+import de.drehtuer.nextalarm.domain.PhoneSoundPick
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.SoundRejection
@@ -40,6 +41,10 @@ class RecordingActions : AppActions {
 
     override fun importSound(uri: Uri) {
         calls += "import:$uri"
+    }
+
+    override fun pickPhoneSound(pick: PhoneSoundPick) {
+        calls += "phone:$pick"
     }
 
     override fun useDefaultSound() {
@@ -131,6 +136,7 @@ class AlarmSettingsScreenTest {
                     model = buildAlarmSettings(settings, "Bright Morning", volume, rejection),
                     actions = actions,
                     onBack = { other += "back" },
+                    onPhoneSounds = { other += "phone sounds" },
                     onChooseFile = { other += "file" },
                     onNews = { other += "news" },
                 )
@@ -150,6 +156,7 @@ class AlarmSettingsScreenTest {
             "Sound",
             "Alarm sound",
             "Phone default (Bright Morning)",
+            "Phone sounds",
             "Choose file",
             "Volume ramp",
             "Rises from silent",
@@ -212,6 +219,24 @@ class AlarmSettingsScreenTest {
         show()
         tap("Choose file")
         assertEquals(listOf("file"), other)
+    }
+
+    @Test
+    fun `Phone sounds opens the phone's own picker`() {
+        show()
+        tap("Phone sounds")
+        assertEquals(listOf("phone sounds"), other)
+        assertTrue(actions.calls.isEmpty())
+    }
+
+    @Test
+    fun `a phone sound shows its name and can be given up like a file`() {
+        show(Settings.DEFAULT.copy(sound = SoundRef.File.forCopy("0".repeat(36), "Oxygen")))
+        visible("Oxygen")
+        visible("Phone sounds")
+        visible("Choose file")
+        tap("Use the phone's default sound")
+        assertEquals(listOf("default"), actions.calls)
     }
 
     @Test

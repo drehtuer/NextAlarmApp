@@ -66,6 +66,27 @@ class AlarmSettingsTest {
     }
 
     @Test
+    fun `a phone sound is named by its title like a file`() {
+        assertEquals("Oxygen", soundName(SoundRef.File.forCopy("0".repeat(36), "Oxygen"), "Bright Morning"))
+    }
+
+    @Test
+    fun `the phone's sound picker is called by its wording`() {
+        assertEquals("Phone sounds", PHONE_SOUNDS_BUTTON)
+        assertEquals("Alarm sound", PHONE_SOUNDS_TITLE)
+    }
+
+    @Test
+    fun `the phone's sound picker gives a sound, its default, or nothing`() {
+        val default = "content://settings/system/alarm_alert"
+        val oxygen = "content://media/internal/audio/media/37"
+        assertEquals(PhoneSoundPick.Cancelled, phoneSoundPick(null, default))
+        assertEquals(PhoneSoundPick.PhoneDefault, phoneSoundPick(default, default))
+        assertEquals(PhoneSoundPick.Sound(oxygen), phoneSoundPick(oxygen, default))
+        assertEquals(oxygen, (phoneSoundPick(oxygen, default) as PhoneSoundPick.Sound).address)
+    }
+
+    @Test
     fun `only a set file can be given up`() {
         assertFalse(model().usesFile)
         assertTrue(model(Settings.DEFAULT.copy(sound = SoundRef.File("a"))).usesFile)

@@ -32,18 +32,23 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import de.drehtuer.nextalarm.R
 import de.drehtuer.nextalarm.domain.AlarmSettingsModel
+import de.drehtuer.nextalarm.domain.PHONE_SOUNDS_BUTTON
 import de.drehtuer.nextalarm.domain.ValuePicker
 import de.drehtuer.nextalarm.ui.AlarmSettingsActions
 import de.drehtuer.nextalarm.ui.theme.nextAlarmRadioColors
 import de.drehtuer.nextalarm.ui.theme.nextAlarmSwitchColors
 import de.drehtuer.nextalarm.ui.theme.outlinedButtonBorder
 
-/** Screen 5. [onChooseFile] opens the file picker. [onNews] is where the "News" row leads: screen 6. */
+/**
+ * Screen 5. [onPhoneSounds] opens the phone's own picker of alarm sounds, [onChooseFile] the file picker. [onNews] is
+ * where the "News" row leads: screen 6.
+ */
 @Composable
 fun AlarmSettingsScreen(
     model: AlarmSettingsModel,
     actions: AlarmSettingsActions,
     onBack: () -> Unit,
+    onPhoneSounds: () -> Unit,
     onChooseFile: () -> Unit,
     onNews: () -> Unit,
 ) {
@@ -72,7 +77,7 @@ fun AlarmSettingsScreen(
                 )
             }
             SectionHeader("Sound")
-            SoundRow(model, actions, onChooseFile)
+            SoundRow(model, actions, onPhoneSounds, onChooseFile)
             PickerRow("Volume ramp", "Rises from silent", model.volumeRamp, actions::setVolumeRamp)
             PickerRow("Maximum volume", "Sets the phone's alarm volume while ringing. Not set: leaves it as it is", model.maxVolume, actions::setMaxVolume)
             SwitchRow("Vibration", null, model.vibrate, actions::setVibrate)
@@ -109,14 +114,17 @@ private fun RowText(title: String, secondary: String?, modifier: Modifier = Modi
 
 private val RowModifier = Modifier.fillMaxWidth()
 
+/** Two buttons would not leave the sound's name enough room beside them, so they go below it. */
 @Composable
-private fun SoundRow(model: AlarmSettingsModel, actions: AlarmSettingsActions, onChooseFile: () -> Unit) {
-    Row(
-        RowModifier.heightIn(min = 56.dp).padding(horizontal = 24.dp, vertical = 8.dp),
-        Arrangement.spacedBy(16.dp),
-        Alignment.CenterVertically,
-    ) {
-        RowText("Alarm sound", model.soundName, Modifier.weight(1f))
+private fun SoundRow(
+    model: AlarmSettingsModel,
+    actions: AlarmSettingsActions,
+    onPhoneSounds: () -> Unit,
+    onChooseFile: () -> Unit,
+) {
+    RowText("Alarm sound", model.soundName, RowModifier.padding(start = 24.dp, end = 24.dp, top = 8.dp))
+    Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = onPhoneSounds, border = outlinedButtonBorder()) { Text(PHONE_SOUNDS_BUTTON) }
         OutlinedButton(onClick = onChooseFile, border = outlinedButtonBorder()) { Text("Choose file") }
     }
     if (model.usesFile) {

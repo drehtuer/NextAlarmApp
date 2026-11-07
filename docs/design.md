@@ -256,9 +256,11 @@ Below the rows come a divider and a section headed "About". It is always present
   sound settings, or set a maximum volume below." A maximum volume sets the phone's alarm volume while an alarm rings,
   so it can make an alarm louder.
 - **Section "Sound":**
-  - "Alarm sound": "Phone default (<sound name>)" or the file name. On the right, an outlined "Choose file" button. When
-    a file is set, a text button "Use the phone's default sound" appears below.
-  - When a file is rejected, a line in `error` with an error icon appears below the sound row:
+  - "Alarm sound": "Phone default (<sound name>)", the phone sound's name or the file name. Below it, two outlined
+    buttons: "Phone sounds" opens Android's own picker of alarm sounds (titled "Alarm sound"), and "Choose file" opens
+    the file picker. When a file or a phone sound is set, a text button "Use the phone's default sound" appears below.
+  - When a file or a phone sound is rejected, a line in `error` with an error icon appears below the sound row. Phone
+    sounds use the same messages, with the sound's name in place of the file name:
     - Unsupported type: "“Notes.pdf” isn't a sound file. Choose an MP3, WAV, OGG or M4A file."
     - Can't be read: "“morning.mp3” can't be opened. It may have been moved or deleted. Choose it again."
     - No playable audio: "“silence.m4a” has no sound NextAlarm can play. Choose another file."
@@ -288,6 +290,13 @@ Details decided while building this screen:
   [Calls and audio focus](architecture.md#calls-and-audio-focus).
 - The file's own name is kept in the name of the app's copy (`sound-<unique id>-<file name>`), because the settings only
   store that one name. It shows at most 64 characters of the file name.
+- "Phone sounds" is there because the file picker doesn't show the sounds that come with the phone. Its buttons sit below
+  the sound's name, as two buttons beside it would leave the name too little room. The picker offers the phone's alarm
+  sounds and a "Default" entry, and no "None", as an alarm must not be silent. While the phone's default is the sound,
+  "Default" is marked. Choosing "Default" is the same as "Use the phone's default sound". Leaving the picker changes
+  nothing, and a rejection that is shown stays.
+- A phone sound is named by its title in the media store ("Oxygen"), or else the way a file is. It is kept like a
+  picked file, and from then on shown like one: the row doesn't say that it came with the phone.
 - The "News" row names the feed's host name, without "www.", for both kinds. A feed's own title ("Der Tag") isn't stored.
 - If the phone doesn't say what its default sound is called, the row says "Phone default".
 

@@ -8,6 +8,7 @@ import android.database.MatrixCursor
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
@@ -29,12 +30,15 @@ import org.robolectric.shadows.util.DataSource
 
 @RunWith(RobolectricTestRunner::class)
 class SoundStoreTest {
-    /** Stands in for the document provider behind the file picker. */
+    /** Stands in for the document provider behind the file picker, and for the media store with the phone's sounds. */
     class FakeDocumentProvider : ContentProvider() {
         var type: String? = "audio/mpeg"
         var file: File? = null
         var denied = false
         var names: List<String?> = emptyList()
+
+        /** What the media store calls a sound. A document provider has no titles. */
+        var titles: List<String?> = emptyList()
         var nameFailure: RuntimeException? = null
 
         override fun onCreate() = true
@@ -48,8 +52,10 @@ class SoundStoreTest {
 
         override fun query(uri: Uri, p: Array<out String>?, s: String?, a: Array<out String>?, o: String?): Cursor? {
             nameFailure?.let { throw it }
-            if (names.isEmpty() && !answersEmpty) return null
-            return MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME)).apply { names.forEach { addRow(arrayOf(it)) } }
+            val column = p?.single() ?: OpenableColumns.DISPLAY_NAME
+            val values = if (column == MediaStore.MediaColumns.TITLE) titles else names
+            if (values.isEmpty() && !answersEmpty) return null
+            return MatrixCursor(arrayOf(column)).apply { values.forEach { addRow(arrayOf(it)) } }
         }
 
         var answersEmpty = false
@@ -123,6 +129,54 @@ class SoundStoreTest {
         provider.file = picked()
         val sound = assertIs<SoundImportResult.Imported>(store().import(uri)).sound
         assertEquals(sounds.canonicalFile, File(sounds, sound.name).canonicalFile.parentFile)
+    }
+
+    @Test
+    fun `a phone sound is named by its title, and copied like a file`() = runBlocking {
+        provider.type = "audio/ogg"
+        provider.names = listOf("Oxygen.ogg")
+        provider.titles = listOf("Oxygen")
+        provider.file = picked("ogg data")
+        val sound = assertIs<SoundImportResult.Imported>(store().importPhoneSound(uri)).sound
+        assertEquals("Oxygen", sound.displayName)
+        assertEquals("ogg data", File(sounds, sound.name).readText())
+    }
+
+    @Test
+    fun `a phone sound without a title is named the way a file is`() = runBlocking {
+        provider.type = "audio/ogg"
+        provider.names = listOf("Oxygen.ogg")
+        provider.file = picked()
+        assertEquals("Oxygen.ogg", assertIs<SoundImportResult.Imported>(store().importPhoneSound(uri)).sound.displayName)
+        provider.titles = listOf(" ")
+        assertEquals("Oxygen.ogg", assertIs<SoundImportResult.Imported>(store().importPhoneSound(uri)).sound.displayName)
+        provider.titles = listOf(null)
+        assertEquals("Oxygen.ogg", assertIs<SoundImportResult.Imported>(store().importPhoneSound(uri)).sound.displayName)
+    }
+
+    @Test
+    fun `a media store that fails to give a title does not stop the import`() = runBlocking {
+        provider.type = "audio/ogg"
+        provider.nameFailure = SecurityException("no")
+        provider.file = picked()
+        assertEquals("song", assertIs<SoundImportResult.Imported>(store().importPhoneSound(uri)).sound.displayName)
+    }
+
+    @Test
+    fun `a phone sound is checked like a file, and a rejection names its title`() = runBlocking {
+        provider.titles = listOf("Oxygen")
+        provider.type = "audio/flac"
+        assertEquals(SoundImportResult.Rejected(SoundRejection.UNSUPPORTED_TYPE, "Oxygen"), store().importPhoneSound(uri))
+        provider.type = "audio/ogg"
+        provider.denied = true
+        assertEquals(SoundImportResult.Rejected(SoundRejection.UNREADABLE, "Oxygen"), store().importPhoneSound(uri))
+        provider.denied = false
+        provider.file = picked()
+        assertEquals(
+            SoundImportResult.Rejected(SoundRejection.NOT_PLAYABLE, "Oxygen"),
+            store(playable = false).importPhoneSound(uri),
+        )
+        assertTrue(storedFiles().isEmpty())
     }
 
     @Test

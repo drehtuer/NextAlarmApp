@@ -18,6 +18,7 @@ import de.drehtuer.nextalarm.domain.LOG_FAILED_NOTE
 import de.drehtuer.nextalarm.domain.LOG_SAVED_NOTE
 import de.drehtuer.nextalarm.domain.NewsDraft
 import de.drehtuer.nextalarm.domain.NewsModel
+import de.drehtuer.nextalarm.domain.PhoneSoundPick
 import de.drehtuer.nextalarm.domain.PlannerEngine
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.PlannerRepository
@@ -111,6 +112,7 @@ data class AppState(
 /** What screen 5 can ask for. */
 interface AlarmSettingsActions {
     fun importSound(uri: Uri)
+    fun pickPhoneSound(pick: PhoneSoundPick)
     fun useDefaultSound()
     fun setVolumeRamp(seconds: Int)
     fun setMaxVolume(volume: Float?)
@@ -231,9 +233,18 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         }
     }
 
-    override fun importSound(uri: Uri) {
+    override fun importSound(uri: Uri) = takeSound { ports.phone.sounds.import(uri) }
+
+    /** A phone sound is copied like a picked file. The picker's "Default" entry is the phone's default sound. */
+    override fun pickPhoneSound(pick: PhoneSoundPick) = when (pick) {
+        PhoneSoundPick.Cancelled -> Unit
+        PhoneSoundPick.PhoneDefault -> useDefaultSound()
+        is PhoneSoundPick.Sound -> takeSound { ports.phone.sounds.importPhoneSound(Uri.parse(pick.address)) }
+    }
+
+    private fun takeSound(import: suspend () -> SoundImportResult) {
         viewModelScope.launch {
-            when (val result = ports.phone.sounds.import(uri)) {
+            when (val result = import()) {
                 is SoundImportResult.Imported -> replaceSound(result.sound)
                 is SoundImportResult.Rejected -> {
                     soundRejection = soundRejectionText(result.reason, result.fileName)

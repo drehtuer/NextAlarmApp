@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.RingtoneManager
 import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -44,6 +45,10 @@ import de.drehtuer.nextalarm.domain.HomeHero
 import de.drehtuer.nextalarm.domain.BannerText
 import de.drehtuer.nextalarm.domain.HomeModel
 import de.drehtuer.nextalarm.domain.HomeRow
+import de.drehtuer.nextalarm.domain.PhoneSoundPick
+import de.drehtuer.nextalarm.domain.SoundRef
+import de.drehtuer.nextalarm.domain.buildAlarmSettings
+import de.drehtuer.nextalarm.domain.Settings as DomainSettings
 import de.drehtuer.nextalarm.ui.screens.CalendarScreen
 import de.drehtuer.nextalarm.ui.screens.HomeScreen
 import de.drehtuer.nextalarm.ui.screens.OnboardingScreen
@@ -622,9 +627,9 @@ class DocumentPickersTest {
     private val ready = AppState(loaded = true, setupDone = true)
     private val picked = Uri.parse("content://docs/picked")
 
-    private fun open(row: String) {
+    private fun open(row: String, state: AppState = ready) {
         rule.setContent {
-            NextAlarmTheme(dark = false) { NextAlarmApp(ready, 0, { _, _ -> }, {}, actions) }
+            NextAlarmTheme(dark = false) { NextAlarmApp(state, 0, { _, _ -> }, {}, actions) }
         }
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.onNodeWithText(row).performClick()
@@ -645,6 +650,24 @@ class DocumentPickersTest {
         open("Alarm settings")
         rule.onNodeWithText("Choose file").performScrollTo().performClick()
         return shadowOf(rule.activity).nextStartedActivityForResult
+    }
+
+    private fun phoneSounds(state: AppState = ready): ShadowActivity.IntentForResult {
+        open("Alarm settings", state)
+        rule.onNodeWithText("Phone sounds").performScrollTo().performClick()
+        return shadowOf(rule.activity).nextStartedActivityForResult
+    }
+
+    /** The phone's picker answers with an extra, not with the intent's data. */
+    private fun answerPhoneSound(request: ShadowActivity.IntentForResult, result: Uri?) {
+        rule.runOnUiThread {
+            rule.activity.activityResultRegistry.dispatchResult(
+                request.requestCode,
+                if (result != null) Activity.RESULT_OK else Activity.RESULT_CANCELED,
+                result?.let { Intent().putExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, it) },
+            )
+        }
+        rule.waitForIdle()
     }
 
     private fun exportLog(): ShadowActivity.IntentForResult {
@@ -670,6 +693,50 @@ class DocumentPickersTest {
     fun `leaving the sound picker changes nothing`() {
         answer(chooseFile(), null)
         assertTrue(actions.calls.isEmpty())
+    }
+
+    @Test
+    fun `Phone sounds opens the phone's own alarm sound picker, with the default marked while it is used`() {
+        val intent = phoneSounds().intent
+        assertEquals(RingtoneManager.ACTION_RINGTONE_PICKER, intent.action)
+        assertEquals(RingtoneManager.TYPE_ALARM, intent.getIntExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, -1))
+        assertEquals(
+            PickPhoneSound.DEFAULT_ALARM,
+            intent.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri::class.java),
+        )
+    }
+
+    @Test
+    fun `with a file set, the phone's picker marks nothing`() {
+        val withFile = ready.copy(
+            alarmSettings = buildAlarmSettings(
+                DomainSettings.DEFAULT.copy(sound = SoundRef.File.forCopy("0".repeat(36), "morning.mp3")),
+                null,
+                null,
+                null,
+            ),
+        )
+        val intent = phoneSounds(withFile).intent
+        assertTrue(!intent.hasExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI))
+    }
+
+    @Test
+    fun `a phone sound goes to the actions`() {
+        val oxygen = Uri.parse("content://media/internal/audio/media/37")
+        answerPhoneSound(phoneSounds(), oxygen)
+        assertEquals(listOf("phone:${PhoneSoundPick.Sound(oxygen.toString())}"), actions.calls)
+    }
+
+    @Test
+    fun `the phone picker's default entry goes to the actions as the default`() {
+        answerPhoneSound(phoneSounds(), PickPhoneSound.DEFAULT_ALARM)
+        assertEquals(listOf("phone:${PhoneSoundPick.PhoneDefault}"), actions.calls)
+    }
+
+    @Test
+    fun `leaving the phone's picker is reported as a cancel`() {
+        answerPhoneSound(phoneSounds(), null)
+        assertEquals(listOf("phone:${PhoneSoundPick.Cancelled}"), actions.calls)
     }
 
     @Test

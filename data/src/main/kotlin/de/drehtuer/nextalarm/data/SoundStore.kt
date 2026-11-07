@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.RingtoneManager
 import android.net.Uri
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import androidx.annotation.RawRes
 import de.drehtuer.nextalarm.domain.SoundRef
@@ -16,7 +17,10 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** What the file picker offers. Android reports WAV and M4A files under more than one type. */
+/**
+ * What the file picker offers, and what a sound must be to be taken. Android reports WAV and M4A files under more than
+ * one type. The phone's own sounds are OGG files, which the media store reports as `audio/ogg`.
+ */
 val SUPPORTED_SOUND_MIME_TYPES: Set<String> = setOf(
     "audio/mpeg",
     "audio/wav",
@@ -54,6 +58,9 @@ interface SoundFiles {
     /** Takes a copy of the file the user picked, or says why it was not taken. */
     suspend fun import(uri: Uri): SoundImportResult
 
+    /** The same for one of the phone's own sounds, which is known by its title rather than its file name. */
+    suspend fun importPhoneSound(uri: Uri): SoundImportResult
+
     /** Deletes the app's copy of a sound that is no longer selected. The user's original is not affected. */
     fun delete(sound: SoundRef)
 }
@@ -80,10 +87,16 @@ class SoundStore(
     /** The sound that needs nothing from the phone or the database. */
     val bundled: SoundSource = SoundSource.Bundled(R.raw.alarm_fallback)
 
-    override suspend fun import(uri: Uri): SoundImportResult = withContext(ioDispatcher) {
-        val fileName = displayName(uri)
+    override suspend fun import(uri: Uri): SoundImportResult = withContext(ioDispatcher) { importAs(uri, displayName(uri)) }
+
+    override suspend fun importPhoneSound(uri: Uri): SoundImportResult = withContext(ioDispatcher) {
+        importAs(uri, queryText(uri, MediaStore.MediaColumns.TITLE)?.takeIf { it.isNotBlank() } ?: displayName(uri))
+    }
+
+    /** [fileName] is what the copy is named after, and what a rejection names. */
+    private fun importAs(uri: Uri, fileName: String): SoundImportResult {
         if (resolver.getType(uri) !in SUPPORTED_SOUND_MIME_TYPES) {
-            return@withContext SoundImportResult.Rejected(SoundRejection.UNSUPPORTED_TYPE, fileName)
+            return SoundImportResult.Rejected(SoundRejection.UNSUPPORTED_TYPE, fileName)
         }
         directory.mkdirs()
         val sound = SoundRef.File.forCopy(UUID.randomUUID().toString(), fileName)
@@ -93,7 +106,7 @@ class SoundStore(
             !probe.isPlayable(file) -> SoundRejection.NOT_PLAYABLE
             else -> null
         }
-        if (rejection == null) {
+        return if (rejection == null) {
             SoundImportResult.Imported(sound)
         } else {
             removeQuietly(file)
@@ -101,16 +114,18 @@ class SoundStore(
         }
     }
 
-    /** The picker's name for the file, or else the end of its address. A provider may refuse or fail to answer. */
-    private fun displayName(uri: Uri): String {
-        val name = try {
-            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else null
-            }
-        } catch (_: RuntimeException) {
-            null
+    /** The picker's name for the file, or else the end of its address. */
+    private fun displayName(uri: Uri): String = queryText(uri, OpenableColumns.DISPLAY_NAME)
+        ?: uri.lastPathSegment?.substringAfterLast('/')
+        ?: UNNAMED_FILE
+
+    /** One value the provider keeps about [uri]. Only for a name, so a provider may refuse or fail to answer. */
+    private fun queryText(uri: Uri, column: String): String? = try {
+        resolver.query(uri, arrayOf(column), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
         }
-        return name ?: uri.lastPathSegment?.substringAfterLast('/') ?: UNNAMED_FILE
+    } catch (_: RuntimeException) {
+        null
     }
 
     /**
