@@ -242,9 +242,8 @@ Below the rows come a divider and a section headed "About". It is always present
 - **Lead:** "These apply to every alarm."
 - **Low-volume banner** (`secondaryContainer`, muted-speaker icon), shown when the alarm stream volume is at or below
   2 steps: "**Your phone's alarm volume is low (1 of 7).** Alarms may be too quiet to wake you. Turn it up in the phone's
-  sound settings." The delivered wording went on "or set a maximum volume below". That is left out, because the maximum
-  volume only lowers the player's own gain and can never make an alarm louder. See Q-S1 in
-  [Open questions](open_questions.md).
+  sound settings, or set a maximum volume below." A maximum volume sets the phone's alarm volume while an alarm rings,
+  so it can make an alarm louder.
 - **Section "Sound":**
   - "Alarm sound": "Phone default (<sound name>)" or the file name. On the right, an outlined "Choose file" button. When
     a file is set, a text button "Use the phone's default sound" appears below.
@@ -253,7 +252,7 @@ Below the rows come a divider and a section headed "About". It is always present
     - Can't be read: "“morning.mp3” can't be opened. It may have been moved or deleted. Choose it again."
     - No playable audio: "“silence.m4a” has no sound NextAlarm can play. Choose another file."
   - "Volume ramp" / "Rises from silent", with the value on the right: "None" or a duration.
-  - "Maximum volume" / "Not set: uses the phone's alarm volume", with the value "Not set" or a percentage.
+  - "Maximum volume" / "Sets the phone's alarm volume while ringing. Not set: leaves it as it is", with the value "Not set" or a percentage.
   - "Vibration", with a switch.
 - **Section "Ringing":**
   - "Ring for" / "Then it snoozes on its own": "3 min".
@@ -269,11 +268,11 @@ Details decided while building this screen:
 - A picker is a Material 3 dialog with one radio button per value, and "Cancel":
   - Volume ramp: "None", 15 s, 30 s, 1, 2 or 5 min. A ramp longer than "Ring for" is cut to that length when the alarm
     rings, so that it reaches its full level. The picker keeps showing the chosen value.
-  - Maximum volume: "Not set", then 90% down to 10% in steps of 10. There is no 0%, because an alarm must not be silent.
-    100% would be the same as "Not set".
+  - Maximum volume: "Not set", then 100% down to 10% in steps of 10. There is no 0%, because an alarm must not be silent.
+    100% is not the same as "Not set": it sets the phone's alarm volume to its top while the alarm rings.
   - Ring for: 1, 2, 3, 5, 10 or 15 min.
   - Snooze length: 1, 5, 10, 15, 20 or 30 min.
-- "Maximum volume" keeps its secondary line also when a value is set, as an explanation of "Not set".
+- "Maximum volume" keeps its secondary line also when a value is set.
 - The file's own name is kept in the name of the app's copy (`sound-<unique id>-<file name>`), because the settings only
   store that one name. It shows at most 64 characters of the file name.
 - The "News" row names the feed's host name, without "www.", for both kinds. A feed's own title ("Der Tag") isn't stored.

@@ -2,6 +2,7 @@ package de.drehtuer.nextalarm
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
@@ -128,6 +129,18 @@ class MainActivityRequestsTest {
                 assertEquals(AlarmActivity::class.java.name, shadowOf(activity).nextStartedActivity?.component?.className)
                 activity.ringing.report(emptyList())
             }
+        }
+    }
+
+    @Test
+    fun `opening the app puts back an alarm volume left raised, which Android may have ignored at boot`() {
+        val audio = context.getSystemService(AudioManager::class.java)
+        audio.setStreamVolume(AudioManager.STREAM_ALARM, 6, 0)
+        DataComponents(context).savedVolume.save(2)
+        ActivityScenario.launch<MainActivity>(intent(null)).use {
+            rule.waitForIdle()
+            assertEquals(2, audio.getStreamVolume(AudioManager.STREAM_ALARM))
+            assertNull(DataComponents(context).savedVolume.load())
         }
     }
 

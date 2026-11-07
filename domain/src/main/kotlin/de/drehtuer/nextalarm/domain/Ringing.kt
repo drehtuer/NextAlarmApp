@@ -2,13 +2,15 @@ package de.drehtuer.nextalarm.domain
 
 import java.time.Duration
 import java.time.Instant
+import kotlin.math.roundToInt
 
 /**
- * The gain of the alarm sound in the player itself, between 0 and 1. The system's stream volume is never changed: the
- * sound can only be quieter than the phone's alarm volume, and a [maxVolume] of 0 is silent.
+ * The gain of the alarm sound in the player itself, between 0 and 1. How loud that is comes from the phone's alarm stream,
+ * which [AlarmVolumeKeeper] sets if the alarm has a [maxVolume]. So the gain only says whether the sound is on and how far
+ * the ramp has got. A [maxVolume] of 0 is silent, which is the one thing it does here.
  */
 fun soundGain(elapsed: Duration, rampSeconds: Int, maxVolume: Float?): Float {
-    val top = maxVolume ?: 1f
+    val top = if (maxVolume == 0f) 0f else 1f
     if (rampSeconds <= 0) return top
     val progress = elapsed.toMillis().toFloat() / Duration.ofSeconds(rampSeconds.toLong()).toMillis()
     return top * progress.coerceIn(0f, 1f)
@@ -49,6 +51,108 @@ fun emergencyAlarm(instanceId: Long, now: Instant): AlarmInstance = AlarmInstanc
         speakReason = false,
         news = null,
     ),
+)
+
+/**
+ * The step of the alarm stream for [maxVolume], which is above 0. A value that rounds down to nothing still gets the lowest
+ * step that can be heard: a value of 0 never comes here, as it means silent, and must leave the stream alone.
+ */
+fun streamLevel(maxVolume: Float, min: Int, max: Int): Int {
+    val lowest = maxOf(min, 1)
+    return (maxVolume * max).roundToInt().coerceIn(lowest, maxOf(lowest, max))
+}
+
+/** Something went wrong with the sound's surroundings. The alarm goes on, so this is only to be logged. */
+typealias AudioProblem = (String, RuntimeException?) -> Unit
+
+/** The phone's alarm stream, in its own steps. Android can ignore [set] without saying so: see [AlarmVolumeKeeper]. */
+interface AlarmStream {
+    fun current(): Int
+    fun min(): Int
+    fun max(): Int
+    fun set(level: Int)
+}
+
+/** The user's alarm volume while an alarm has changed it. It has to survive a crash and a reboot, before the first unlock too. */
+interface SavedAlarmVolume {
+    fun load(): Int?
+
+    /** Throws if it could not be stored. */
+    fun save(level: Int)
+    fun clear()
+}
+
+/**
+ * Sets the phone's alarm stream for an alarm with a maximum volume, and puts it back afterwards. See
+ * docs/architecture.md#ringing. Nothing here throws: an alarm that rings at the wrong volume beats one that doesn't ring.
+ *
+ * The user's volume is stored before the stream changes, and only if none is stored yet, so a later alarm, or one rung
+ * again after a crash, doesn't take the raised level for the user's own. If storing fails, it is still known in memory, and
+ * the alarm goes on with the volume it asked for: being woken comes before the volume after a crash.
+ *
+ * Android 17 ignores a change of the volume without an error when the app has no foreground service
+ * (docs/architecture.md#background-audio-on-android-17), which is the case in the recovery sweep after a reboot. So [restore]
+ * looks at whether it had any effect, and if not keeps the stored volume for the next try.
+ */
+class AlarmVolumeKeeper(
+    private val stream: AlarmStream,
+    private val saved: SavedAlarmVolume,
+    private val onProblem: AudioProblem,
+) {
+    private var inMemory: Int? = null
+
+    /** Empty and 0 leave the stream alone: the first means the phone's own volume, the second a silent alarm. */
+    fun raise(maxVolume: Float?) {
+        if (maxVolume == null || maxVolume == 0f) return
+        attempt("The alarm volume could not be set") {
+            val level = streamLevel(maxVolume, stream.min(), stream.max())
+            rememberOnce()
+            stream.set(level)
+            if (stream.current() != level) onProblem("Android did not set the alarm volume to $level", null)
+        }
+    }
+
+    /** Does nothing if no alarm changed the stream. */
+    fun restore() {
+        attempt("The alarm volume could not be put back") {
+            val level = previous() ?: return
+            val before = stream.current()
+            stream.set(level)
+            if (before != level && stream.current() == before) {
+                onProblem("Android did not put the alarm volume back to $level: this is tried again later", null)
+                return
+            }
+            inMemory = null
+            saved.clear()
+        }
+    }
+
+    private fun rememberOnce() {
+        if (previous() != null) return
+        val level = stream.current()
+        inMemory = level
+        attempt("The alarm volume could not be stored") { saved.save(level) }
+    }
+
+    private fun previous(): Int? {
+        inMemory?.let { return it }
+        var stored: Int? = null
+        attempt("The stored alarm volume could not be read") { stored = saved.load() }
+        return stored
+    }
+
+    private inline fun attempt(problem: String, step: () -> Unit) {
+        try {
+            step()
+        } catch (failure: RuntimeException) {
+            onProblem(problem, failure)
+        }
+    }
+}
+
+/** What the ringer needs around the sound. */
+class RingAudio(
+    val volume: AlarmVolumeKeeper,
 )
 
 /** Plays one alarm sound at a time, in a loop. */
@@ -249,7 +353,7 @@ class FallbackSound<S>(
  * while another one rings joins it. See docs/architecture.md#ringing.
  *
  * Alarm snapshots can differ if the settings changed between two alarms, which is settled as follows: the sound and its
- * volume stay those of the alarm that started it, the phone vibrates while any ringing alarm asks for it, and the
+ * volume, also the level of the phone's alarm stream, stay those of the alarm that started it, the phone vibrates while any ringing alarm asks for it, and the
  * timeout is the longest one, so that no alarm rings for less time than it should.
  *
  * The sound is the last thing to start, as Android silences it, without any error, unless a foreground service is running
@@ -265,6 +369,7 @@ class AlarmRinger(
     private val vibration: AlarmVibration,
     private val timers: RingTimers,
     private val wakeLock: RingWakeLock,
+    private val audio: RingAudio,
     /** The ring timeout ran out for these alarms. Alarms that joined later have a new timeout. */
     private val onTimeout: (List<Long>) -> Unit,
     private val onChanged: (List<AlarmInstance>) -> Unit,
@@ -312,11 +417,22 @@ class AlarmRinger(
         val alarm = waitingToPlay ?: return
         waitingToPlay = null
         cancelForegroundWait()
+        // Android 17 only lets the volume change with the service up, as it does the sound.
+        audio.volume.raise(alarm.snapshot.maxVolume)
         if (alarm.key.isEmergency) {
             sound.playLastResort(soundGain(Duration.ZERO, 0, alarm.snapshot.maxVolume))
         } else {
             startSound(alarm.snapshot)
         }
+    }
+
+    /**
+     * Puts the phone's alarm volume back if an alarm left it changed and nothing rings: after a crash or a reboot, whose
+     * sweep comes here, or if Android ignored the earlier try. An alarm that rings goes on using it, and does this when it ends.
+     */
+    @Synchronized
+    fun restoreVolumeIfIdle() {
+        if (alarms.isEmpty()) audio.volume.restore()
     }
 
     /** An alarm that does not ring has nothing to leave, which is the case for a dismissed snoozed alarm. */
@@ -406,7 +522,7 @@ class AlarmRinger(
         cancelHardStop()
         cancelForegroundWait()
         waitingToPlay = null
-        return listOf(sound::stop, ::updateVibration, wakeLock::release).mapNotNull { step ->
+        return listOf(sound::stop, audio.volume::restore, ::updateVibration, wakeLock::release).mapNotNull { step ->
             try {
                 step()
                 null

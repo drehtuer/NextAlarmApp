@@ -29,7 +29,7 @@ class AppAlarmEffectsTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val manager = context.getSystemService(NotificationManager::class.java)
     private val notifications = AlarmNotifications(context)
-    private val ringer = AlarmRinger(FakeSound(), FakeVibration(), FakeTimers(), FakeWakeLock(), {}, {})
+    private val ringer = AlarmRinger(FakeSound(), FakeVibration(), FakeTimers(), FakeWakeLock(), fakeRingAudio(), {}, {})
     private val started = mutableListOf<String>()
     private val wakeUp = object : WakeUpAutomation {
         override fun startAnnouncement(alarm: AlarmInstance) {

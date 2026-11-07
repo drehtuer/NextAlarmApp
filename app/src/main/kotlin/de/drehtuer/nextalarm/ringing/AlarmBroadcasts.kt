@@ -65,8 +65,12 @@ class AlarmBroadcasts(
         }
     }
 
-    /** The recovery sweep, on `LOCKED_BOOT_COMPLETED` and at every process start. */
+    /**
+     * The recovery sweep, on `LOCKED_BOOT_COMPLETED` and at every process start. The volume comes before the service can
+     * stop, as Android ignores a change of it without one.
+     */
     fun sweep(finish: () -> Unit = {}) = run({
+        ringer.restoreVolumeIfIdle()
         foreground.sweepFinished()
         finish()
     }) { engine.recover() }

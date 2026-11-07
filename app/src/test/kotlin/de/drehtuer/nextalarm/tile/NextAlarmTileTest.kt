@@ -141,7 +141,7 @@ class TileRefreshTest {
 
     @Test
     fun `a failing refresh never reaches the alarm path`() {
-        val ringer = AlarmRinger(FakeSound(), FakeVibration(), FakeTimers(), FakeWakeLock(), {}, {})
+        val ringer = AlarmRinger(FakeSound(), FakeVibration(), FakeTimers(), FakeWakeLock(), de.drehtuer.nextalarm.ringing.fakeRingAudio(), {}, {})
         val wakeUp = object : WakeUpAutomation {
             override fun startAnnouncement(alarm: AlarmInstance) = Unit
             override fun startNews(alarm: AlarmInstance) = Unit

@@ -14,8 +14,8 @@ class SoundGainTest {
     }
 
     @Test
-    fun `without a ramp the maximum applies straight away`() {
-        assertEquals(0.5f, soundGain(Duration.ZERO, 0, 0.5f))
+    fun `with a maximum the player is at full level too, as the stream sets how loud that is`() {
+        assertEquals(1f, soundGain(Duration.ZERO, 0, 0.5f))
     }
 
     @Test
@@ -27,9 +27,9 @@ class SoundGainTest {
     }
 
     @Test
-    fun `a ramp rises to the maximum`() {
-        assertEquals(0.25f, soundGain(Duration.ofSeconds(5), 10, 0.5f))
-        assertEquals(0.5f, soundGain(Duration.ofSeconds(20), 10, 0.5f))
+    fun `with a maximum a ramp still rises from 0 to 1`() {
+        assertEquals(0.5f, soundGain(Duration.ofSeconds(5), 10, 0.5f))
+        assertEquals(1f, soundGain(Duration.ofSeconds(20), 10, 0.5f))
     }
 
     @Test
@@ -379,6 +379,50 @@ private class FakeVibration : AlarmVibration {
     }
 }
 
+private class FakeStream(var level: Int = 3, private val top: Int = 7) : AlarmStream {
+    val log = mutableListOf<String>()
+    var failure: RuntimeException? = null
+
+    /** As Android does without a service: no effect, and no error. */
+    var ignoring = false
+    var roundTo: Int? = null
+
+    override fun current() = level
+    override fun min() = 1
+    override fun max() = top
+
+    override fun set(level: Int) {
+        failure?.let { throw it }
+        log += "set:$level"
+        if (!ignoring) this.level = roundTo ?: level
+    }
+}
+
+private class FakeSavedVolume : SavedAlarmVolume {
+    var level: Int? = null
+    var writes = 0
+    var failing = false
+    var failingToRead = false
+    var log = mutableListOf<String>()
+
+    override fun load(): Int? {
+        check(!failingToRead) { "storage failed" }
+        return level
+    }
+
+    override fun save(level: Int) {
+        check(!failing) { "storage failed" }
+        log += "save:$level"
+        writes++
+        this.level = level
+    }
+
+    override fun clear() {
+        check(!failing) { "storage failed" }
+        level = null
+    }
+}
+
 private class FakeWakeLock : RingWakeLock {
     var heldFor: Duration? = null
 
@@ -391,6 +435,200 @@ private class FakeWakeLock : RingWakeLock {
     }
 }
 
+class StreamLevelTest {
+    @Test
+    fun `a maximum becomes the nearest step`() {
+        assertEquals(4, streamLevel(0.5f, 1, 7))
+        assertEquals(3, streamLevel(0.4f, 1, 7))
+        assertEquals(5, streamLevel(0.7f, 1, 7))
+    }
+
+    @Test
+    fun `100 percent is the top step`() {
+        assertEquals(7, streamLevel(1f, 1, 7))
+    }
+
+    @Test
+    fun `a small maximum is at least the lowest step, which can be heard`() {
+        assertEquals(1, streamLevel(0.01f, 0, 7))
+        assertEquals(2, streamLevel(0.01f, 2, 7))
+    }
+
+    @Test
+    fun `a stream with fewer steps than its minimum still gets a level`() {
+        assertEquals(1, streamLevel(0.5f, 1, 0))
+    }
+}
+
+class AlarmVolumeKeeperTest {
+    private val stream = FakeStream(level = 2)
+    private val saved = FakeSavedVolume()
+    private val problems = mutableListOf<String>()
+    private val keeper = AlarmVolumeKeeper(stream, saved) { message, _ -> problems += message }
+
+    @Test
+    fun `a maximum sets the stream, after the user's volume is stored`() {
+        saved.log = stream.log
+        keeper.raise(0.5f)
+        assertEquals(4, stream.level)
+        assertEquals(2, saved.level)
+        assertEquals(listOf("save:2", "set:4"), stream.log)
+    }
+
+    @Test
+    fun `no maximum never touches the stream or the store`() {
+        keeper.raise(null)
+        keeper.restore()
+        assertTrue(stream.log.isEmpty())
+        assertEquals(0, saved.writes)
+        assertEquals(2, stream.level)
+    }
+
+    @Test
+    fun `a maximum of zero never touches the stream or the store, as someone may be asleep next to the phone`() {
+        keeper.raise(0f)
+        keeper.restore()
+        assertTrue(stream.log.isEmpty())
+        assertEquals(0, saved.writes)
+        assertEquals(2, stream.level)
+    }
+
+    @Test
+    fun `the user's volume is only stored once, so that a raised level is never taken for it`() {
+        keeper.raise(0.5f)
+        keeper.raise(1f)
+        assertEquals(2, saved.level)
+        assertEquals(1, saved.writes)
+        keeper.restore()
+        assertEquals(2, stream.level)
+    }
+
+    @Test
+    fun `restoring puts the user's volume back and forgets it`() {
+        keeper.raise(0.5f)
+        keeper.restore()
+        assertEquals(2, stream.level)
+        assertEquals(null, saved.level)
+    }
+
+    @Test
+    fun `restoring twice is harmless`() {
+        keeper.raise(0.5f)
+        keeper.restore()
+        stream.level = 6
+        keeper.restore()
+        assertEquals(6, stream.level)
+    }
+
+    @Test
+    fun `after a crash a new process restores what was stored`() {
+        keeper.raise(0.5f)
+        val after = AlarmVolumeKeeper(stream, saved) { message, _ -> problems += message }
+        after.restore()
+        assertEquals(2, stream.level)
+        assertEquals(null, saved.level)
+    }
+
+    @Test
+    fun `after a crash an alarm that rings again doesn't take the raised level for the user's own`() {
+        keeper.raise(0.5f)
+        val after = AlarmVolumeKeeper(stream, saved) { message, _ -> problems += message }
+        after.raise(0.5f)
+        assertEquals(2, saved.level)
+        after.restore()
+        assertEquals(2, stream.level)
+    }
+
+    @Test
+    fun `a stream that refuses is reported, and nothing is thrown`() {
+        stream.failure = SecurityException("Not allowed")
+        keeper.raise(0.5f)
+        assertEquals(listOf("The alarm volume could not be set"), problems)
+    }
+
+    @Test
+    fun `setting a volume that Android ignores is reported`() {
+        stream.ignoring = true
+        keeper.raise(0.5f)
+        assertEquals(listOf("Android did not set the alarm volume to 4"), problems)
+    }
+
+    @Test
+    fun `a volume that cannot be stored is reported, the stream is still set and put back from memory`() {
+        saved.failing = true
+        keeper.raise(0.5f)
+        assertEquals(4, stream.level)
+        assertTrue("The alarm volume could not be stored" in problems)
+        keeper.raise(1f)
+        saved.failing = false
+        keeper.restore()
+        assertEquals(2, stream.level)
+    }
+
+    @Test
+    fun `a store that cannot be read is reported, and the alarm still gets its volume`() {
+        saved.failingToRead = true
+        keeper.raise(0.5f)
+        assertEquals(4, stream.level)
+        assertTrue("The stored alarm volume could not be read" in problems)
+    }
+
+    @Test
+    fun `a stream that refuses to go back is reported, and the volume is kept for the next try`() {
+        keeper.raise(0.5f)
+        stream.failure = SecurityException("Not allowed")
+        keeper.restore()
+        assertEquals(listOf("The alarm volume could not be put back"), problems)
+        assertEquals(2, saved.level)
+        stream.failure = null
+        keeper.restore()
+        assertEquals(2, stream.level)
+        assertEquals(null, saved.level)
+    }
+
+    @Test
+    fun `going back without any effect, as Android does without a service, keeps the volume for the next try`() {
+        keeper.raise(0.5f)
+        stream.ignoring = true
+        keeper.restore()
+        assertEquals(4, stream.level)
+        assertEquals(2, saved.level)
+        assertEquals(listOf("Android did not put the alarm volume back to 2: this is tried again later"), problems)
+        stream.ignoring = false
+        keeper.restore()
+        assertEquals(2, stream.level)
+        assertEquals(null, saved.level)
+    }
+
+    @Test
+    fun `a stream that is already at the user's volume needs nothing, and that is no problem`() {
+        keeper.raise(0.5f)
+        stream.level = 2
+        stream.ignoring = true
+        keeper.restore()
+        assertTrue(problems.isEmpty())
+        assertEquals(null, saved.level)
+    }
+
+    @Test
+    fun `a stream the system rounded when going back counts as done`() {
+        keeper.raise(0.5f)
+        stream.roundTo = 3
+        keeper.restore()
+        assertEquals(3, stream.level)
+        assertEquals(null, saved.level)
+    }
+
+    @Test
+    fun `a store that cannot forget is reported`() {
+        keeper.raise(0.5f)
+        saved.failing = true
+        keeper.restore()
+        assertEquals(2, stream.level)
+        assertEquals(listOf("The alarm volume could not be put back"), problems)
+    }
+}
+
 class AlarmRingerTest {
     private val sound = FakeSound()
     private val vibration = FakeVibration()
@@ -399,11 +637,16 @@ class AlarmRingerTest {
     private val timedOut = mutableListOf<List<Long>>()
     private val changes = mutableListOf<List<Long>>()
     private val hardStopped = mutableListOf<List<Long>>()
+    private val stream = FakeStream()
+    private val savedVolume = FakeSavedVolume()
+    private val problems = mutableListOf<String>()
+    private val audio = RingAudio(AlarmVolumeKeeper(stream, savedVolume) { message, _ -> problems += message })
     private val ringer: AlarmRinger = AlarmRinger(
         sound,
         vibration,
         timers,
         wakeLock,
+        audio,
         { timedOut += it },
         { list ->
             order += "changed"
@@ -505,7 +748,125 @@ class AlarmRingerTest {
         ringer.join(alarm(2, maxVolume = 0.1f))
         assertTrue(sound.log.isEmpty())
         ringer.foregroundSettled()
-        assertEquals(listOf("play:SystemDefault:0.5"), sound.log)
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        assertEquals(4, stream.level)
+    }
+
+    @Test
+    fun `an alarm with a maximum sets the stream, before the sound and only once the service is up`() {
+        serviceUp = false
+        ringer.join(alarm(maxVolume = 0.5f))
+        assertEquals(3, stream.level)
+        ringer.foregroundSettled()
+        assertEquals(4, stream.level)
+        assertEquals(3, savedVolume.level)
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+    }
+
+    @Test
+    fun `an alarm with no maximum never touches the stream`() {
+        ringer.join(alarm(maxVolume = null))
+        ringer.leave(1)
+        assertTrue(stream.log.isEmpty())
+        assertEquals(0, savedVolume.writes)
+        assertEquals(listOf("play:SystemDefault:1.0", "stop"), sound.log)
+    }
+
+    @Test
+    fun `a silent alarm never touches the stream, from start to end, and stays silent`() {
+        ringer.join(alarm(maxVolume = 0f))
+        ringer.leave(1)
+        assertTrue(stream.log.isEmpty())
+        assertEquals(0, savedVolume.writes)
+        assertEquals(listOf("play:SystemDefault:0.0", "stop"), sound.log)
+    }
+
+    @Test
+    fun `a silent alarm that another one joins stays silent, and the stream stays alone`() {
+        ringer.join(alarm(1, maxVolume = 0f))
+        ringer.join(alarm(2, maxVolume = 1f))
+        assertTrue(stream.log.isEmpty())
+        assertEquals(listOf("play:SystemDefault:0.0"), sound.log)
+    }
+
+    @Test
+    fun `a second alarm keeps the level of the first, and does not store the raised one as the user's`() {
+        ringer.join(alarm(1, maxVolume = 0.5f))
+        ringer.join(alarm(2, maxVolume = 1f))
+        assertEquals(4, stream.level)
+        assertEquals(3, savedVolume.level)
+        assertEquals(1, savedVolume.writes)
+    }
+
+    @Test
+    fun `the volume only goes back when the last alarm has left`() {
+        ringer.join(alarm(1, maxVolume = 0.5f))
+        ringer.join(alarm(2))
+        ringer.leave(1)
+        assertEquals(4, stream.level)
+        ringer.leave(2)
+        assertEquals(3, stream.level)
+        assertEquals(null, savedVolume.level)
+    }
+
+    @Test
+    fun `the volume goes back when the ringer stops on its own`() {
+        ringer.join(alarm(1, maxVolume = 0.5f))
+        timers.elapse(threeMinutes)
+        timers.elapse(hardStopMargin)
+        assertEquals(3, stream.level)
+    }
+
+    @Test
+    fun `an emergency alarm leaves the stream alone, and a saved volume goes back when it ends`() {
+        savedVolume.level = 2
+        ringer.join(emergencyAlarm(1, NOW))
+        assertEquals(3, stream.level)
+        assertEquals(listOf("playLastResort:1.0"), sound.log)
+        ringer.leave(1)
+        assertEquals(2, stream.level)
+    }
+
+    @Test
+    fun `a volume that cannot be set does not stop the alarm`() {
+        stream.failure = SecurityException("Not allowed")
+        ringer.join(alarm(maxVolume = 0.5f))
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        assertEquals(listOf("The alarm volume could not be set"), problems)
+    }
+
+    @Test
+    fun `a volume that cannot go back does not get in the way of the rest of the stop`() {
+        ringer.join(alarm(maxVolume = 0.5f, vibrate = true))
+        stream.failure = SecurityException("Not allowed")
+        ringer.leave(1)
+        assertFalse(vibration.vibrating)
+        assertEquals(null, wakeLock.heldFor)
+    }
+
+    @Test
+    fun `when nothing rings, a volume left behind by a crash goes back`() {
+        savedVolume.level = 2
+        ringer.restoreVolumeIfIdle()
+        assertEquals(2, stream.level)
+        assertEquals(null, savedVolume.level)
+    }
+
+    @Test
+    fun `while an alarm rings, the volume stays until it ends`() {
+        savedVolume.level = 2
+        ringer.join(alarm(maxVolume = 0.5f))
+        ringer.restoreVolumeIfIdle()
+        assertEquals(4, stream.level)
+        assertEquals(2, savedVolume.level)
+        ringer.leave(1)
+        assertEquals(2, stream.level)
+    }
+
+    @Test
+    fun `with nothing left behind, nothing rings and the stream stays alone`() {
+        ringer.restoreVolumeIfIdle()
+        assertTrue(stream.log.isEmpty())
     }
 
     @Test
@@ -516,7 +877,7 @@ class AlarmRingerTest {
 
     @Test
     fun `without anyone to tell, a late service still lets the sound start`() {
-        val quiet = AlarmRinger(sound, vibration, timers, wakeLock, {}, {})
+        val quiet = AlarmRinger(sound, vibration, timers, wakeLock, audio, {}, {})
         quiet.join(alarm(1))
         timers.elapse(foregroundWait)
         assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
@@ -554,7 +915,8 @@ class AlarmRingerTest {
     @Test
     fun `the first alarm starts the sound at its gain and keeps the CPU awake`() {
         ringer.join(alarm(maxVolume = 0.5f))
-        assertEquals(listOf("play:SystemDefault:0.5"), sound.log)
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        assertEquals(4, stream.level)
         assertEquals(Duration.ofMinutes(4), wakeLock.heldFor)
         assertEquals(listOf(1L), ringer.ringing().map { it.id })
         assertEquals(listOf(listOf(1L)), changes)
@@ -672,11 +1034,11 @@ class AlarmRingerTest {
     }
 
     @Test
-    fun `a ramp starts silent and rises to the maximum, then stops`() {
+    fun `a ramp starts silent and rises to full level, also with a maximum, then stops`() {
         ringer.join(alarm(rampSeconds = 1, maxVolume = 0.8f))
         assertEquals("play:SystemDefault:0.0", sound.log.last())
         repeat(4) { timers.elapse(rampStep) }
-        assertEquals(listOf("gain:0.2", "gain:0.4", "gain:0.6", "gain:0.8"), sound.log.drop(1))
+        assertEquals(listOf("gain:0.25", "gain:0.5", "gain:0.75", "gain:1.0"), sound.log.drop(1))
         assertEquals(listOf(threeMinutes), timers.active.map { it.delay })
     }
 
@@ -791,7 +1153,7 @@ class AlarmRingerTest {
 
     @Test
     fun `without anyone to tell, the limit still stops the ringing`() {
-        val quiet = AlarmRinger(sound, vibration, timers, wakeLock, {}, {})
+        val quiet = AlarmRinger(sound, vibration, timers, wakeLock, audio, {}, {})
         quiet.join(alarm(1))
         quiet.foregroundSettled()
         timers.elapse(threeMinutes)
@@ -805,7 +1167,8 @@ class AlarmRingerTest {
         ringer.leave(1)
         sound.log.clear()
         ringer.join(alarm(2, maxVolume = 0.5f))
-        assertEquals(listOf("play:SystemDefault:0.5"), sound.log)
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        assertEquals(4, stream.level)
         timers.elapse(threeMinutes)
         assertEquals(listOf(listOf(2L)), timedOut)
     }

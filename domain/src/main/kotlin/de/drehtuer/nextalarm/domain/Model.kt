@@ -59,7 +59,11 @@ data class Settings(
     val sound: SoundRef,
     val vibrate: Boolean,
     val volumeRampSeconds: Int,
-    /** The player's own gain, between 0 and 1. The system's alarm volume is never changed. Without a value: 1. */
+    /**
+     * What the phone's alarm stream is set to while the alarm rings, between 0 and 1 of its steps. Without a value, the
+     * stream stays as it is. A value of 0 leaves it alone as well and makes the alarm silent. No setting offers that: it
+     * is what the silent device tests use.
+     */
     val maxVolume: Float?,
     val ringTimeoutMinutes: Int = DEFAULT_RING_TIMEOUT_MINUTES,
     val snoozeMinutes: Int = DEFAULT_SNOOZE_MINUTES,

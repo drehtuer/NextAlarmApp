@@ -8,6 +8,7 @@ import de.drehtuer.nextalarm.domain.AlarmScheduler
 import de.drehtuer.nextalarm.domain.CalendarRepository
 import de.drehtuer.nextalarm.domain.FeedSource
 import de.drehtuer.nextalarm.domain.PlannerRepository
+import de.drehtuer.nextalarm.domain.SavedAlarmVolume
 import de.drehtuer.nextalarm.domain.SettingsRepository
 
 /** Everything `:data` offers, behind the interfaces of `:domain`. The database opens on first use. */
@@ -19,6 +20,9 @@ class DataComponents(private val context: Context) {
     val alarms: AlarmRepository by lazy { RoomAlarmRepository(database.alarms()) }
     val calendars: CalendarRepository by lazy { AndroidCalendarRepository(context.contentResolver) }
     val sounds: SoundStore by lazy { SoundStore(context) }
+
+    /** The user's alarm volume while an alarm has changed it. */
+    val savedVolume: SavedAlarmVolume by lazy { DeviceSavedAlarmVolume(context) }
 
     /** Fetches and parses feeds, for the wake-up automation and the news screen. */
     val feeds: FeedSource by lazy { HttpFeedSource() }

@@ -262,12 +262,24 @@ sequenceDiagram
   service, which takes it over; the sound comes last. `MediaPlayer.prepare()` blocks and can hang on a provider, so nothing about the sound holds up what comes
   before it, and neither `AlarmRinger`'s nor `AlarmEngine`'s lock is held while it runs. `FallbackSound` asks for the
   sources and prepares each one on a thread of its own (`SoundWorker`), and gives a source 5 seconds before it moves on.
-- Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it passes Do Not Disturb. **The app never changes the system's
-  stream volume.** Volume is only the player's own gain (`MediaPlayer.setVolume`): the maximum volume if there is one,
-  otherwise 1.0. Without a ramp (the default) that gain applies straight away; with one, it ramps up from 0 over the
-  configured duration, or over the ring timeout if that is shorter, so that the alarm reaches its full level while it
-  rings (`effectiveRampSeconds`; the stored settings stay as they are). A maximum volume can therefore only make the alarm quieter than the phone's alarm volume, and
-  a maximum volume of 0 is silent.
+- Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it passes Do Not Disturb. The player's own gain (`MediaPlayer.setVolume`)
+  is 1. Without a ramp (the default) that applies straight away; with one, it ramps up from 0 over the configured
+  duration, or over the ring timeout if that is shorter, so that the alarm reaches its full level while it rings
+  (`effectiveRampSeconds`; the stored settings stay as they are).
+- **A maximum volume sets the phone's alarm volume** (`STREAM_ALARM`) while the alarm rings, so it can make an alarm louder
+  as well as quieter. `AlarmVolumeKeeper` (`domain`) does this just before the sound starts, as Android ignores it without
+  the service: the value is rounded to a step of the stream, and is at least its lowest step that can be heard
+  (`streamLevel`).
+  - "Not set" (`maxVolume = null`) never touches the stream.
+  - `maxVolume = 0` never touches the stream either, and the player's gain is 0. No setting offers this. It is how the
+    silent device tests stay silent, with someone asleep next to the phone, so it must not change the phone's volume.
+  - **The user's volume goes back when no alarm rings any more,** however it ended: Dismiss, Snooze, timeout, hard limit
+    or emergency. It is stored in device-protected `SharedPreferences` (`DeviceSavedAlarmVolume`), before the stream
+    changes and only if none is stored yet, so that an alarm that joins, or one rung again after a crash, doesn't store the
+    raised level as the user's. If the settings differ between several alarms, the first alarm's level stays, as with its
+    sound.
+  - A volume that can't be set or stored (say, a `SecurityException`) is logged, and the alarm rings anyway.
+  - If the user changes the volume while an alarm rings, the volume from before the alarm still comes back.
 - `AlarmEngine` handles one event at a time under a lock, so that events from the system, the user, the ring timeout,
   the recovery sweep and the planner cannot overwrite each other's state. Effects run under that lock; anything that
   reports back (such as the wake-up automation) must do so from outside the call, in a coroutine of its own.
@@ -338,6 +350,11 @@ sequenceDiagram
   logged, the alarm's notifications are posted as usual, and so is the "This alarm may be silent" notification, which goes
   when a service does come up. The alarm screen tries to start the service again when it comes up.
 - **The service stops only when no alarm is left,** so it runs for as long as the sound plays.
+- **The volume is under the same rule.** Without a foreground service Android ignores `setStreamVolume` with no error
+  (the waiver for `USAGE_ALARM` should cover it with the service up, which only a device can confirm). So the volume is set
+  once the service has settled, and put back before the service stops. `AlarmVolumeKeeper` reads the stream back and logs
+  if a change had no effect. If putting it back had none, it keeps the stored volume and tries again: see
+  [Recovery](#recovery).
 - **Testing it:** Android's `adb shell cmd audio set-enable-hardening enable` applies the rule even to alarm streams with
   the exact alarm permission, so a phone with that setting on can silence an alarm whose service runs as it should.
   `adb dumpsys audio` and `logcat` show an entry starting with `AudioHardening` for sound that was silenced.
@@ -529,6 +546,12 @@ start a service from the background, which is likely refused, and the sound woul
 | `Announcing`, `NewsPlaying` | `StopWakeUp`: an interrupted wake-up automation is not resumed.                       |
 | Terminal states             | Nothing.                                                                              |
 
+**A phone's alarm volume left raised** goes back at the end of the sweep, if nothing rings then, before the service can
+stop. After a crash, an alarm that rings again goes on using it and stores nothing new, so the user's volume stays the one
+that comes back. After a reboot the sweep has no service, so Android likely ignores the change. The stored volume then
+stays, and the next chance puts it back: `MainActivity` tries each time it comes up, and the end of the next alarm does too.
+Until then the alarm volume stays raised. Nothing else depends on it, and it is never lost.
+
 Running the sweep twice is harmless, because every event is defined in every state. `recoverySteps` in `domain` decides
 these steps. A reboot clears notifications as well, so the sweep also posts the "Snoozed" notification of a snoozed
 alarm with a trigger in the future (it is the only way to dismiss that alarm) and refreshes the "Next alarm" one.
@@ -580,7 +603,7 @@ classDiagram
 ```
 
 Until the user changes them, the settings are: no alarm calendar, the phone's default alarm sound, no vibration, no volume ramp, the
-system's alarm volume left as it is, a ring timeout of 3 minutes, a snooze of 10 minutes, no spoken title and no news.
+phone's alarm volume left as it is, a ring timeout of 3 minutes, a snooze of 10 minutes, no spoken title and no news.
 
 Every version of the database schema is kept in `data/schemas/`, as the basis for migrations. Phones hold real data, so
 a schema change gets a new version with a real migration, never a destructive fallback. Version 2 adds the nullable

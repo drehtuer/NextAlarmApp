@@ -7,6 +7,10 @@ import de.drehtuer.nextalarm.domain.AlarmScheduler
 import de.drehtuer.nextalarm.domain.AlarmSnapshot
 import de.drehtuer.nextalarm.domain.AlarmSound
 import de.drehtuer.nextalarm.domain.AlarmState
+import de.drehtuer.nextalarm.domain.AlarmStream
+import de.drehtuer.nextalarm.domain.AlarmVolumeKeeper
+import de.drehtuer.nextalarm.domain.RingAudio
+import de.drehtuer.nextalarm.domain.SavedAlarmVolume
 import de.drehtuer.nextalarm.domain.AlarmVibration
 import de.drehtuer.nextalarm.domain.RingTimers
 import de.drehtuer.nextalarm.domain.RingWakeLock
@@ -91,6 +95,35 @@ class FakeSound : AlarmSound {
         lastResort = false
     }
 }
+
+class FakeAlarmStream(var level: Int = 3) : AlarmStream {
+    val sets = mutableListOf<Int>()
+
+    override fun current() = level
+    override fun min() = 1
+    override fun max() = 7
+
+    override fun set(level: Int) {
+        sets += level
+        this.level = level
+    }
+}
+
+class FakeSavedVolume(var level: Int? = null) : SavedAlarmVolume {
+    override fun load() = level
+
+    override fun save(level: Int) {
+        this.level = level
+    }
+
+    override fun clear() {
+        level = null
+    }
+}
+
+/** A stream that nobody needs to look at. */
+fun fakeRingAudio(stream: AlarmStream = FakeAlarmStream(), saved: SavedAlarmVolume = FakeSavedVolume()) =
+    RingAudio(AlarmVolumeKeeper(stream, saved) { _, _ -> })
 
 class FakeVibration : AlarmVibration {
     override fun start() = Unit

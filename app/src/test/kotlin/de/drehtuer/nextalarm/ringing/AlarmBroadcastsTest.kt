@@ -53,7 +53,10 @@ class AlarmBroadcastsTest {
     private var serviceStarts = 0
     private val foreground = AlarmForeground(AlarmNotifications(context)) { serviceStarts++ }
     private val sound = FakeSound()
-    private val ringer = AlarmRinger(sound, FakeVibration(), FakeTimers(), FakeWakeLock(), {}, { foreground.ringingChanged(it) })
+    private val stream = FakeAlarmStream(level = 6)
+    private val savedVolume = FakeSavedVolume()
+    private val ringer =
+        AlarmRinger(sound, FakeVibration(), FakeTimers(), FakeWakeLock(), fakeRingAudio(stream, savedVolume), {}, { foreground.ringingChanged(it) })
     private val broadcasts = AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), engine, foreground, ringer, { AT })
 
     /** The real effects where they matter here. */
@@ -300,6 +303,37 @@ class AlarmBroadcastsTest {
         override fun finishRinging() {
             finished++
         }
+    }
+
+    @Test
+    fun `the sweep puts a volume back that a crash or a reboot left raised, if nothing rings`() {
+        savedVolume.level = 2
+        alarms.stored.clear()
+        ringingBroadcasts.sweep()
+        assertEquals(2, stream.level)
+        assertNull(savedVolume.level)
+    }
+
+    @Test
+    fun `a sweep that fails still puts the volume back`() {
+        savedVolume.level = 2
+        alarms.failure = IllegalStateException("broken")
+        ringingBroadcasts.sweep()
+        assertEquals(2, stream.level)
+    }
+
+    @Test
+    fun `a sweep that rings an alarm again leaves the volume until that alarm ends`() {
+        savedVolume.level = 2
+        alarms.stored.clear()
+        alarms.stored[1] = alarm(1, snapshot = Settings.DEFAULT.copy(maxVolume = 0.5f).snapshotFor("Gym"))
+        ringingBroadcasts.sweep()
+        ringer.foregroundSettled()
+        assertEquals(4, stream.level)
+        assertEquals(2, savedVolume.level)
+        ringer.leave(1)
+        assertEquals(2, stream.level)
+        assertNull(savedVolume.level)
     }
 
     @Test

@@ -74,7 +74,7 @@ fun AlarmSettingsScreen(
             SectionHeader("Sound")
             SoundRow(model, actions, onChooseFile)
             PickerRow("Volume ramp", "Rises from silent", model.volumeRamp, actions::setVolumeRamp)
-            PickerRow("Maximum volume", "Not set: uses the phone's alarm volume", model.maxVolume, actions::setMaxVolume)
+            PickerRow("Maximum volume", "Sets the phone's alarm volume while ringing. Not set: leaves it as it is", model.maxVolume, actions::setMaxVolume)
             SwitchRow("Vibration", null, model.vibrate, actions::setVibrate)
             SectionHeader("Ringing")
             PickerRow("Ring for", "Then it snoozes on its own", model.ringFor, actions::setRingFor)

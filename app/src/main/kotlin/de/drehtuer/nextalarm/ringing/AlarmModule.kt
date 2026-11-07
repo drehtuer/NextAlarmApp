@@ -13,10 +13,12 @@ import de.drehtuer.nextalarm.data.DataComponents
 import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmRinger
+import de.drehtuer.nextalarm.domain.AlarmVolumeKeeper
 import de.drehtuer.nextalarm.domain.FallbackSound
 import de.drehtuer.nextalarm.domain.ForegroundGate
 import de.drehtuer.nextalarm.domain.GatedPodcast
 import de.drehtuer.nextalarm.domain.GatedSpeech
+import de.drehtuer.nextalarm.domain.RingAudio
 import de.drehtuer.nextalarm.domain.SoundWorker
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
 import de.drehtuer.nextalarm.domain.WakeUpDirector
@@ -33,6 +35,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 private const val TAG = "NextAlarm"
+
+/** The alarm goes on whatever this is about. */
+fun logAudioProblem(message: String, failure: RuntimeException?) {
+    Log.w(TAG, message, failure)
+}
 
 /** Work of the alarm path that outlives whatever started it. A failure of one job does not end the others. */
 fun alarmScope(dispatcher: CoroutineDispatcher): CoroutineScope = CoroutineScope(
@@ -107,6 +114,7 @@ object AlarmModule {
         vibration = AndroidVibration(context),
         timers = HandlerRingTimers(),
         wakeLock = AndroidRingWakeLock(context),
+        audio = RingAudio(AlarmVolumeKeeper(AndroidAlarmStream(context), data.savedVolume, ::logAudioProblem)),
         onTimeout = { ids -> scope.launch { engine.get().ringTimedOut(ids) } },
         onChanged = { alarms ->
             foreground.ringingChanged(alarms)

@@ -58,17 +58,17 @@ private val RAMP_SECONDS = listOf(0, 15, 30, 60, 120, 300)
 private val RING_MINUTES = listOf(1, 2, 3, 5, 10, 15)
 private val SNOOZE_MINUTES = listOf(1, 5, 10, 15, 20, 30)
 
-/** No option is silent: an alarm nobody can hear is worse than none. 100% is the same as not setting a value. */
-private val MAX_VOLUME_TENTHS = 9 downTo 1
+/** No option is silent: an alarm nobody can hear is worse than none. 100% sets the phone's stream to its top, "Not set" leaves it. */
+private val MAX_VOLUME_TENTHS = 10 downTo 1
 
 /** The threshold of the low-volume banner. */
 fun isAlarmVolumeLow(volume: AlarmVolume): Boolean = volume.current <= LOW_ALARM_VOLUME_STEPS
 
-/** The maximum volume only lowers the player's own gain, so the banner cannot offer it as a way to be louder. */
+/** The maximum volume sets the phone's alarm stream while an alarm rings, so it is a way out of a low volume too. */
 fun lowVolumeBanner(volume: AlarmVolume): BannerText? = if (isAlarmVolumeLow(volume)) {
     BannerText(
         "Your phone's alarm volume is low (${volume.current} of ${volume.max}).",
-        "Alarms may be too quiet to wake you. Turn it up in the phone's sound settings.",
+        "Alarms may be too quiet to wake you. Turn it up in the phone's sound settings, or set a maximum volume below.",
     )
 } else {
     null

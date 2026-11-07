@@ -27,7 +27,7 @@ class AlarmSettingsTest {
     fun `the banner gives the steps, and only offers what can make the alarm louder`() {
         val banner = assertNotNull(lowVolumeBanner(AlarmVolume(1, 7)))
         assertEquals("Your phone's alarm volume is low (1 of 7).", banner.title)
-        assertEquals("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings.", banner.body)
+        assertEquals("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings, or set a maximum volume below.", banner.body)
     }
 
     @Test
@@ -103,9 +103,11 @@ class AlarmSettingsTest {
         val options = model().maxVolume.options
         assertEquals(null, options.first().value)
         assertEquals("Not set", options.first().label)
-        assertEquals("90%", options[1].label)
+        assertEquals("100%", options[1].label)
+        assertEquals(1f, options[1].value)
+        assertEquals("90%", options[2].label)
         assertEquals("10%", options.last().label)
-        assertTrue(options.mapNotNull { it.value }.all { it > 0f && it < 1f })
+        assertTrue(options.mapNotNull { it.value }.all { it > 0f && it <= 1f })
     }
 
     @Test

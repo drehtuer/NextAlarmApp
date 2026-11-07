@@ -155,7 +155,7 @@ class AlarmSettingsScreenTest {
             "Rises from silent",
             "None",
             "Maximum volume",
-            "Not set: uses the phone's alarm volume",
+            "Sets the phone's alarm volume while ringing. Not set: leaves it as it is",
             "Not set",
             "Vibration",
             "Ringing",
@@ -181,16 +181,16 @@ class AlarmSettingsScreenTest {
     }
 
     @Test
-    fun `a low volume shows the banner, without suggesting the maximum volume`() {
+    fun `a low volume shows the banner, which suggests the maximum volume`() {
         show(volume = AlarmVolume(1, 7))
         visible("Your phone's alarm volume is low (1 of 7).")
-        visible("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings.")
+        visible("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings, or set a maximum volume below.")
     }
 
     @Test
     fun `a normal volume shows no banner`() {
         show()
-        rule.onNodeWithText("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings.").assertDoesNotExist()
+        rule.onNodeWithText("Alarms may be too quiet to wake you. Turn it up in the phone's sound settings, or set a maximum volume below.").assertDoesNotExist()
     }
 
     @Test
