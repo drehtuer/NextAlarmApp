@@ -25,6 +25,11 @@ class HomeTest {
         buildHome(now, zone, alarms.toList(), record, calendar)
 
     @Test
+    fun `a home model has no notifications warning unless it is given one`() {
+        assertNull(HomeModel(null, emptyList(), null, null, null).notificationsOff)
+    }
+
+    @Test
     fun `seconds are shown only if they are not zero`() {
         assertEquals("06:00", formatTime(Instant.parse("2026-11-07T05:00:00Z"), zone))
         assertEquals("06:00:30", formatTime(Instant.parse("2026-11-07T05:00:30Z"), zone))

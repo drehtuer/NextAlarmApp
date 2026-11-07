@@ -88,7 +88,7 @@ interface PreparedSound {
 }
 
 /** Opens one source at a time. */
-interface SoundOutput<S> {
+fun interface SoundOutput<S> {
     /**
      * Gets [source] ready to play. This can take a long time or never return, on a provider that does not answer, so it
      * must not be called with any lock held. The result is empty if it cannot be played, and [onFailure] is called if it
