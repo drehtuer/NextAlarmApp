@@ -147,6 +147,24 @@ class AlarmNotificationsTest {
     }
 
     @Test
+    fun `the warning that an alarm may be silent opens the alarm, and can be removed`() {
+        notifications.showForegroundRefused()
+        val notification = assertNotNull(posted(AlarmNotifications.FOREGROUND_REFUSED_ID))
+        assertEquals("This alarm may be silent", notification.title())
+        assertEquals(AlarmActivity::class.java.name, shadowOf(notification.contentIntent).savedIntent.component?.className)
+        assertEquals(AlarmNotifications.ALARM_CHANNEL, notification.channelId)
+        notifications.cancelForegroundRefused()
+        assertNull(posted(AlarmNotifications.FOREGROUND_REFUSED_ID))
+    }
+
+    @Test
+    fun `an alarm without any sound is reported`() {
+        notifications.showNoSound()
+        val notification = assertNotNull(posted(AlarmNotifications.NO_SOUND_ID))
+        assertEquals("An alarm couldn't play a sound", notification.title())
+    }
+
+    @Test
     fun `an alarm stopped by the limit is reported`() {
         notifications.showRingLimit(alarm())
         val notification = assertNotNull(posted(AlarmNotifications.unansweredId(1)))

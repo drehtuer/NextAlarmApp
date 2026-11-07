@@ -29,6 +29,17 @@ fun ringingText(alarm: AlarmInstance): NotificationText =
 /** For a notification that cannot be about any alarm, because Android demands one before there is one to show. */
 val RINGING_PLACEHOLDER_TEXT = NotificationText("Alarm", "Ringing now")
 
+/** Android refused the service. A sound without it is likely silenced, with no error to go by. */
+val FOREGROUND_REFUSED_TEXT = NotificationText(
+    "This alarm may be silent",
+    "Android didn't let NextAlarm run in the background, so its sound may not be heard. Tap to open the alarm.",
+)
+
+val NO_SOUND_TEXT = NotificationText(
+    "An alarm couldn't play a sound",
+    "NextAlarm tried all its sounds and none would play. Tap to open the alarm.",
+)
+
 fun snoozedText(alarm: AlarmInstance, zone: ZoneId): NotificationText = NotificationText(
     "Snoozed until ${formatTime(alarm.triggerAt, zone)}",
     alarm.snapshot.reason ?: NO_TITLE,

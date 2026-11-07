@@ -20,6 +20,17 @@ class AlarmTextsTest {
     }
 
     @Test
+    fun `the warnings about the sound say what happened`() {
+        assertEquals("This alarm may be silent", FOREGROUND_REFUSED_TEXT.title)
+        assertEquals(
+            "Android didn't let NextAlarm run in the background, so its sound may not be heard. Tap to open the alarm.",
+            FOREGROUND_REFUSED_TEXT.text,
+        )
+        assertEquals("An alarm couldn't play a sound", NO_SOUND_TEXT.title)
+        assertEquals("NextAlarm tried all its sounds and none would play. Tap to open the alarm.", NO_SOUND_TEXT.text)
+    }
+
+    @Test
     fun `the fail-safe warning names what it knows`() {
         val general = "NextAlarm can't read your calendar. Alarms already planned will still ring."
         assertEquals(general, failSafeWarningText(null).text)

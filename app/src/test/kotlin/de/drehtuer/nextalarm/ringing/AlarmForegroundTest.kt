@@ -37,12 +37,96 @@ class AlarmForegroundTest {
     private val notifications = AlarmNotifications(context)
     private var starts = 0
     private var refuseStart = false
-    private val foreground = AlarmForeground(notifications) {
+    private var settled = 0
+    private val foreground = AlarmForeground(notifications, { settled++ }) {
         check(!refuseStart) { "Foreground services are not allowed now" }
         starts++
     }
 
     private fun posted(id: Long) = shadowOf(manager).getNotification(AlarmNotifications.ringingId(id))
+    private fun warning() = shadowOf(manager).getNotification(AlarmNotifications.FOREGROUND_REFUSED_ID)
+
+    @Test
+    fun `the sound may start once the service has gone into the foreground, and not when it is only asked for`() {
+        foreground.ringingChanged(listOf(alarm(1)))
+        assertEquals(0, settled)
+        foreground.attach(FakeHost())
+        assertEquals(1, settled)
+    }
+
+    @Test
+    fun `the sound may start if the service may not start, and a warning says it may be silent`() {
+        refuseStart = true
+        foreground.ringingChanged(listOf(alarm(1)))
+        assertEquals(1, settled)
+        val shown = assertNotNull(warning())
+        assertEquals("This alarm may be silent", shown.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+    }
+
+    @Test
+    fun `the sound may start if the service may not go into the foreground, and a warning says it may be silent`() {
+        foreground.ringingChanged(listOf(alarm(1)))
+        foreground.attach(FakeHost(refuse = true))
+        assertEquals(1, settled)
+        assertNotNull(warning())
+    }
+
+    @Test
+    fun `a refusal other than the usual one counts as a refusal too`() {
+        val host = object : AlarmForegroundHost {
+            override fun showForeground(id: Int, notification: Notification) = throw SecurityException("no permission")
+            override fun finishRinging() = Unit
+        }
+        foreground.ringingChanged(listOf(alarm(1)))
+        foreground.attach(host)
+        assertEquals(1, settled)
+        assertNotNull(warning())
+    }
+
+    @Test
+    fun `the warning goes when the service does come up`() {
+        refuseStart = true
+        foreground.ringingChanged(listOf(alarm(1)))
+        refuseStart = false
+        foreground.sync()
+        foreground.attach(FakeHost())
+        assertNull(warning())
+    }
+
+    @Test
+    fun `nothing to warn about without alarms`() {
+        foreground.attach(FakeHost(refuse = true))
+        assertNull(warning())
+    }
+
+    @Test
+    fun `an alarm that joins a service that is up has nothing to wait for`() {
+        foreground.ringingChanged(listOf(alarm(1)))
+        foreground.attach(FakeHost())
+        settled = 0
+        foreground.ringingChanged(listOf(alarm(1), alarm(2)))
+        assertEquals(1, settled)
+    }
+
+    /** The ringer calls in here while it holds its lock, so the way back must not be taken with this class's lock held. */
+    @Test
+    fun `the ringer is told after the lock is released`() {
+        val probe = arrayOfNulls<AlarmForeground>(1)
+        var heldDuringCall = true
+        val checked = AlarmForeground(notifications, { heldDuringCall = Thread.holdsLock(probe[0]!!) }) {}
+        probe[0] = checked
+        checked.ringingChanged(listOf(alarm(1)))
+        checked.attach(FakeHost())
+        assertEquals(false, heldDuringCall)
+    }
+
+    @Test
+    fun `without anyone to tell, it still works`() {
+        val plain = AlarmForeground(notifications) { starts++ }
+        plain.ringingChanged(listOf(alarm(1)))
+        plain.attach(FakeHost())
+        assertEquals(1, starts)
+    }
 
     @Test
     fun `the first ringing alarm starts the service`() {

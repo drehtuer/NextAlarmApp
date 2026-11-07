@@ -248,10 +248,13 @@ sequenceDiagram
 - The full-screen intent requires `USE_FULL_SCREEN_INTENT`. Onboarding checks
   `NotificationManager.canUseFullScreenIntent()`; if it is denied, the alarm still rings with a heads-up notification.
 - The sound, vibration and shared ring timeout live in `AlarmRinger` (`domain`), in the app's process. `AlarmService`
-  is what keeps the process alive and holds the first ringing alarm's notification; the other alarms' notifications
-  are posted as usual. If Android refuses the service (`ForegroundServiceStartNotAllowedException`), the alarm still
-  rings and its notification is posted; the alarm screen tries to start the service again when it comes up. A partial
-  wake lock is held while alarms ring, so that the ramp and the ring timeout run with the screen off.
+  keeps the process alive, holds the first ringing alarm's notification, and is what lets the sound be heard (see
+  [Background audio on Android 17](#background-audio-on-android-17)); the other alarms' notifications are posted as usual.
+  A partial wake lock is held while alarms ring, so that the ramp and the ring timeout run with the screen off.
+- **Order when an alarm starts:** wake lock, ring timeout and vibration; then the notification and the service; the sound
+  comes last. `MediaPlayer.prepare()` blocks and can hang on a provider, so nothing about the sound holds up what comes
+  before it, and neither `AlarmRinger`'s nor `AlarmEngine`'s lock is held while it runs. `FallbackSound` asks for the
+  sources and prepares each one on a thread of its own (`SoundWorker`), and gives a source 5 seconds before it moves on.
 - Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it passes Do Not Disturb. **The app never changes the system's
   stream volume.** Volume is only the player's own gain (`MediaPlayer.setVolume`): the maximum volume if there is one,
   otherwise 1.0. Without a ramp (the default) that gain applies straight away; with one, it ramps up from 0 over the
@@ -275,8 +278,11 @@ sequenceDiagram
   copy lives as long as the file is selected: unselecting or replacing the sound saves the settings first and then
   deletes it. The copy's name includes the file's own name, for the alarm settings to show. The user's original is
   never changed. A snoozed alarm whose copy was deleted this way rings with the next sound in the order below.
-- **If a sound cannot be played**, the next one is used: the picked file, then the phone's default alarm sound, then
-  a sound bundled with the app. An alarm therefore always rings, also if the phone's default is set to silent.
+- **If a sound cannot be played**, or takes more than 5 seconds to get ready, the next one is used: the picked file, then
+  the phone's default alarm sound, then a sound bundled with the app. An alarm therefore always rings, also if the phone's
+  default is set to silent. If asking for the sources fails or takes too long, the bundled sound is played. If not even
+  that plays, this is logged, the "An alarm couldn't play a sound" notification is posted, and the alarm goes on silently
+  until its timeout, with its vibration if it has one.
 - **Several alarms at once:** alarms are never delayed. All alarms use the same sound, so an alarm that fires
   while another one rings joins the running `AlarmService`: the sound simply continues, the ring timeout restarts,
   the new alarm gets its own notification and is listed on the alarm screen. Snooze and Dismiss on the alarm screen
@@ -292,6 +298,44 @@ sequenceDiagram
   "late alarm", "missed alarm" and "alarm not answered" remain until the user clears them. Their "Open history" action
   opens the app until the history (screen 7) exists. "Missed alarm" and "alarm not answered" name the time of the event,
   taken from the alarm's key, because a snooze moves `triggerAt`.
+
+### Background audio on Android 17
+
+Android 17 [hardens background audio](https://developer.android.com/about/versions/17/changes/bg-audio). Audio is silenced
+**with no error of any kind** unless the app has a visible activity or runs a foreground service. An app targeting API 37
+also needs that service to have while-in-use capability, which a service started from the background usually does not get.
+This is waived for streams with `USAGE_ALARM` if the app holds the exact alarm permission, and the app has `USE_EXACT_ALARM`.
+So alarm sound needs a running foreground service, for as long as it plays:
+
+```mermaid
+sequenceDiagram
+    participant E as AlarmEngine
+    participant R as AlarmRinger
+    participant F as AlarmForeground
+    participant S as AlarmService
+    participant P as FallbackSound
+    E->>R: join(alarm)
+    R->>R: wake lock, timeout, vibration
+    R->>F: ringingChanged
+    F->>S: startForegroundService
+    S->>F: attach
+    F->>S: startForeground, with the notification
+    F->>R: foregroundSettled
+    R->>P: play
+    P->>P: prepare, on a thread of its own, then start
+```
+
+- **The sound waits for `startForeground`,** for at most 3 seconds. After that it plays anyway, as a chance of sound beats
+  none, and this is logged.
+- **If Android refuses the service,** the sound plays anyway and is likely silenced. There is no way to tell, so this is
+  logged, the alarm's notifications are posted as usual, and so is the "This alarm may be silent" notification, which goes
+  when a service does come up. The alarm screen tries to start the service again when it comes up.
+- **The service stops only when no alarm is left,** so it runs for as long as the sound plays.
+- **Testing it:** Android's `adb shell cmd audio set-enable-hardening enable` applies the rule even to alarm streams with
+  the exact alarm permission, so a phone with that setting on can silence an alarm whose service runs as it should.
+  `adb dumpsys audio` and `logcat` show an entry starting with `AudioHardening` for sound that was silenced.
+
+The wake-up automation is media, without the waiver: see [below](#wake-up-automation-and-the-lock-screen).
 
 ### Wake-up automation and the lock screen
 

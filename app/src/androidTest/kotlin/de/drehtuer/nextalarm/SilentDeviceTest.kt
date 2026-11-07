@@ -159,11 +159,12 @@ class SilentDeviceTest {
         val sources = SoundStore(context).sources(SoundRef.SystemDefault)
         assertTrue(sources.last() is SoundSource.Bundled)
         sources.forEach { source ->
-            val output = MediaPlayerOutput(context)
+            val sound = MediaPlayerOutput(context).prepare(source) {}
+            assertNotNull("Could not open $source", sound)
             try {
-                assertTrue("Could not open $source", output.start(source, 0f) {})
+                sound!!.start(0f)
             } finally {
-                output.stop()
+                sound!!.release()
             }
         }
     }

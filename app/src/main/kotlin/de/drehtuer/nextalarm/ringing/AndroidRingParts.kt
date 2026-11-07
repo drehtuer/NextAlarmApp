@@ -14,6 +14,7 @@ import android.os.VibratorManager
 import android.util.Log
 import de.drehtuer.nextalarm.data.SoundSource
 import de.drehtuer.nextalarm.domain.AlarmVibration
+import de.drehtuer.nextalarm.domain.PreparedSound
 import de.drehtuer.nextalarm.domain.RingTimers
 import de.drehtuer.nextalarm.domain.RingWakeLock
 import de.drehtuer.nextalarm.domain.SoundOutput
@@ -30,9 +31,7 @@ class MediaPlayerOutput(
     private val context: Context,
     private val newPlayer: () -> MediaPlayer = ::MediaPlayer,
 ) : SoundOutput<SoundSource> {
-    private var player: MediaPlayer? = null
-
-    override fun start(source: SoundSource, gain: Float, onFailure: () -> Unit): Boolean {
+    override fun prepare(source: SoundSource, onFailure: () -> Unit): PreparedSound? {
         val candidate = newPlayer()
         return try {
             candidate.setAudioAttributes(ALARM_AUDIO)
@@ -47,11 +46,7 @@ class MediaPlayerOutput(
                 true
             }
             candidate.prepare()
-            // Before it starts, so that a silent or quiet alarm is never loud for a moment.
-            candidate.setVolume(gain, gain)
-            candidate.start()
-            player = candidate
-            true
+            MediaPlayerSound(candidate)
         } catch (failure: IOException) {
             giveUp(candidate, failure)
         } catch (failure: RuntimeException) {
@@ -59,24 +54,10 @@ class MediaPlayerOutput(
         }
     }
 
-    /** The player can be in its error state here, if its error is still on its way to the listener. */
-    override fun setGain(gain: Float) {
-        try {
-            player?.setVolume(gain, gain)
-        } catch (failure: IllegalStateException) {
-            Log.w(TAG, "Could not set the alarm volume", failure)
-        }
-    }
-
-    override fun stop() {
-        player?.release()
-        player = null
-    }
-
-    private fun giveUp(candidate: MediaPlayer, failure: Exception): Boolean {
+    private fun giveUp(candidate: MediaPlayer, failure: Exception): PreparedSound? {
         Log.w(TAG, "Could not play an alarm sound", failure)
         candidate.release()
-        return false
+        return null
     }
 
     private fun resourceUri(resourceId: Int): Uri = Uri.Builder()
@@ -84,6 +65,25 @@ class MediaPlayerOutput(
         .authority(context.packageName)
         .appendPath(resourceId.toString())
         .build()
+
+    private class MediaPlayerSound(private val player: MediaPlayer) : PreparedSound {
+        /** The gain comes first, so that a silent or quiet alarm is never loud for a moment. */
+        override fun start(gain: Float) {
+            player.setVolume(gain, gain)
+            player.start()
+        }
+
+        /** The player can be in its error state here, if its error is still on its way to the listener. */
+        override fun setGain(gain: Float) {
+            try {
+                player.setVolume(gain, gain)
+            } catch (failure: IllegalStateException) {
+                Log.w(TAG, "Could not set the alarm volume", failure)
+            }
+        }
+
+        override fun release() = player.release()
+    }
 
     private companion object {
         val ALARM_AUDIO: AudioAttributes = AudioAttributes.Builder()

@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import de.drehtuer.nextalarm.domain.AlarmInstance
+import de.drehtuer.nextalarm.domain.FOREGROUND_REFUSED_TEXT
+import de.drehtuer.nextalarm.domain.NO_SOUND_TEXT
 import de.drehtuer.nextalarm.domain.NotificationText
 import de.drehtuer.nextalarm.domain.RINGING_PLACEHOLDER_TEXT
 import de.drehtuer.nextalarm.domain.lateText
@@ -79,6 +81,27 @@ class AlarmNotifications(
 
     fun showUnanswered(alarm: AlarmInstance) = showNotice(unansweredId(alarm.id), unansweredText(alarm, zone()))
 
+    /** Android refused the service, without which the sound is likely silenced. */
+    fun showForegroundRefused() = showAlarmWarning(FOREGROUND_REFUSED_ID, FOREGROUND_REFUSED_TEXT)
+
+    fun cancelForegroundRefused() {
+        manager.cancel(FOREGROUND_REFUSED_ID)
+    }
+
+    /** It stays after the alarm has ended, to explain why nothing was heard. */
+    fun showNoSound() = showAlarmWarning(NO_SOUND_ID, NO_SOUND_TEXT)
+
+    private fun showAlarmWarning(id: Int, text: NotificationText) {
+        ensureChannels()
+        val notification = notificationBuilder(context, ALARM_CHANNEL, text.title, text.text)
+            .setStyle(Notification.BigTextStyle().bigText(text.text))
+            .setCategory(Notification.CATEGORY_ALARM)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setContentIntent(alarmScreen())
+            .build()
+        manager.notify(id, notification)
+    }
+
     /** Only one of these and the missed and unanswered ones can happen to an alarm that ends here. */
     fun showRingLimit(alarm: AlarmInstance) = showNotice(unansweredId(alarm.id), ringLimitText(alarm, zone()))
 
@@ -145,6 +168,10 @@ class AlarmNotifications(
 
         /** For the foreground service while it has no alarm to show. No alarm has this id. */
         const val PLACEHOLDER_ID = 3
+
+        /** `WakeUpNotifications.ID` is 4. */
+        const val FOREGROUND_REFUSED_ID = 5
+        const val NO_SOUND_ID = 6
 
         private const val REQUEST_SCREEN = 1
         private const val REQUEST_ACTION = 2

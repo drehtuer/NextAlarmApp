@@ -21,6 +21,7 @@ import de.drehtuer.nextalarm.data.DataComponents
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmEvent
 import de.drehtuer.nextalarm.domain.AlarmKey
+import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.domain.AlarmSnapshot
 import de.drehtuer.nextalarm.domain.AlarmState
 import de.drehtuer.nextalarm.domain.NewsSource
@@ -112,6 +113,25 @@ class AlarmPathTest {
         assertEquals(listOf(alarm.id), parts.ringer.ringing().map { it.id })
         val started = shadowOf(real as Application).nextStartedService
         assertEquals(AlarmService::class.java.name, started.component?.className)
+    }
+
+    @Test
+    fun `the service is started before any sound, and the ringer goes on when it is up`(): Unit = runBlocking {
+        val alarm = created(Instant.now(), Settings.DEFAULT.copy(maxVolume = 0f).snapshotFor("Gym"))
+        engine.fire(alarm.id)
+        assertEquals(AlarmService::class.java.name, shadowOf(real as Application).nextStartedService.component?.className)
+        val host = object : AlarmForegroundHost {
+            var shown = 0
+            override fun showForeground(id: Int, notification: Notification) {
+                shown++
+            }
+
+            override fun finishRinging() = Unit
+        }
+        parts.foreground.attach(host)
+        assertEquals(1, host.shown)
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        assertTrue(parts.ringer.ringing().isEmpty())
     }
 
     @Test
@@ -255,10 +275,11 @@ class AlarmPathTest {
 private class AlarmPathParts(context: Context, data: DataComponents) {
     private val scope = AlarmModule.scope(AlarmModule.dispatcher())
     private val notifications = AlarmModule.notifications(context)
-    private val foreground = AlarmModule.foreground(context, notifications)
+    val foreground: AlarmForeground = AlarmModule.foreground(context, notifications, Lazy { ringer })
     private val changes = AlarmModule.ringingChanges()
     private val lazyEngine: Lazy<AlarmEngine> = Lazy { engine }
-    val ringer = AlarmModule.ringer(context, data, foreground, changes, notifications, scope, lazyEngine)
+    val ringer: AlarmRinger =
+        AlarmModule.ringer(context, data, foreground, changes, notifications, AlarmModule.soundWorker(scope), scope, lazyEngine)
     private val wakeUpNotifications = AlarmModule.wakeUpNotifications(context)
     val wakeUpMedia = AlarmModule.wakeUpMedia(context, scope, lazyEngine)
     private val wakeUpForeground = AlarmModule.wakeUpForeground(context, wakeUpNotifications, wakeUpMedia)

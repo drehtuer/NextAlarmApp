@@ -11,12 +11,16 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.test.core.app.ApplicationProvider
 import de.drehtuer.nextalarm.data.SoundSource
+import de.drehtuer.nextalarm.domain.PreparedSound
 import java.io.File
 import java.io.IOException
 import java.time.Duration
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -53,7 +57,13 @@ class MediaPlayerOutputTest {
 
     private val output = MediaPlayerOutput(context) { RecordingPlayer().also { players += it } }
 
-    private fun play(source: SoundSource, gain: Float = 1f) = output.start(source, gain) { failures++ }
+    private var sound: PreparedSound? = null
+
+    private fun play(source: SoundSource, gain: Float = 1f): Boolean {
+        sound = output.prepare(source) { failures++ }
+        sound?.start(gain)
+        return sound != null
+    }
 
     @Before
     fun setUp() {
@@ -95,22 +105,24 @@ class MediaPlayerOutputTest {
     @Test
     fun `a change of gain goes to the player`() {
         play(SoundSource.Stored(file))
-        output.setGain(0.25f)
+        sound?.setGain(0.25f)
         assertEquals(0.25f, shadowOf(players.single()).leftVolume)
         assertEquals(0.25f, shadowOf(players.single()).rightVolume)
     }
 
     @Test
-    fun `a change of gain without a player does nothing`() {
-        output.setGain(0.25f)
-        assertTrue(players.isEmpty())
+    fun `preparing does not start anything, and releasing what was not started is fine`() {
+        val prepared = output.prepare(SoundSource.Stored(file)) {}
+        assertEquals(ShadowMediaPlayer.State.PREPARED, shadowOf(players.single()).state)
+        prepared?.release()
+        assertEquals(ShadowMediaPlayer.State.END, shadowOf(players.single()).state)
     }
 
     @Test
     fun `a player in its error state does not bring the app down`() {
         play(SoundSource.Stored(file))
         failing = true
-        output.setGain(0.25f)
+        sound?.setGain(0.25f)
         assertEquals(1f, shadowOf(players.single()).leftVolume)
     }
 
@@ -137,11 +149,10 @@ class MediaPlayerOutputTest {
     }
 
     @Test
-    fun `stopping releases the player, and stopping again does nothing`() {
+    fun `releasing ends the player`() {
         play(SoundSource.Stored(file))
-        output.stop()
+        sound?.release()
         assertEquals(ShadowMediaPlayer.State.END, shadowOf(players.single()).state)
-        output.stop()
     }
 
     @Test
@@ -149,16 +160,17 @@ class MediaPlayerOutputTest {
         val audio = context.getSystemService(AudioManager::class.java)
         audio.setStreamVolume(AudioManager.STREAM_ALARM, 2, 0)
         play(SoundSource.Stored(file), gain = 0f)
-        output.setGain(1f)
-        output.stop()
+        sound?.setGain(1f)
+        sound?.release()
         assertEquals(2, audio.getStreamVolume(AudioManager.STREAM_ALARM))
     }
 
     @Test
     fun `the default player can be used`() {
-        val plain = MediaPlayerOutput(context)
-        assertTrue(plain.start(SoundSource.Stored(file), 1f) {})
-        plain.stop()
+        val plain = MediaPlayerOutput(context).prepare(SoundSource.Stored(file)) {}
+        assertTrue(plain != null)
+        plain.start(1f)
+        plain.release()
     }
 }
 
@@ -166,6 +178,20 @@ class MediaPlayerOutputTest {
 @Config(application = Application::class)
 class AndroidRingPartsTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
+
+    @Test
+    fun `sound work runs on the dispatcher it is given, also when the scope has another one`() {
+        val thread = AtomicReference<String>()
+        val done = java.util.concurrent.CountDownLatch(1)
+        val dispatcher = java.util.concurrent.Executors.newSingleThreadExecutor { Thread(it, "sound-test") }.asCoroutineDispatcher()
+        scopedSoundWorker(alarmScope(Dispatchers.Default), dispatcher).run {
+            thread.set(Thread.currentThread().name)
+            done.countDown()
+        }
+        assertTrue(done.await(10, java.util.concurrent.TimeUnit.SECONDS))
+        assertTrue(thread.get().startsWith("sound-test"), thread.get())
+        dispatcher.close()
+    }
 
     private fun vibrator(): Vibrator = context.getSystemService(VibratorManager::class.java).defaultVibrator
 

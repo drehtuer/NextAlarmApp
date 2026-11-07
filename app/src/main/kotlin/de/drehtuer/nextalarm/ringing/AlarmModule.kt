@@ -14,6 +14,7 @@ import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.domain.FallbackSound
+import de.drehtuer.nextalarm.domain.SoundWorker
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
 import de.drehtuer.nextalarm.domain.WakeUpDirector
 import de.drehtuer.nextalarm.planning.AppAlarmIntents
@@ -37,6 +38,11 @@ fun alarmScope(dispatcher: CoroutineDispatcher): CoroutineScope = CoroutineScope
     },
 )
 
+/** Runs what can block on a thread of [dispatcher], where it holds up nothing else. */
+fun scopedSoundWorker(scope: CoroutineScope, dispatcher: CoroutineDispatcher) = SoundWorker { block ->
+    scope.launch(dispatcher) { block() }
+}
+
 /**
  * The alarm path. All of it can run before the first unlock, when credential-encrypted storage is not available, so
  * nothing here may lead to WorkManager, whose database is stored there. `PlanningModule` builds on this, not the other
@@ -58,8 +64,15 @@ object AlarmModule {
 
     @Provides
     @Singleton
-    fun foreground(@ApplicationContext context: Context, notifications: AlarmNotifications) =
-        AlarmForeground(notifications) { context.startForegroundService(Intent(context, AlarmService::class.java)) }
+    fun foreground(@ApplicationContext context: Context, notifications: AlarmNotifications, ringer: Lazy<AlarmRinger>) =
+        AlarmForeground(notifications, { ringer.get().foregroundSettled() }) {
+            context.startForegroundService(Intent(context, AlarmService::class.java))
+        }
+
+    /** A player that hangs on a provider holds a thread for as long as it hangs, which the IO threads are there for. */
+    @Provides
+    @Singleton
+    fun soundWorker(scope: CoroutineScope): SoundWorker = scopedSoundWorker(scope, Dispatchers.IO)
 
     @Provides
     @Singleton
@@ -73,10 +86,21 @@ object AlarmModule {
         foreground: AlarmForeground,
         changes: RingingChanges,
         notifications: AlarmNotifications,
+        worker: SoundWorker,
         scope: CoroutineScope,
         engine: Lazy<AlarmEngine>,
     ) = AlarmRinger(
-        sound = FallbackSound(data.sounds::sources, MediaPlayerOutput(context)),
+        sound = FallbackSound(
+            data.sounds::sources,
+            data.sounds.bundled,
+            MediaPlayerOutput(context),
+            worker,
+            HandlerRingTimers(),
+            onExhausted = {
+                Log.e(TAG, "None of the alarm sounds could be played")
+                notifications.showNoSound()
+            },
+        ),
         vibration = AndroidVibration(context),
         timers = HandlerRingTimers(),
         wakeLock = AndroidRingWakeLock(context),
@@ -89,6 +113,7 @@ object AlarmModule {
             Log.e(TAG, "Alarms rang past their timeout and were stopped without the engine: ${alarms.map { it.id }}")
             alarms.forEach(notifications::showRingLimit)
         },
+        onForegroundLate = { Log.w(TAG, "The alarm service did not come up in time: the sound starts without it") },
     )
 
     @Provides

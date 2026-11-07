@@ -224,6 +224,12 @@ class SoundStoreTest {
     }
 
     @Test
+    fun `the bundled sound can be had on its own, and ends the list`() {
+        assertEquals(bundled, store().bundled)
+        assertEquals(store().bundled, store().sources(SoundRef.SystemDefault).last())
+    }
+
+    @Test
     fun `the bundled sound is part of the build`() {
         context.resources.openRawResource(bundled.resourceId).use { assertTrue(it.read() != -1) }
     }

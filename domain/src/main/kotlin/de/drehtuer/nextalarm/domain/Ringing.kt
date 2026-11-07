@@ -25,7 +25,11 @@ private const val SECONDS_PER_MINUTE = 60
 
 /** Plays one alarm sound at a time, in a loop. */
 interface AlarmSound {
+    /** Returns at once: the sound starts when it is ready. */
     fun play(sound: SoundRef, gain: Float)
+
+    /** The one sound that needs nothing from the phone or the database. */
+    fun playLastResort(gain: Float)
     fun setGain(gain: Float)
     fun stop()
 }
@@ -47,61 +51,165 @@ interface RingWakeLock {
     fun release()
 }
 
-/** Plays one source at a time, in a loop, at the player's own gain. */
-interface SoundOutput<S> {
-    /**
-     * Starts [source], at [gain] from the first moment on. The result is false if it cannot be played, and
-     * [onFailure] is called if it stops working later.
-     */
-    fun start(source: S, gain: Float, onFailure: () -> Unit): Boolean
+/** A source that is ready to play. Starting it does not block. */
+interface PreparedSound {
+    /** Starts in a loop, at [gain] from the first moment on. */
+    fun start(gain: Float)
     fun setGain(gain: Float)
-    fun stop()
+    fun release()
 }
 
-/** Plays the first of the sources that works, and moves on to the next one if it stops working. */
+/** Opens one source at a time. */
+interface SoundOutput<S> {
+    /**
+     * Gets [source] ready to play. This can take a long time or never return, on a provider that does not answer, so it
+     * must not be called with any lock held. The result is empty if it cannot be played, and [onFailure] is called if it
+     * stops working later.
+     */
+    fun prepare(source: S, onFailure: () -> Unit): PreparedSound?
+}
+
+/** Runs work that can block for a long time. A block that never returns must not hold up the next one. */
+fun interface SoundWorker {
+    fun run(block: () -> Unit)
+}
+
+/**
+ * Plays the first of the sources that works, and moves on to the next one if it stops working or takes longer than
+ * [prepareLimit] to get ready. Asking for the sources can fail or block too, and leads to [lastResort], which is the end of
+ * the list anyway. Nothing that can block runs with a lock held or on the caller's thread.
+ */
 class FallbackSound<S>(
     private val sources: (SoundRef) -> List<S>,
+    private val lastResort: S,
     private val output: SoundOutput<S>,
+    private val worker: SoundWorker,
+    private val timers: RingTimers,
+    /** No source is left, so the alarm stays silent. */
+    private val onExhausted: () -> Unit,
+    private val prepareLimit: Duration = Duration.ofSeconds(5),
 ) : AlarmSound {
     private var remaining: Iterator<S> = emptyList<S>().iterator()
     private var gain = 0f
+    private var current: PreparedSound? = null
+    private var cancelLimit: () -> Unit = {}
 
-    /** Which attempt is the current one, because a failure can be reported after it has been given up. */
+    /** Which attempt is the current one, because a failure or a result can arrive after it has been given up. */
     private var attempt = 0
 
     @Synchronized
     override fun play(sound: SoundRef, gain: Float) {
-        output.stop()
-        this.gain = gain
-        remaining = sources(sound).iterator()
+        restart(gain)
+        // If the sources do not come in time, this is what is left to try.
+        remaining = listOf(lastResort).iterator()
+        val which = beginAttempt()
+        worker.run { readSources(sound, which) }
+    }
+
+    @Synchronized
+    override fun playLastResort(gain: Float) {
+        restart(gain)
+        remaining = listOf(lastResort).iterator()
         playNext()
     }
 
     @Synchronized
     override fun setGain(gain: Float) {
         this.gain = gain
-        output.setGain(gain)
+        current?.setGain(gain)
     }
 
     @Synchronized
     override fun stop() {
         attempt++
         remaining = emptyList<S>().iterator()
-        output.stop()
+        cancelLimit()
+        releaseCurrent()
+    }
+
+    private fun restart(gain: Float) {
+        stop()
+        this.gain = gain
+    }
+
+    private fun beginAttempt(): Int {
+        val which = ++attempt
+        cancelLimit()
+        cancelLimit = timers.after(prepareLimit) { failed(which) }
+        return which
+    }
+
+    private fun readSources(sound: SoundRef, which: Int) {
+        val found = try {
+            sources(sound)
+        } catch (_: RuntimeException) {
+            // There is always the last resort, which needs nothing from the phone.
+            listOf(lastResort)
+        }
+        sourcesRead(found, which)
+    }
+
+    @Synchronized
+    private fun sourcesRead(found: List<S>, which: Int) {
+        if (which != attempt) return
+        remaining = found.ifEmpty { listOf(lastResort) }.iterator()
+        playNext()
     }
 
     private fun playNext() {
-        while (remaining.hasNext()) {
-            val current = ++attempt
-            if (output.start(remaining.next(), gain) { failed(current) }) return
+        cancelLimit()
+        if (!remaining.hasNext()) {
+            attempt++
+            onExhausted()
+            return
         }
+        val source = remaining.next()
+        val which = beginAttempt()
+        worker.run { prepare(source, which) }
+    }
+
+    private fun prepare(source: S, which: Int) {
+        val prepared = try {
+            output.prepare(source) { failed(which) }
+        } catch (_: RuntimeException) {
+            // The same as a source that says it cannot be played.
+            null
+        }
+        if (!prepared(prepared, which)) prepared?.release()
+    }
+
+    /** False if this attempt was given up in the meantime. */
+    @Synchronized
+    private fun prepared(sound: PreparedSound?, which: Int): Boolean {
+        if (which != attempt) return false
+        try {
+            sound?.start(gain)
+            current = sound
+            if (sound != null) cancelLimit() else playNext()
+        } catch (_: RuntimeException) {
+            // The player gave up after all, so this is released like any source that failed.
+            sound?.release()
+            playNext()
+        }
+        return true
     }
 
     @Synchronized
     private fun failed(which: Int) {
         if (which != attempt) return
-        output.stop()
+        releaseCurrent()
         playNext()
+    }
+
+    /** A player that cannot be released is no reason to keep the alarm from moving on. */
+    private fun releaseCurrent() {
+        val sound = current ?: return
+        current = null
+        try {
+            sound.release()
+        } catch (_: RuntimeException) {
+            // There is nothing more that can be done about this player.
+        }
     }
 }
 
@@ -112,6 +220,11 @@ class FallbackSound<S>(
  * Alarm snapshots can differ if the settings changed between two alarms, which is settled as follows: the sound and its
  * volume stay those of the alarm that started it, the phone vibrates while any ringing alarm asks for it, and the
  * timeout is the longest one, so that no alarm rings for less time than it should.
+ *
+ * The sound is the last thing to start, as Android silences it, without any error, unless a foreground service is running
+ * or an activity is visible (see docs/architecture.md#background-audio-on-android-17). A first alarm therefore gets its
+ * vibration and timeout, and reports through [onChanged], which leads to the notification and the service. The sound starts
+ * at [foregroundSettled], or after [FOREGROUND_WAIT] if that does not come, because a chance of sound beats none.
  *
  * The timeout normally ends the ringing through `AlarmEngine`. If that does not happen [HARD_STOP_MARGIN] later, the ringer
  * stops on its own, because a sound nobody can stop is worse than a stored state that is out of date.
@@ -126,12 +239,18 @@ class AlarmRinger(
     private val onChanged: (List<AlarmInstance>) -> Unit,
     /** The ringing went on past its timeout, and the ringer ended it on its own. */
     private val onHardStop: (List<AlarmInstance>) -> Unit = {},
+    /** The service did not come up in time, so the sound starts without it. */
+    private val onForegroundLate: () -> Unit = {},
 ) {
     private val alarms = linkedMapOf<Long, AlarmInstance>()
     private var vibrating = false
     private var cancelRamp: () -> Unit = {}
     private var cancelTimeout: () -> Unit = {}
     private var cancelHardStop: () -> Unit = {}
+    private var cancelForegroundWait: () -> Unit = {}
+
+    /** The alarm whose sound waits for the service. */
+    private var waitingToPlay: AlarmSnapshot? = null
 
     /** Told apart from each other, because a timer can have fired just before it was cancelled. */
     private var rampRun = 0
@@ -147,10 +266,22 @@ class AlarmRinger(
         alarms[alarm.id] = alarm
         val timeout = Duration.ofMinutes(alarms.values.map { it.snapshot.ringTimeoutMinutes }.max().toLong())
         wakeLock.hold(timeout.plus(WAKE_LOCK_MARGIN))
-        if (first) startSound(alarm.snapshot)
-        updateVibration()
         restartTimeout(timeout)
+        updateVibration()
+        if (first) waitForForeground(alarm.snapshot)
         onChanged(ringing())
+    }
+
+    /**
+     * The service has gone into the foreground, or Android refused it. In either case nothing more is to come, so the sound
+     * starts now if it is waiting. Called from outside `AlarmForeground`'s lock.
+     */
+    @Synchronized
+    fun foregroundSettled() {
+        val snapshot = waitingToPlay ?: return
+        waitingToPlay = null
+        cancelForegroundWait()
+        startSound(snapshot)
     }
 
     /** An alarm that does not ring has nothing to leave, which is the case for a dismissed snoozed alarm. */
@@ -165,6 +296,18 @@ class AlarmRinger(
         }
         onChanged(ringing())
         failure?.let { throw it }
+    }
+
+    private fun waitForForeground(snapshot: AlarmSnapshot) {
+        waitingToPlay = snapshot
+        cancelForegroundWait = timers.after(FOREGROUND_WAIT) { foregroundLate(snapshot) }
+    }
+
+    @Synchronized
+    private fun foregroundLate(snapshot: AlarmSnapshot) {
+        if (waitingToPlay !== snapshot) return
+        onForegroundLate()
+        foregroundSettled()
     }
 
     private fun startSound(snapshot: AlarmSnapshot) {
@@ -226,6 +369,8 @@ class AlarmRinger(
         cancelRamp()
         cancelTimeout()
         cancelHardStop()
+        cancelForegroundWait()
+        waitingToPlay = null
         return listOf(sound::stop, ::updateVibration, wakeLock::release).mapNotNull { step ->
             try {
                 step()
@@ -238,6 +383,9 @@ class AlarmRinger(
 
     private companion object {
         val RAMP_STEP: Duration = Duration.ofMillis(250)
+
+        /** A service that is allowed to start is up long before this. */
+        val FOREGROUND_WAIT: Duration = Duration.ofSeconds(3)
 
         /** Far longer than storing a state takes, and within the margin of the wake lock, so that the CPU is awake for it. */
         val HARD_STOP_MARGIN: Duration = Duration.ofSeconds(30)

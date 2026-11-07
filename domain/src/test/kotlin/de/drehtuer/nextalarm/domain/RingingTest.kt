@@ -43,36 +43,69 @@ class SoundGainTest {
 private class FakeOutput(private val broken: Set<String> = emptySet()) : SoundOutput<String> {
     val log = mutableListOf<String>()
     val failures = mutableListOf<() -> Unit>()
+    var failToStart: Set<String> = emptySet()
+    var failToRelease = false
 
-    override fun start(source: String, gain: Float, onFailure: () -> Unit): Boolean {
-        log += "start:$source:$gain"
+    override fun prepare(source: String, onFailure: () -> Unit): PreparedSound? {
+        log += "prepare:$source"
         failures += onFailure
-        return source !in broken
+        if (source == "throws") error("player failed")
+        if (source in broken) return null
+        return object : PreparedSound {
+            override fun start(gain: Float) {
+                log += "start:$source:$gain"
+                check(source !in failToStart) { "player failed" }
+            }
+
+            override fun setGain(gain: Float) {
+                log += "gain:$source:$gain"
+            }
+
+            override fun release() {
+                log += "release:$source"
+                check(!failToRelease) { "player failed" }
+            }
+        }
+    }
+}
+
+/** Keeps the work back until the test lets it run, as a thread that is slow to get there would. */
+private class HeldWorker : SoundWorker {
+    val held = ArrayDeque<() -> Unit>()
+
+    override fun run(block: () -> Unit) {
+        held.addLast(block)
     }
 
-    override fun setGain(gain: Float) {
-        log += "gain:$gain"
-    }
+    fun runNext() = held.removeFirst().invoke()
 
-    override fun stop() {
-        log += "stop"
+    fun runAll() {
+        while (held.isNotEmpty()) runNext()
     }
 }
 
 class FallbackSoundTest {
-    private fun sound(output: SoundOutput<String>) = FallbackSound({ listOf("file", "system", "bundled") }, output)
+    private val timers = FakeTimers()
+    private val limit = Duration.ofSeconds(5)
+    private var exhausted = 0
+
+    private fun sound(
+        output: SoundOutput<String>,
+        worker: SoundWorker = SoundWorker { it() },
+        sources: (SoundRef) -> List<String> = { listOf("file", "system", "bundled") },
+    ) = FallbackSound(sources, "last", output, worker, timers, { exhausted++ }, limit)
 
     @Test
     fun `the first source that works plays, at the given gain`() {
         val output = FakeOutput()
         sound(output).play(SoundRef.SystemDefault, 0.5f)
-        assertEquals(listOf("stop", "start:file:0.5"), output.log)
+        assertEquals(listOf("prepare:file", "start:file:0.5"), output.log)
     }
 
     @Test
     fun `the sources are asked for this sound`() {
         val asked = mutableListOf<SoundRef>()
-        val chain = FallbackSound({ asked += it; listOf("file") }, FakeOutput())
+        val chain = sound(FakeOutput(), sources = { asked += it; listOf("file") })
         chain.play(SoundRef.File("a"), 1f)
         assertEquals(listOf<SoundRef>(SoundRef.File("a")), asked)
     }
@@ -81,14 +114,125 @@ class FallbackSoundTest {
     fun `a source that cannot be played is skipped`() {
         val output = FakeOutput(broken = setOf("file", "system"))
         sound(output).play(SoundRef.SystemDefault, 1f)
-        assertEquals(listOf("stop", "start:file:1.0", "start:system:1.0", "start:bundled:1.0"), output.log)
+        assertEquals(listOf("prepare:file", "prepare:system", "prepare:bundled", "start:bundled:1.0"), output.log)
+        assertEquals(0, exhausted)
     }
 
     @Test
-    fun `if nothing can be played, it stays quiet without failing`() {
+    fun `a player that throws is the same as a source that cannot be played`() {
+        val output = FakeOutput()
+        sound(output, sources = { listOf("throws", "system") }).play(SoundRef.SystemDefault, 1f)
+        assertEquals("start:system:1.0", output.log.last())
+    }
+
+    @Test
+    fun `a player that fails to start is released, and the next source is tried`() {
+        val output = FakeOutput().apply { failToStart = setOf("file") }
+        sound(output).play(SoundRef.SystemDefault, 1f)
+        assertEquals(listOf("prepare:file", "start:file:1.0", "release:file", "prepare:system", "start:system:1.0"), output.log)
+    }
+
+    @Test
+    fun `if the sources cannot be had, the last resort plays`() {
+        val output = FakeOutput()
+        sound(output, sources = { error("settings failed") }).play(SoundRef.SystemDefault, 1f)
+        assertEquals(listOf("prepare:last", "start:last:1.0"), output.log)
+    }
+
+    @Test
+    fun `if there are no sources, the last resort plays`() {
+        val output = FakeOutput()
+        sound(output, sources = { emptyList() }).play(SoundRef.SystemDefault, 1f)
+        assertEquals(listOf("prepare:last", "start:last:1.0"), output.log)
+    }
+
+    @Test
+    fun `if the sources do not come in time, the last resort plays, and they are ignored when they do`() {
+        val output = FakeOutput()
+        val worker = HeldWorker()
+        sound(output, worker).play(SoundRef.SystemDefault, 1f)
+        val slow = worker.held.removeFirst()
+        timers.elapse(limit)
+        worker.runAll()
+        assertEquals(listOf("prepare:last", "start:last:1.0"), output.log)
+        slow()
+        assertEquals(listOf("prepare:last", "start:last:1.0"), output.log)
+    }
+
+    @Test
+    fun `the last resort can be asked for directly, and needs no sources`() {
+        val output = FakeOutput()
+        sound(output, sources = { error("not to be asked") }).playLastResort(0.5f)
+        assertEquals(listOf("prepare:last", "start:last:0.5"), output.log)
+    }
+
+    @Test
+    fun `if nothing can be played, it says so once, without failing`() {
         val output = FakeOutput(broken = setOf("file", "system", "bundled"))
         sound(output).play(SoundRef.SystemDefault, 1f)
-        assertEquals(4, output.log.size)
+        assertEquals(1, exhausted)
+        assertTrue(timers.active.isEmpty())
+    }
+
+    @Test
+    fun `nothing that can block runs on the caller's thread`() {
+        val output = FakeOutput()
+        val worker = HeldWorker()
+        sound(output, worker).play(SoundRef.SystemDefault, 1f)
+        assertTrue(output.log.isEmpty())
+        worker.runNext()
+        assertTrue(output.log.isEmpty())
+        worker.runNext()
+        assertEquals(listOf("prepare:file", "start:file:1.0"), output.log)
+    }
+
+    @Test
+    fun `a source that takes too long is given up for the next one, and released when it does come`() {
+        val output = FakeOutput()
+        val worker = HeldWorker()
+        sound(output, worker).play(SoundRef.SystemDefault, 1f)
+        worker.runNext()
+        val hanging = worker.held.removeFirst()
+        timers.elapse(limit)
+        worker.runNext()
+        assertEquals(listOf("prepare:system", "start:system:1.0"), output.log)
+        hanging()
+        assertEquals(listOf("prepare:system", "start:system:1.0", "prepare:file", "release:file"), output.log)
+    }
+
+    @Test
+    fun `a source that starts in time is not given up`() {
+        val output = FakeOutput()
+        val worker = HeldWorker()
+        sound(output, worker).play(SoundRef.SystemDefault, 1f)
+        worker.runAll()
+        assertTrue(timers.active.isEmpty())
+    }
+
+    @Test
+    fun `stopping while a source is being prepared lets nothing start`() {
+        val output = FakeOutput()
+        val worker = HeldWorker()
+        val chain = sound(output, worker)
+        chain.play(SoundRef.SystemDefault, 1f)
+        worker.runNext()
+        chain.stop()
+        worker.runNext()
+        assertEquals(listOf("prepare:file", "release:file"), output.log)
+        assertTrue(timers.active.isEmpty())
+    }
+
+    @Test
+    fun `stopping while a source that cannot be played is being prepared moves on to nothing`() {
+        val output = FakeOutput(broken = setOf("file"))
+        val worker = HeldWorker()
+        val chain = sound(output, worker)
+        chain.play(SoundRef.SystemDefault, 1f)
+        worker.runNext()
+        chain.stop()
+        worker.runNext()
+        assertEquals(listOf("prepare:file"), output.log)
+        assertEquals(0, exhausted)
     }
 
     @Test
@@ -98,7 +242,21 @@ class FallbackSoundTest {
         chain.play(SoundRef.SystemDefault, 0f)
         chain.setGain(0.25f)
         output.failures.single().invoke()
-        assertEquals(listOf("stop", "start:file:0.0", "gain:0.25", "stop", "start:system:0.25"), output.log)
+        assertEquals(
+            listOf("prepare:file", "start:file:0.0", "gain:file:0.25", "release:file", "prepare:system", "start:system:0.25"),
+            output.log,
+        )
+    }
+
+    @Test
+    fun `a change of gain while nothing plays yet counts from the start`() {
+        val output = FakeOutput()
+        val worker = HeldWorker()
+        val chain = sound(output, worker)
+        chain.play(SoundRef.SystemDefault, 0f)
+        chain.setGain(0.25f)
+        worker.runAll()
+        assertEquals(listOf("prepare:file", "start:file:0.25"), output.log)
     }
 
     @Test
@@ -114,12 +272,24 @@ class FallbackSoundTest {
     }
 
     @Test
-    fun `after stopping, nothing is left to fall back on`() {
+    fun `stopping releases what plays, and nothing is left to fall back on`() {
         val output = FakeOutput()
         val chain = sound(output)
         chain.play(SoundRef.SystemDefault, 1f)
         chain.stop()
-        assertEquals("stop", output.log.last())
+        assertEquals("release:file", output.log.last())
+        chain.stop()
+        assertEquals(1, output.log.count { it == "release:file" })
+    }
+
+    @Test
+    fun `a player that cannot be released does not get in the way`() {
+        val output = FakeOutput()
+        val chain = sound(output)
+        chain.play(SoundRef.SystemDefault, 1f)
+        output.failToRelease = true
+        chain.stop()
+        assertEquals("release:file", output.log.last())
     }
 
     @Test
@@ -129,6 +299,14 @@ class FallbackSoundTest {
         chain.play(SoundRef.SystemDefault, 1f)
         output.failures.single().invoke()
         chain.play(SoundRef.SystemDefault, 1f)
+        assertEquals("start:file:1.0", output.log.last())
+        assertEquals("release:system", output.log[output.log.size - 3])
+    }
+
+    @Test
+    fun `the default limit can be used`() {
+        val output = FakeOutput()
+        FallbackSound({ listOf("file") }, "last", output, { it() }, timers, {}).play(SoundRef.SystemDefault, 1f)
         assertEquals("start:file:1.0", output.log.last())
     }
 }
@@ -160,6 +338,10 @@ private class FakeSound : AlarmSound {
 
     override fun play(sound: SoundRef, gain: Float) {
         log += "play:$sound:$gain"
+    }
+
+    override fun playLastResort(gain: Float) {
+        log += "playLastResort:$gain"
     }
 
     override fun setGain(gain: Float) {
@@ -207,15 +389,25 @@ class AlarmRingerTest {
     private val timedOut = mutableListOf<List<Long>>()
     private val changes = mutableListOf<List<Long>>()
     private val hardStopped = mutableListOf<List<Long>>()
-    private val ringer = AlarmRinger(
+    private val ringer: AlarmRinger = AlarmRinger(
         sound,
         vibration,
         timers,
         wakeLock,
         { timedOut += it },
-        { list -> changes += list.map { it.id } },
+        { list ->
+            order += "changed"
+            changes += list.map { it.id }
+            if (serviceUp) ringer.foregroundSettled()
+        },
         { list -> hardStopped += list.map { it.id } },
+        { order += "late" },
     )
+
+    /** Android lets the service start at once. These tests are about what comes after that, unless they say otherwise. */
+    private var serviceUp = true
+    private val order = mutableListOf<String>()
+    private val foregroundWait = Duration.ofSeconds(3)
 
     private val threeMinutes = Duration.ofMinutes(3)
     private val rampStep = Duration.ofMillis(250)
@@ -240,6 +432,85 @@ class AlarmRingerTest {
             ringTimeoutMinutes = timeoutMinutes,
         ),
     )
+
+    @Test
+    fun `the sound waits for the service, and nothing plays until it has settled`() {
+        serviceUp = false
+        ringer.join(alarm(1, vibrate = true))
+        assertTrue(sound.log.isEmpty())
+        assertEquals(listOf(listOf(1L)), changes)
+        assertTrue(vibration.vibrating)
+        assertTrue(timers.active.any { it.delay == threeMinutes })
+        ringer.foregroundSettled()
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        assertTrue(timers.active.none { it.delay == foregroundWait })
+    }
+
+    @Test
+    fun `the sound starts anyway if the service takes too long, which is reported`() {
+        serviceUp = false
+        ringer.join(alarm(1))
+        timers.elapse(foregroundWait)
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        assertEquals(listOf("changed", "late"), order)
+    }
+
+    @Test
+    fun `the service settling after that does not start the sound again`() {
+        serviceUp = false
+        ringer.join(alarm(1))
+        timers.elapse(foregroundWait)
+        ringer.foregroundSettled()
+        assertEquals(1, sound.log.size)
+    }
+
+    @Test
+    fun `a wait that has been overtaken does nothing, even if its timer fired just before`() {
+        serviceUp = false
+        ringer.join(alarm(1))
+        val wait = timers.active.first { it.delay == foregroundWait }
+        ringer.foregroundSettled()
+        assertTrue(wait.cancelled)
+        wait.block()
+        assertEquals(1, sound.log.size)
+        assertEquals(listOf("changed"), order)
+    }
+
+    @Test
+    fun `an alarm that leaves while the sound waits lets nothing play`() {
+        serviceUp = false
+        ringer.join(alarm(1))
+        val wait = timers.active.first { it.delay == foregroundWait }
+        ringer.leave(1)
+        assertTrue(wait.cancelled)
+        ringer.foregroundSettled()
+        wait.block()
+        assertEquals(listOf("stop"), sound.log)
+    }
+
+    @Test
+    fun `an alarm that joins while the sound waits does not start it, or take it over`() {
+        serviceUp = false
+        ringer.join(alarm(1, maxVolume = 0.5f))
+        ringer.join(alarm(2, maxVolume = 0.1f))
+        assertTrue(sound.log.isEmpty())
+        ringer.foregroundSettled()
+        assertEquals(listOf("play:SystemDefault:0.5"), sound.log)
+    }
+
+    @Test
+    fun `a service that settles with nothing waiting does nothing`() {
+        ringer.foregroundSettled()
+        assertTrue(sound.log.isEmpty())
+    }
+
+    @Test
+    fun `without anyone to tell, a late service still lets the sound start`() {
+        val quiet = AlarmRinger(sound, vibration, timers, wakeLock, {}, {})
+        quiet.join(alarm(1))
+        timers.elapse(foregroundWait)
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+    }
 
     @Test
     fun `the first alarm starts the sound at its gain and keeps the CPU awake`() {
@@ -483,6 +754,7 @@ class AlarmRingerTest {
     fun `without anyone to tell, the limit still stops the ringing`() {
         val quiet = AlarmRinger(sound, vibration, timers, wakeLock, {}, {})
         quiet.join(alarm(1))
+        quiet.foregroundSettled()
         timers.elapse(threeMinutes)
         timers.elapse(hardStopMargin)
         assertEquals("stop", sound.log.last())

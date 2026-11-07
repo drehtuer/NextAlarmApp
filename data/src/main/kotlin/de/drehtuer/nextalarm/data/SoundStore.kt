@@ -77,6 +77,9 @@ class SoundStore(
     private val resolver = context.contentResolver
     private val directory = File(context.createDeviceProtectedStorageContext().filesDir, "sounds")
 
+    /** The sound that needs nothing from the phone or the database. */
+    val bundled: SoundSource = SoundSource.Bundled(R.raw.alarm_fallback)
+
     override suspend fun import(uri: Uri): SoundImportResult = withContext(ioDispatcher) {
         val fileName = displayName(uri)
         if (resolver.getType(uri) !in SUPPORTED_SOUND_MIME_TYPES) {
@@ -117,7 +120,7 @@ class SoundStore(
     fun sources(sound: SoundRef): List<SoundSource> = listOfNotNull(
         storedFile(sound)?.let { SoundSource.Stored(it) },
         RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)?.let { SoundSource.System(it) },
-        SoundSource.Bundled(R.raw.alarm_fallback),
+        bundled,
     )
 
     override fun delete(sound: SoundRef) {

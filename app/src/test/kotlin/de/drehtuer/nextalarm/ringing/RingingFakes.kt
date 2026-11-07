@@ -74,15 +74,21 @@ class FakeScheduler : AlarmScheduler {
 
 class FakeSound : AlarmSound {
     var playing: SoundRef? = null
+    var lastResort = false
 
     override fun play(sound: SoundRef, gain: Float) {
         playing = sound
+    }
+
+    override fun playLastResort(gain: Float) {
+        lastResort = true
     }
 
     override fun setGain(gain: Float) = Unit
 
     override fun stop() {
         playing = null
+        lastResort = false
     }
 }
 
