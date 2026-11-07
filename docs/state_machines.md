@@ -17,8 +17,8 @@ fun transition(state: S, event: E, context: C): Transition<S, Action>
 Every (state, event) pair is defined. The tables below are the specification; the diagrams only show the
 transitions that change something.
 
-- An entry **"ignore"** is a defined transition: the state stays the same, no action runs, and the event is
-  logged at debug level. It is used for events that are stale or not meaningful in that state.
+- An entry **"ignore"** is a defined transition: the state stays the same, no action runs, and nothing is
+  logged. It is used for events that are stale or not meaningful in that state.
 - Guards (`[condition]`) always come with an `else` branch, so a guarded transition is also total.
 - In code, `transition` is a `when` over the sealed `State` type, with a `when` over the sealed `Event` type for each
   state, all **without `else` branches**. Adding a state or event fails compilation until every pair is handled.

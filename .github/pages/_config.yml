@@ -1,0 +1,8 @@
+# Jekyll configuration of the documentation site, built from README.md and docs/ by
+# .github/scripts/stage-pages.sh and .github/workflows/pages.yml. See docs/development.md.
+title: NextAlarm
+description: An Android alarm clock that is controlled by your calendar.
+theme: jekyll-theme-primer
+# Pages without front matter are rendered (on by default); this keeps their Markdown source out of the site.
+optional_front_matter:
+  remove_originals: true

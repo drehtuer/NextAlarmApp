@@ -5,3 +5,7 @@ local.properties
 *.iml
 .idea/
 .vscode/
+
+# Local build of the documentation site (docs/development.md)
+_pages/
+_site/

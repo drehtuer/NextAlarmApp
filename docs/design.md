@@ -47,7 +47,7 @@ not listed keep the Material 3 baseline derived from these.
 | `surface` / `background` | `#F8F8F8` | `#121212` | Screen background |
 | `surfaceContainer` | `#EDEDED` | `#1E1E1E` | Alarm lists, empty states, permission cards |
 | `surfaceContainerHigh` | `#E4E4E4` | `#2A2A2A` | Dialogs, menus, switch track when off, disabled button fill |
-| `surfaceVariant` | `#E2E2E2` | `#303030` | Neutral outcome chip ("Event deleted") |
+| `surfaceVariant` | `#E2E2E2` | `#303030` | Neutral outcome chip ("Event moved or deleted before it rang") |
 | `onSurface` / `onBackground` | `#1B1B1B` | `#E6E6E6` | Main text |
 | `onSurfaceVariant` | `#474747` | `#C6C6C6` | Secondary text, icons in top bars |
 | `outline` | `#767676` | `#929292` | Field and outlined-button borders, radio rings, switch thumb when off |

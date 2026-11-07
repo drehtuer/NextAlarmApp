@@ -71,6 +71,41 @@ SonarCloud can only import coverage from a CI analysis, so this needs two settin
 
 The SDK versions in the workflow must match those in `.devcontainer/Dockerfile`.
 
+## Documentation site
+
+[`.github/workflows/pages.yml`](../.github/workflows/pages.yml) publishes `README.md` and `docs/` as the GitHub Pages site
+<https://drehtuer.github.io/NextAlarmApp/> whenever a release is published. It can also be started by hand under
+**Actions → Documentation → Run workflow**, for a branch or tag.
+
+1. `.github/scripts/stage-pages.sh` copies the pages into one directory: `README.md` becomes the start page
+   `index.md` and the files of `docs/` sit next to it. Links that leave `docs/` (to `LICENSE` or a workflow, say) are
+   rewritten to the file on GitHub at the release's tag, so the site matches the release.
+2. `actions/jekyll-build-pages` builds it with the same Jekyll and plugins as GitHub Pages. Links between the Markdown
+   files become links between the pages. The site's configuration, theme and includes are in `.github/pages/`, so that
+   `docs/` holds only Markdown.
+3. GitHub's Jekyll does not render Mermaid, so `.github/pages/_includes/head-custom.html` draws the diagrams in the
+   browser with Mermaid from jsDelivr, at a fixed version.
+
+This needs two settings outside the repository:
+
+1. Under **Settings → Pages**, the source must be **GitHub Actions**.
+2. The `github-pages` environment only lets `main` deploy by default, but a release runs on its tag. Under
+   **Settings → Environments → github-pages → Deployment branches and tags**, add a tag rule such as `v*`.
+
+To preview the site, stage it and build it with the image the action uses (a token is needed for the repository
+metadata):
+
+```bash
+.github/scripts/stage-pages.sh _pages https://github.com/drehtuer/NextAlarmApp main
+docker run --rm -v "$PWD":/ws -w /ws -e GITHUB_WORKSPACE=/ws -e GITHUB_REPOSITORY=drehtuer/NextAlarmApp \
+    -e INPUT_SOURCE=_pages -e INPUT_DESTINATION=_site -e INPUT_FUTURE=false -e INPUT_VERBOSE=false \
+    -e INPUT_BUILD_REVISION=local -e INPUT_TOKEN="$(gh auth token)" \
+    --entrypoint /entrypoint.sh ghcr.io/actions/jekyll-build-pages:v1.0.13
+```
+
+`_pages/` and `_site/` are ignored by Git. Keep the image version in line with `actions/jekyll-build-pages` in the
+workflow.
+
 ## Running on the Pixel 10a
 
 The container has no emulator (no hardware acceleration under WSL/Docker) and no USB access. Most code is tested
