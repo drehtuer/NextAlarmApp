@@ -83,8 +83,8 @@ class ScreenAlignmentTest {
             "NextAlarm",
             NEXT_CHECK_TEXT,
             "Allowed",
-            listOf(row),
-            "log.txt",
+            pastAlarms = listOf(row),
+            logFileName = "log.txt",
         )
         rule.setContent { NextAlarmTheme(dark = false) { DiagnosticsScreen(model, false, null, {}, {}, {}) } }
     }
