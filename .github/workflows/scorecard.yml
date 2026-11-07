@@ -10,12 +10,15 @@ on:
   # Re-runs the branch protection check when the rules change.
   branch_protection_rule:
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   analysis:
     runs-on: ubuntu-24.04
     permissions:
+      contents: read
+      actions: read
       security-events: write
       # Publishing the results needs an OIDC token.
       id-token: write
