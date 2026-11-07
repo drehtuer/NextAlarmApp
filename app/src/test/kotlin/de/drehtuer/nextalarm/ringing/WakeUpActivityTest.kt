@@ -237,11 +237,7 @@ class WakeUpActivityTest {
             rule.onNodeWithText("Unlocking the phone won't stop it.").assertIsDisplayed()
             rule.onNodeWithText("Stop").performClick()
             rule.waitUntil(WAIT_MILLIS) { state(alarm.id) == AlarmState.Done }
-            rule.waitUntil(WAIT_MILLIS) {
-                var finishing = false
-                scenario.onActivity { finishing = it.isFinishing }
-                finishing
-            }
+            rule.waitUntil(WAIT_MILLIS) { scenario.isClosing() }
         }
     }
 
@@ -264,11 +260,7 @@ class WakeUpActivityTest {
     @Test
     fun `with no automation running, the screen closes by itself`() {
         ActivityScenario.launch(WakeUpActivity::class.java).use { scenario ->
-            rule.waitUntil(WAIT_MILLIS) {
-                var finishing = false
-                scenario.onActivity { finishing = it.isFinishing }
-                finishing
-            }
+            rule.waitUntil(WAIT_MILLIS) { scenario.isClosing() }
         }
     }
 

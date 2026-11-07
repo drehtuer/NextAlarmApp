@@ -22,6 +22,9 @@ import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.snapshotFor
+import android.app.Activity
+import androidx.lifecycle.Lifecycle
+import androidx.test.core.app.ActivityScenario
 import java.time.Duration
 import java.time.Instant
 
@@ -205,3 +208,20 @@ fun awaitUntil(check: () -> Boolean) {
 
 private const val WAIT_STEPS = 1500
 private const val POLL_MILLIS = 20L
+
+/**
+ * Whether the scenario's activity is closing: finishing, or already destroyed. How far a screen that closes itself gets
+ * before the test looks depends on timing, and a destroyed activity cannot be asked, as `onActivity` then fails.
+ */
+fun ActivityScenario<out Activity>.isClosing(): Boolean {
+    if (state == Lifecycle.State.DESTROYED) return true
+    var finishing = false
+    try {
+        onActivity { finishing = it.isFinishing }
+    } catch (destroyedMeanwhile: NullPointerException) {
+        // onActivity runs what is pending first, which can destroy the activity.
+        if (state != Lifecycle.State.DESTROYED) throw destroyedMeanwhile
+        return true
+    }
+    return finishing
+}

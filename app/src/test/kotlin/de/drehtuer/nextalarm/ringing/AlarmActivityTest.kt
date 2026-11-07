@@ -81,11 +81,7 @@ class AlarmActivityTest {
             rule.waitUntil(WAIT_MILLIS) { rule.onAllNodes(hasText("Dismiss")).fetchSemanticsNodes().isNotEmpty() }
             rule.onNodeWithText("Dismiss").performClick()
             rule.waitUntil(WAIT_MILLIS) { state(alarm.id) == AlarmState.Done }
-            rule.waitUntil(WAIT_MILLIS) {
-                var finishing = false
-                scenario.onActivity { finishing = it.isFinishing }
-                finishing
-            }
+            rule.waitUntil(WAIT_MILLIS) { scenario.isClosing() }
         }
     }
 
