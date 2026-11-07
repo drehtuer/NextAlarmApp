@@ -1,6 +1,7 @@
 package de.drehtuer.nextalarm.domain
 
 import java.time.Duration
+import java.time.Instant
 
 /**
  * The gain of the alarm sound in the player itself, between 0 and 1. The system's stream volume is never changed: the
@@ -22,6 +23,33 @@ fun effectiveRampSeconds(snapshot: AlarmSnapshot): Int =
     minOf(snapshot.volumeRampSeconds, snapshot.ringTimeoutMinutes * SECONDS_PER_MINUTE)
 
 private const val SECONDS_PER_MINUTE = 60
+
+const val EMERGENCY_ALARM_TITLE = "Alarm (its details couldn't be read)"
+
+/**
+ * What rings if a registered alarm has fired and its stored alarm could not be handled, which needs nothing from the
+ * database. It rings the bundled sound at full level, and vibrates. It is never stored ([AlarmEngine] goes by its key). It
+ * counts as snoozed once on its own, so that its timeout ends it: an alarm that cannot be read cannot keep count.
+ */
+fun emergencyAlarm(instanceId: Long, now: Instant): AlarmInstance = AlarmInstance(
+    id = instanceId,
+    key = AlarmKey.forEmergency(instanceId),
+    triggerAt = now,
+    state = AlarmState.Ringing,
+    snoozeCount = 0,
+    autoSnoozed = true,
+    snapshot = AlarmSnapshot(
+        reason = EMERGENCY_ALARM_TITLE,
+        sound = SoundRef.SystemDefault,
+        vibrate = true,
+        volumeRampSeconds = 0,
+        maxVolume = null,
+        ringTimeoutMinutes = Settings.DEFAULT_RING_TIMEOUT_MINUTES,
+        snoozeMinutes = Settings.DEFAULT_SNOOZE_MINUTES,
+        speakReason = false,
+        news = null,
+    ),
+)
 
 /** Plays one alarm sound at a time, in a loop. */
 interface AlarmSound {
@@ -250,7 +278,7 @@ class AlarmRinger(
     private var cancelForegroundWait: () -> Unit = {}
 
     /** The alarm whose sound waits for the service. */
-    private var waitingToPlay: AlarmSnapshot? = null
+    private var waitingToPlay: AlarmInstance? = null
 
     /** Told apart from each other, because a timer can have fired just before it was cancelled. */
     private var rampRun = 0
@@ -268,7 +296,7 @@ class AlarmRinger(
         wakeLock.hold(timeout.plus(WAKE_LOCK_MARGIN))
         restartTimeout(timeout)
         updateVibration()
-        if (first) waitForForeground(alarm.snapshot)
+        if (first) waitForForeground(alarm)
         onChanged(ringing())
     }
 
@@ -278,10 +306,14 @@ class AlarmRinger(
      */
     @Synchronized
     fun foregroundSettled() {
-        val snapshot = waitingToPlay ?: return
+        val alarm = waitingToPlay ?: return
         waitingToPlay = null
         cancelForegroundWait()
-        startSound(snapshot)
+        if (alarm.key.isEmergency) {
+            sound.playLastResort(soundGain(Duration.ZERO, 0, alarm.snapshot.maxVolume))
+        } else {
+            startSound(alarm.snapshot)
+        }
     }
 
     /** An alarm that does not ring has nothing to leave, which is the case for a dismissed snoozed alarm. */
@@ -298,14 +330,14 @@ class AlarmRinger(
         failure?.let { throw it }
     }
 
-    private fun waitForForeground(snapshot: AlarmSnapshot) {
-        waitingToPlay = snapshot
-        cancelForegroundWait = timers.after(FOREGROUND_WAIT) { foregroundLate(snapshot) }
+    private fun waitForForeground(alarm: AlarmInstance) {
+        waitingToPlay = alarm
+        cancelForegroundWait = timers.after(FOREGROUND_WAIT) { foregroundLate(alarm) }
     }
 
     @Synchronized
-    private fun foregroundLate(snapshot: AlarmSnapshot) {
-        if (waitingToPlay !== snapshot) return
+    private fun foregroundLate(alarm: AlarmInstance) {
+        if (waitingToPlay !== alarm) return
         onForegroundLate()
         foregroundSettled()
     }

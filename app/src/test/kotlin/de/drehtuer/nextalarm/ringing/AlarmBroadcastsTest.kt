@@ -11,6 +11,8 @@ import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.AlarmKey
+import de.drehtuer.nextalarm.domain.AlarmRepository
+import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.domain.AlarmState
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.snapshotFor
@@ -50,7 +52,26 @@ class AlarmBroadcastsTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private var serviceStarts = 0
     private val foreground = AlarmForeground(AlarmNotifications(context)) { serviceStarts++ }
-    private val broadcasts = AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), engine, foreground)
+    private val sound = FakeSound()
+    private val ringer = AlarmRinger(sound, FakeVibration(), FakeTimers(), FakeWakeLock(), {}, { foreground.ringingChanged(it) })
+    private val broadcasts = AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), engine, foreground, ringer, { AT })
+
+    /** The real effects where they matter here. */
+    private val ringingEffects = object : AlarmEffects {
+        override fun perform(instance: AlarmInstance, action: AlarmAction) {
+            when (action) {
+                AlarmAction.JoinAlarmService -> ringer.join(instance)
+                AlarmAction.LeaveAlarmService, AlarmAction.LeaveAllServices -> ringer.leave(instance.id)
+                else -> Unit
+            }
+        }
+
+        override fun showNextAlarm(alarm: AlarmInstance?) = Unit
+        override fun ringing() = ringer.ringing()
+    }
+    private val ringingEngine = AlarmEngine(alarms, scheduler, ringingEffects, { AT }, MutexEngineLock())
+    private val ringingBroadcasts =
+        AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), ringingEngine, foreground, ringer, { AT })
     private var finished = 0
 
     private fun state(id: Long) = alarms.stored[id]?.state
@@ -150,6 +171,92 @@ class AlarmBroadcastsTest {
         alarms.failure = IllegalStateException("storage failed")
         broadcasts.sweep { finished++ }
         assertEquals(1, finished)
+    }
+
+    @Test
+    fun `an alarm that cannot be read rings anyway, the bundled sound through the service, and finishes`() {
+        alarms.failure = IllegalStateException("storage failed")
+        ringingBroadcasts.fired(Intent().setData(alarmUri(1))) { finished++ }
+        assertEquals(1, finished)
+        assertEquals(1, serviceStarts)
+        val ringing = ringer.ringing().single()
+        assertEquals(1, ringing.id)
+        assertEquals(true, ringing.key.isEmergency)
+        // Like any other alarm, it waits for the service.
+        assertEquals(false, sound.lastResort)
+        ringer.foregroundSettled()
+        assertEquals(true, sound.lastResort)
+    }
+
+    @Test
+    fun `Dismiss ends it without the database, which it does not touch`() {
+        alarms.failure = IllegalStateException("storage failed")
+        val before = alarms.stored.toMap()
+        ringingBroadcasts.fired(Intent().setData(alarmUri(1))) {}
+        ringingBroadcasts.actionTapped(action(AlarmActionReceiver.ACTION_DISMISS_ALL)) { finished++ }
+        assertEquals(1, finished)
+        assertEquals(true, ringer.ringing().isEmpty())
+        assertEquals(false, sound.lastResort)
+        assertEquals(before, alarms.stored)
+    }
+
+    @Test
+    fun `Dismiss ends it without touching the stored alarm, also if the database works again by then`() {
+        alarms.failure = IllegalStateException("storage failed")
+        val before = alarms.stored.toMap()
+        ringingBroadcasts.fired(Intent().setData(alarmUri(1))) {}
+        alarms.failure = null
+        ringingBroadcasts.actionTapped(action(AlarmActionReceiver.ACTION_DISMISS_ALL)) {}
+        assertEquals(false, ringer.ringing().any { it.id == 1L })
+        assertEquals(before[1], alarms.stored[1])
+    }
+
+    @Test
+    fun `an alarm whose state cannot be stored rings as itself, and not a second time as an emergency`() {
+        alarms.failOnUpdate = IllegalStateException("storage failed")
+        ringingBroadcasts.fired(Intent().setData(alarmUri(1))) { finished++ }
+        assertEquals(1, finished)
+        assertEquals(false, ringer.ringing().single().key.isEmergency)
+    }
+
+    @Test
+    fun `an intent without an alarm rings nothing, also if the database fails`() {
+        alarms.failure = IllegalStateException("storage failed")
+        ringingBroadcasts.fired(Intent()) { finished++ }
+        assertEquals(true, ringer.ringing().isEmpty())
+        assertEquals(1, finished)
+    }
+
+    @Test
+    fun `a database that hangs is treated like one that fails`() {
+        val hanging = object : AlarmRepository by alarms {
+            override suspend fun find(id: Long): AlarmInstance? = kotlinx.coroutines.awaitCancellation()
+        }
+        val engine = AlarmEngine(hanging, scheduler, ringingEffects, { AT }, MutexEngineLock())
+        val done = java.util.concurrent.CountDownLatch(1)
+        val impatient = AlarmBroadcasts(
+            alarmScope(Dispatchers.Default),
+            engine,
+            foreground,
+            ringer,
+            { AT },
+            Duration.ofMillis(50),
+        )
+        impatient.fired(Intent().setData(alarmUri(1))) { done.countDown() }
+        assertEquals(true, done.await(10, java.util.concurrent.TimeUnit.SECONDS))
+        assertEquals(true, ringer.ringing().single().key.isEmergency)
+    }
+
+    @Test
+    fun `being cancelled is not a failure that rings`() {
+        val cancelling = object : AlarmRepository by alarms {
+            override suspend fun find(id: Long): AlarmInstance? = throw kotlin.coroutines.cancellation.CancellationException("cancelled")
+        }
+        val engine = AlarmEngine(cancelling, scheduler, ringingEffects, { AT }, MutexEngineLock())
+        val plain = AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), engine, foreground, ringer, { AT })
+        plain.fired(Intent().setData(alarmUri(1))) { finished++ }
+        assertEquals(1, finished)
+        assertEquals(true, ringer.ringing().isEmpty())
     }
 
     private class WaitingService : AlarmForegroundHost {

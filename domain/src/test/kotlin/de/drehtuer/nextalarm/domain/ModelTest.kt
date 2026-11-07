@@ -8,6 +8,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+class EmergencyKeyTest {
+    @Test
+    fun `only an emergency key says it is one, and it takes no part in the plan`() {
+        assertTrue(AlarmKey.forEmergency(1).isEmergency)
+        assertFalse(AlarmKey.forEmergency(1).isFromCalendar)
+        assertFalse(AlarmKey.forEvent(1, NOW).isEmergency)
+        assertFalse(AlarmKey.forTestAlarm(1).isEmergency)
+    }
+}
+
 class ModelTest {
     @Test
     fun `a calendar event is timed and not cancelled by default`() {

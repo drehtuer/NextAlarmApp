@@ -150,7 +150,7 @@ class AlarmEngine(
             .fold(instance.copy(state = result.state), ::applyToInstance)
             .recordLateness(event, result.actions)
         val failures = Failures()
-        failures.attempt { alarms.update(updated) }
+        if (!updated.key.isEmergency) failures.attempt { alarms.update(updated) }
         val actions = if (failures.any) result.actions.filter { runsWithoutStoring(event, it) } else result.actions
         actions.forEach { action -> failures.attempt { perform(updated, action) } }
         failures.attempt { showNextAlarm() }

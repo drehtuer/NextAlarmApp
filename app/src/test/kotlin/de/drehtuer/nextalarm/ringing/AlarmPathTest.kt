@@ -152,7 +152,7 @@ class AlarmPathTest {
         }
         parts.foreground.attach(host)
         assertEquals(AlarmNotifications.PLACEHOLDER_ID, host.shown)
-        AlarmModule.broadcasts(alarmScope(Dispatchers.Unconfined), engine, parts.foreground).sweep()
+        AlarmModule.broadcasts(alarmScope(Dispatchers.Unconfined), engine, parts.foreground, parts.ringer).sweep()
         awaitUntil { host.shown == AlarmNotifications.ringingId(alarm.id) }
         assertEquals(false, host.finished)
         assertNull(shadowOf(real as Application).nextStartedService)

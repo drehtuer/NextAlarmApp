@@ -513,6 +513,35 @@ class AlarmRingerTest {
     }
 
     @Test
+    fun `an emergency alarm plays the last resort at full level, after the service like any other`() {
+        serviceUp = false
+        ringer.join(emergencyAlarm(1, NOW))
+        assertTrue(sound.log.isEmpty())
+        ringer.foregroundSettled()
+        assertEquals(listOf("playLastResort:1.0"), sound.log)
+        assertTrue(vibration.vibrating)
+    }
+
+    @Test
+    fun `an emergency alarm that joins the ringing leaves the sound as it is`() {
+        ringer.join(alarm(1))
+        ringer.join(emergencyAlarm(2, NOW))
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+    }
+
+    @Test
+    fun `an emergency alarm is ready to ring, stands for its alarm, and ends with its one timeout`() {
+        val alarm = emergencyAlarm(7, NOW)
+        assertEquals(7, alarm.id)
+        assertEquals(NOW, alarm.triggerAt)
+        assertEquals(AlarmState.Ringing, alarm.state)
+        assertEquals(EMERGENCY_ALARM_TITLE, alarm.snapshot.reason)
+        assertEquals(null, alarm.snapshot.maxVolume)
+        assertEquals(AlarmState.Unanswered, transition(alarm.state, AlarmEvent.RingTimeout, AlarmContext(alarm.autoSnoozed, alarm.snapshot)).state)
+        assertEquals(AlarmState.Done, transition(alarm.state, AlarmEvent.Dismiss, AlarmContext(alarm.autoSnoozed, alarm.snapshot)).state)
+    }
+
+    @Test
     fun `the first alarm starts the sound at its gain and keeps the CPU awake`() {
         ringer.join(alarm(maxVolume = 0.5f))
         assertEquals(listOf("play:SystemDefault:0.5"), sound.log)

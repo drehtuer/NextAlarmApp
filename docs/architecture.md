@@ -426,6 +426,13 @@ database working. `AlarmEngine` still stores a new state first, so that a crash 
 - **After a failed write the stored state is behind.** A dismissed alarm is then still stored as `Ringing`, so the
   recovery sweep rings it again at the next process start if that is within 60 minutes. Ringing once too often is the
   better way round.
+- **A failed `Fire` still rings.** If `AlarmEngine.fire` throws, or has not finished after 10 seconds, and the alarm has not
+  joined the ringing, `AlarmBroadcasts` has `AlarmRinger` ring an emergency alarm (`emergencyAlarm`). It exists only in
+  memory, under the alarm's id, and is never stored. It plays the bundled sound at full level through the normal path, so
+  the service comes first, and it vibrates. Its notification and screen have the normal actions, which work without the
+  database, as they go by the list in the ringer. Its one ring timeout ends it. Snoozing it registers the alarm with the
+  system again. The stored alarm stays as it was, so if the database works again by then, the recovery sweep rings it at
+  the next process start, if that is within 60 minutes.
 - **The ringing has a hard limit.** The ring timeout goes through `AlarmEngine`. If the alarms still ring 30 seconds after
   it, for whichever reason, `AlarmRinger` stops them on its own and posts "An alarm was stopped". This limit is measured
   from the last alarm that joined, so that no alarm rings for less time than it should.

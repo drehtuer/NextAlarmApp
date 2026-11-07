@@ -3,13 +3,20 @@ package de.drehtuer.nextalarm.ringing
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import dagger.hilt.android.AndroidEntryPoint
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmEvent
+import de.drehtuer.nextalarm.domain.AlarmRinger
+import de.drehtuer.nextalarm.domain.emergencyAlarm
 import de.drehtuer.nextalarm.planning.alarmInstanceId
+import java.time.Duration
+import java.time.Instant
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * What the broadcasts of the alarm path do. Each one reports through `finish`, which is what keeps the process and the
@@ -19,10 +26,31 @@ class AlarmBroadcasts(
     private val scope: CoroutineScope,
     private val engine: AlarmEngine,
     private val foreground: AlarmForeground,
+    private val ringer: AlarmRinger,
+    private val now: () -> Instant = Instant::now,
+    private val fireLimit: Duration = Duration.ofSeconds(10),
 ) {
-    /** An alarm's time has come. */
+    /** An alarm's time has come. Whatever goes wrong on the way, something rings. */
     fun fired(intent: Intent, finish: () -> Unit) = run(finish) {
-        alarmInstanceId(intent)?.let { engine.fire(it) }
+        alarmInstanceId(intent)?.let { fire(it) }
+    }
+
+    /** A database that hangs is as bad as one that fails, and the alarm is due now. */
+    private suspend fun fire(id: Long) {
+        try {
+            val done = withTimeoutOrNull(fireLimit.toMillis()) { engine.fire(id) }
+            if (done == null) ringAnyway(id, IllegalStateException("Firing took longer than $fireLimit"))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            ringAnyway(id, failure)
+        }
+    }
+
+    /** If the failure came after the alarm joined the ringing, as it can, then nothing more is needed. */
+    private fun ringAnyway(id: Long, failure: Exception) {
+        Log.e(TAG, "Alarm $id could not be fired the normal way", failure)
+        if (ringer.ringing().none { it.id == id }) ringer.join(emergencyAlarm(id, now()))
     }
 
     /** The user tapped an action of an alarm notification. */
@@ -49,6 +77,10 @@ class AlarmBroadcasts(
                 finish()
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "NextAlarm"
     }
 }
 

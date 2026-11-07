@@ -555,6 +555,25 @@ class AlarmEngineTest {
     }
 
     @Test
+    fun `an emergency alarm is ended without storing anything`() = runBlocking {
+        val real = stored(AlarmState.Scheduled)
+        val effects = RingingEffects(emergencyAlarm(real.id, NOW))
+        engineWith(effects).sendToRinging(AlarmEvent.Dismiss)
+        assertTrue(effects.rings.isEmpty())
+        assertEquals(real, alarms.find(real.id))
+        assertEquals(listOf(real.id), scheduler.cancelled)
+    }
+
+    @Test
+    fun `an emergency alarm snoozed registers the alarm again, for the real one to ring`() = runBlocking {
+        val real = stored(AlarmState.Scheduled)
+        val effects = RingingEffects(emergencyAlarm(real.id, NOW))
+        engineWith(effects).sendToRinging(AlarmEvent.Snooze)
+        assertEquals(NOW.plus(Duration.ofMinutes(10)), scheduler.scheduled[real.id])
+        assertEquals(real, alarms.find(real.id))
+    }
+
+    @Test
     fun `the default effects know of nothing that rings`() {
         assertTrue(NoAlarmEffects.ringing().isEmpty())
     }

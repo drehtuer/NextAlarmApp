@@ -459,6 +459,7 @@ accent colour (`setColor`).
 | Late alarm | "An alarm rang 7 min late" | "“Train to Cologne” was due at 06:45, but the phone was off." | "Open history" |
 | Missed alarm | "An alarm didn't ring" | "“Brunch with Lea” at 09:00 was missed because the phone was off." | "Open history" |
 | Alarm not answered | "An alarm wasn't answered" | "“Gym” at 06:30 rang twice with no response. It won't ring again." | "Open history" |
+| Alarm that could not be read | "Alarm (its details couldn't be read)" | "Ringing now" | "Snooze", "Dismiss". Rings the bundled sound at full level, as nothing else about it is known |
 | Alarm may be silent | "This alarm may be silent" | "Android didn't let NextAlarm run in the background, so its sound may not be heard. Tap to open the alarm." | none. Goes when the service comes up |
 | No sound could be played | "An alarm couldn't play a sound" | "NextAlarm tried all its sounds and none would play. Tap to open the alarm." | none. Stays after the alarm |
 | Alarm stopped by the limit | "An alarm was stopped" | "“Gym” at 06:30 rang past its time and NextAlarm couldn't end it the normal way." | "Open history" |

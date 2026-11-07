@@ -135,6 +135,10 @@ value class AlarmKey(val value: String) {
     val isFromCalendar: Boolean
         get() = value.startsWith(EVENT_PREFIX)
 
+    /** True for an alarm that exists only in memory, because its stored one could not be read. See [emergencyAlarm]. */
+    val isEmergency: Boolean
+        get() = value.startsWith(EMERGENCY_PREFIX)
+
     /**
      * When the event starts. Unlike the trigger time of an alarm, a snooze does not change it. Empty for an alarm that
      * does not come from the calendar.
@@ -145,10 +149,13 @@ value class AlarmKey(val value: String) {
     companion object {
         private const val EVENT_PREFIX = "event:"
         private const val TEST_PREFIX = "test:"
+        private const val EMERGENCY_PREFIX = "emergency:"
 
         fun forEvent(eventId: Long, instanceBegin: Instant): AlarmKey =
             AlarmKey("$EVENT_PREFIX$eventId:${instanceBegin.toEpochMilli()}")
 
         fun forTestAlarm(id: Long): AlarmKey = AlarmKey("$TEST_PREFIX$id")
+
+        fun forEmergency(id: Long): AlarmKey = AlarmKey("$EMERGENCY_PREFIX$id")
     }
 }

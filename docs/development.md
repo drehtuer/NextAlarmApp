@@ -106,6 +106,9 @@ adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell am instrument -w de.drehtuer.nextalarm.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
+The one exception to the silence is a database that fails while an alarm fires: the app then cannot know that the alarm is
+silent, and rings the bundled sound at full level. See [When the database fails](architecture.md#when-the-database-fails).
+
 `am instrument` force-stops the app first. That clears its registered alarms until the app next starts, when the
 recovery sweep registers them again, so open the app afterwards. Add `-e holdSeconds 15` to keep the alarm screen up for
 a screenshot.
