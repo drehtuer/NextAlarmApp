@@ -255,7 +255,8 @@ sequenceDiagram
 - Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it passes Do Not Disturb. **The app never changes the system's
   stream volume.** Volume is only the player's own gain (`MediaPlayer.setVolume`): the maximum volume if there is one,
   otherwise 1.0. Without a ramp (the default) that gain applies straight away; with one, it ramps up from 0 over the
-  configured duration. A maximum volume can therefore only make the alarm quieter than the phone's alarm volume, and
+  configured duration, or over the ring timeout if that is shorter, so that the alarm reaches its full level while it
+  rings (`effectiveRampSeconds`; the stored settings stay as they are). A maximum volume can therefore only make the alarm quieter than the phone's alarm volume, and
   a maximum volume of 0 is silent.
 - `AlarmEngine` handles one event at a time under a lock, so that events from the system, the user, the ring timeout,
   the recovery sweep and the planner cannot overwrite each other's state. Effects run under that lock; anything that

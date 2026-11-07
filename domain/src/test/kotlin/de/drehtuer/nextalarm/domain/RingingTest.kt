@@ -358,6 +358,23 @@ class AlarmRingerTest {
     }
 
     @Test
+    fun `a ramp longer than the ringing reaches full level within the ring time`() {
+        ringer.join(alarm(rampSeconds = 300, timeoutMinutes = 1))
+        repeat(120) { timers.elapse(rampStep) }
+        assertEquals("gain:0.5", sound.log.last())
+        repeat(120) { timers.elapse(rampStep) }
+        assertEquals("gain:1.0", sound.log.last())
+        assertEquals(listOf(Duration.ofMinutes(1)), timers.active.map { it.delay })
+    }
+
+    @Test
+    fun `a ramp shorter than the ringing keeps its length`() {
+        assertEquals(30, effectiveRampSeconds(alarm(rampSeconds = 30, timeoutMinutes = 1).snapshot))
+        assertEquals(60, effectiveRampSeconds(alarm(rampSeconds = 300, timeoutMinutes = 1).snapshot))
+        assertEquals(300, effectiveRampSeconds(alarm(rampSeconds = 300, timeoutMinutes = 5).snapshot))
+    }
+
+    @Test
     fun `a ramp to no maximum rises to full level`() {
         ringer.join(alarm(rampSeconds = 1))
         repeat(4) { timers.elapse(rampStep) }

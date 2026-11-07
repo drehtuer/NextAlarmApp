@@ -260,7 +260,8 @@ Values open the standard Material 3 pickers.
 Details decided while building this screen:
 
 - A picker is a Material 3 dialog with one radio button per value, and "Cancel":
-  - Volume ramp: "None", 15 s, 30 s, 1, 2 or 5 min.
+  - Volume ramp: "None", 15 s, 30 s, 1, 2 or 5 min. A ramp longer than "Ring for" is cut to that length when the alarm
+    rings, so that it reaches its full level. The picker keeps showing the chosen value.
   - Maximum volume: "Not set", then 90% down to 10% in steps of 10. There is no 0%, because an alarm must not be silent.
     100% would be the same as "Not set".
   - Ring for: 1, 2, 3, 5, 10 or 15 min.

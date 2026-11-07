@@ -13,6 +13,16 @@ fun soundGain(elapsed: Duration, rampSeconds: Int, maxVolume: Float?): Float {
     return top * progress.coerceIn(0f, 1f)
 }
 
+/**
+ * How long the volume ramp of this alarm takes. A ramp longer than the ring timeout would end the ringing before the alarm
+ * is at full level (a 5 minute ramp with 1 minute of ringing peaks at 20%), and restart after a snooze, so it is cut to the
+ * ring timeout. The stored settings stay as they are.
+ */
+fun effectiveRampSeconds(snapshot: AlarmSnapshot): Int =
+    minOf(snapshot.volumeRampSeconds, snapshot.ringTimeoutMinutes * SECONDS_PER_MINUTE)
+
+private const val SECONDS_PER_MINUTE = 60
+
 /** Plays one alarm sound at a time, in a loop. */
 interface AlarmSound {
     fun play(sound: SoundRef, gain: Float)
@@ -146,7 +156,7 @@ class AlarmRinger(
     }
 
     private fun startSound(snapshot: AlarmSnapshot) {
-        sound.play(snapshot.sound, soundGain(Duration.ZERO, snapshot.volumeRampSeconds, snapshot.maxVolume))
+        sound.play(snapshot.sound, soundGain(Duration.ZERO, effectiveRampSeconds(snapshot), snapshot.maxVolume))
         // Without a ramp, or with a silent maximum, the gain never changes.
         if (snapshot.volumeRampSeconds > 0 && snapshot.maxVolume != 0f) scheduleRamp(snapshot, Duration.ZERO, ++rampRun)
     }
@@ -158,8 +168,9 @@ class AlarmRinger(
     @Synchronized
     private fun rampStep(snapshot: AlarmSnapshot, elapsed: Duration, run: Int) {
         if (run != rampRun) return
-        sound.setGain(soundGain(elapsed, snapshot.volumeRampSeconds, snapshot.maxVolume))
-        if (elapsed.seconds < snapshot.volumeRampSeconds) scheduleRamp(snapshot, elapsed, run)
+        val ramp = effectiveRampSeconds(snapshot)
+        sound.setGain(soundGain(elapsed, ramp, snapshot.maxVolume))
+        if (elapsed.seconds < ramp) scheduleRamp(snapshot, elapsed, run)
     }
 
     private fun updateVibration() {
