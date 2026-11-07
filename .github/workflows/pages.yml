@@ -1,8 +1,12 @@
-# Builds the documentation (README.md and docs/) with GitHub's Jekyll and publishes it as the GitHub Pages site
-# when a release is published. See docs/development.md#documentation-site.
+# Builds the documentation (README.md and docs/) with GitHub's Jekyll and publishes it as the GitHub Pages site.
+# release.yml calls it for every release it publishes: a release made with GITHUB_TOKEN starts no other workflow.
+# See docs/development.md#documentation-site.
 name: Documentation
 
 on:
+  # From release.yml, at the release's tag.
+  workflow_call:
+  # A release published by hand.
   release:
     types: [published]
   # Publishes the documentation of the chosen branch or tag by hand.
@@ -10,11 +14,6 @@ on:
 
 permissions:
   contents: read
-
-# One deployment at a time. A running one is finished rather than cancelled, so the site is never half updated.
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   build:
@@ -37,6 +36,10 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-24.04
+    # One deployment at a time. A running one is finished rather than cancelled, so the site is never half updated.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write

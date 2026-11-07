@@ -36,7 +36,13 @@ names and SHA-1 checksums are listed in Google's repository index
 | Command                            | What it does                                                        |
 |------------------------------------|---------------------------------------------------------------------|
 | `./gradlew :app:assembleDebug`     | Builds the debug APK.                                               |
+| `./gradlew :app:assembleRelease`   | Builds the release APK, signed if the key is set up (see [Releases](#releases)). |
 | `./gradlew coverageReports`        | Runs the unit tests of all modules and writes their coverage reports. |
+
+Every APK build also leaves a copy under the name it is shared with, in `app/build/outputs/named-apk/<variant>/`:
+`NextAlarm-debug-<version>-<UTC build time>.apk` (e.g. `NextAlarm-debug-0.1.0-20261107-221624.apk`) and
+`NextAlarm-<version>.apk`, or `NextAlarm-<version>-unsigned.apk` without the key. The folder only holds the latest one.
+AGP's own output (`app/build/outputs/apk/debug/app-debug.apk`) keeps its name.
 
 The coverage reports are JaCoCo XML and HTML files, written to `domain/build/reports/jacoco/test/` and to
 `build/reports/coverage/test/debug/` in `app` and `data`. They contain line and branch coverage.
@@ -102,7 +108,9 @@ under **Settings → Code security** must stay off, as the two cannot run side b
 ## Documentation site
 
 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) publishes `README.md` and `docs/` as the GitHub Pages site
-<https://drehtuer.github.io/NextAlarmApp/> whenever a release is published. It can also be started by hand under
+<https://drehtuer.github.io/NextAlarmApp/> with every release: `release.yml` calls it once the release is published, as a
+release made by a workflow starts no other workflow, and it also runs for a release published by hand. It can also be
+started by hand under
 **Actions → Documentation → Run workflow**, for a branch or tag.
 
 1. `.github/scripts/stage-pages.sh` copies the pages into one directory: `README.md` becomes the start page
@@ -133,6 +141,62 @@ docker run --rm -v "$PWD":/ws -w /ws -e GITHUB_WORKSPACE=/ws -e GITHUB_REPOSITOR
 
 `_pages/` and `_site/` are ignored by Git. Keep the image version in line with `actions/jekyll-build-pages` in the
 workflow.
+
+## Releases
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs when a tag `v<version>` is pushed. Releases are
+immutable once published, so the release only comes into being when everything is ready:
+
+1. The tag must match `versionName` in `app/build.gradle.kts`, and the signing secrets must exist; otherwise the workflow
+   stops before anything is published.
+2. It runs the unit tests and builds the release APK, signed with the release key, without any Gradle cache.
+3. `apksigner` verifies the signature. The APK gets a `SHA256SUMS` file and a
+   [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations).
+4. The release is created as a draft with generated notes, gets `NextAlarm-<version>.apk` and `SHA256SUMS`, and is then
+   published. Versions before 1.0 are marked as pre-releases.
+5. The [documentation site](#documentation-site) is published for the tag.
+
+To make a release, raise `versionName` (and `versionCode`) in `app/build.gradle.kts` on `main`, then:
+
+```bash
+git tag -a v0.1.0 -m "NextAlarm 0.1.0"
+git push origin v0.1.0
+```
+
+If the workflow fails before publishing, nothing is released: fix the cause, delete the tag (and a draft release, if one
+was made) and push the tag again. Once a release is published, its tag and files cannot be changed; a fix is a new
+version.
+
+### The signing key
+
+The release key signs every version. Android only installs an update signed with the same key, so **if the key is lost,
+installed copies cannot be updated** and have to be uninstalled, which deletes their settings. Keep the keystore and its
+password in a password manager, separately from the repository.
+
+Create it once, as a PKCS12 keystore with the alias `nextalarm`:
+
+```bash
+keytool -genkeypair -keystore nextalarm-release.p12 -storetype PKCS12 -alias nextalarm \
+    -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=NextAlarm"
+```
+
+Then store two repository secrets under **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+| --- | --- |
+| `SIGNING_KEYSTORE_BASE64` | The keystore, Base64-encoded: `base64 -w0 nextalarm-release.p12` |
+| `SIGNING_KEYSTORE_PASSWORD` | The password given to `keytool`. In a PKCS12 keystore it is also the key's password |
+
+The build reads the key from the environment: `SIGNING_KEYSTORE_FILE` (path to the keystore),
+`SIGNING_KEYSTORE_PASSWORD`, and optionally `SIGNING_KEY_ALIAS` (default `nextalarm`). Without `SIGNING_KEYSTORE_FILE`
+the release APK is unsigned. To sign one locally:
+
+```bash
+SIGNING_KEYSTORE_FILE=/path/to/nextalarm-release.p12 SIGNING_KEYSTORE_PASSWORD=... ./gradlew :app:assembleRelease
+```
+
+The certificate's SHA-256 digest is printed in the workflow's log (`apksigner verify --print-certs`). It identifies the
+key, for F-Droid or for anyone checking a download.
 
 ## Running on the Pixel 10a
 
