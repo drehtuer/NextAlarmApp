@@ -33,6 +33,8 @@ import de.drehtuer.nextalarm.R
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import de.drehtuer.nextalarm.ui.theme.LocalExtraColors
+import de.drehtuer.nextalarm.ui.theme.filledButtonColors
+import de.drehtuer.nextalarm.ui.theme.outlinedButtonBorder
 
 /** One card of the permissions step. */
 data class PermissionCard(
@@ -92,6 +94,7 @@ fun OnboardingScreen(
                 Button(
                     onClick = { if (step == LAST_STEP) onDone() else onStepChange(step + 1) },
                     enabled = canGoOn,
+                    colors = filledButtonColors(),
                 ) {
                     Text(listOf("Get started", "Continue", "Done")[step])
                 }
@@ -192,7 +195,7 @@ private fun DeniedNote(card: PermissionCard) {
     val container: Color = if (card.required) colors.errorContainer else colors.secondaryContainer
     val content: Color = if (card.required) colors.onErrorContainer else colors.onSecondaryContainer
     Banner(title = null, body = card.deniedNote.orEmpty(), container = container, content = content) {
-        OutlinedButton(onClick = card.onOpenSettings) { Text("Open app settings", color = content) }
+        OutlinedButton(onClick = card.onOpenSettings, border = outlinedButtonBorder()) { Text("Open app settings", color = content) }
     }
 }
 

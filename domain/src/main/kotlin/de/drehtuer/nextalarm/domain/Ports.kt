@@ -13,11 +13,17 @@ data class DeviceCalendar(
     val color: Int?,
 )
 
+/** The chosen alarm calendar is no longer on the phone. */
+class CalendarGoneException(calendar: CalendarId) : Exception("Calendar ${calendar.value} is gone")
+
 /** Reads the calendar provider. A failed read throws, so that it can never be mistaken for "no alarms". */
 interface CalendarRepository {
     suspend fun calendars(): List<DeviceCalendar>
 
-    /** The event instances of [calendar] in this range. They can include events that started before [from]. */
+    /**
+     * The event instances of [calendar] in this range. They can include events that started before [from]. Throws
+     * [CalendarGoneException] if the calendar does not exist. A calendar that exists and has no events gives an empty list.
+     */
     suspend fun events(calendar: CalendarId, from: Instant, to: Instant): List<CalendarEvent>
 }
 
@@ -34,9 +40,10 @@ interface AlarmRepository {
     /** Stores a new alarm in [AlarmState.Scheduled]. */
     suspend fun create(key: AlarmKey, triggerAt: Instant, snapshot: AlarmSnapshot): AlarmInstance
     suspend fun update(instance: AlarmInstance)
+    suspend fun delete(id: Long)
 }
 
-enum class PlanningFailure { NO_CALENDAR, NO_PERMISSION, READ_FAILED, APPLY_FAILED }
+enum class PlanningFailure { NO_CALENDAR, CALENDAR_GONE, NO_PERMISSION, READ_FAILED, APPLY_FAILED }
 
 /** What the last finished planning run did, for the diagnostics screen. */
 data class PlanningRun(

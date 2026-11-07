@@ -178,14 +178,23 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
   - Title: "New alarms aren't being added"
   - Body: "NextAlarm couldn't read your calendar at 19:58. The alarms below will still ring. Anything you add or change in
     the calendar won't, and if this lasts 48 hours, nothing rings."
+  - Body if the alarm calendar is gone (`CALENDAR_GONE`): "Your alarm calendar was no longer on this phone at 19:58. The
+    alarms below will still ring, but nothing new is added, and after 48 hours nothing rings. Choose another calendar in
+    the settings."
   - Outlined button: "See what went wrong", which opens screen 7.
+- **Notifications-off banner** (`errorContainer`, warning icon, above the fail-safe banner, only while the app's
+  notifications or its "Alarm" channel are off):
+  - Title: "Notifications are off"
+  - Body: "A ringing alarm can't show its screen or its Snooze and Dismiss buttons. Open NextAlarm to stop it. Allow
+    notifications in the app settings to fix this."
+- **While an alarm rings,** opening the app leads straight to screen 8, whatever screen was open.
 - **Hero card** (`primaryContainer`, 28 dp corners, 24 dp padding):
   - A label: "Next alarm", "Next alarm · 2 alarms at 06:00" or "Snoozed".
   - The time in `displayMedium`.
   - The relative day: "Today · in 2 h 30 min", "Tomorrow, Saturday · in 10 h" or "Rings again in 10 min".
   - The title, at most three lines.
 - **Day groups:** a `labelLarge` header in `primary`, followed by one `surfaceContainer` list with 16 dp corners and
-  `outlineVariant` dividers. Each row is the time (100 dp wide, so that a time with seconds fits) and the title, at most two lines. A snoozed row adds a
+  `outlineVariant` dividers. Each row is the time (100 dp wide, so that a time with seconds fits) and the title, at most two lines, on one baseline. A snoozed row adds a
   `primaryContainer` chip: "Snoozed until 06:10".
 - **Event without a title:** show "No title" in italics in `onSurfaceVariant`.
 - **Empty state** (`surfaceContainer` card, calendar icon):
@@ -219,7 +228,8 @@ Below the rows come a divider and a section headed "About". It is always present
 - **Lead:** "Every timed event in this calendar rings at its start time. No other calendar is read."
 - **Calendars:** grouped by account, with the account name as a `primary` header ("DAVx⁵ · me@cloud.example",
   "ICSx⁵ · Holidays", "On this phone"). Each row is a radio button, the calendar's own colour as a 12 dp square, and its
-  name. The selected row has a `surfaceContainer` background.
+  name. A calendar without a colour leaves the square's place empty, so that the names line up. The selected row has a
+  `surfaceContainer` background.
 - **None selected** (`errorContainer` banner): "**No calendar chosen.** Until you choose one, no alarm rings."
 - **No calendars:**
   - Title: "No calendars on this phone"
@@ -232,7 +242,9 @@ Below the rows come a divider and a section headed "About". It is always present
 - **Lead:** "These apply to every alarm."
 - **Low-volume banner** (`secondaryContainer`, muted-speaker icon), shown when the alarm stream volume is at or below
   2 steps: "**Your phone's alarm volume is low (1 of 7).** Alarms may be too quiet to wake you. Turn it up in the phone's
-  sound settings, or set a maximum volume below."
+  sound settings." The delivered wording went on "or set a maximum volume below". That is left out, because the maximum
+  volume only lowers the player's own gain and can never make an alarm louder. See Q-S1 in
+  [Open questions](open_questions.md).
 - **Section "Sound":**
   - "Alarm sound": "Phone default (<sound name>)" or the file name. On the right, an outlined "Choose file" button. When
     a file is set, a text button "Use the phone's default sound" appears below.
@@ -248,9 +260,24 @@ Below the rows come a divider and a section headed "About". It is always present
   - "Snooze length": "10 min".
 - **Section "After you dismiss":**
   - "Speak the title" / "Reads the event title aloud", with a switch.
-  - "News" / "Off", "RSS · tagesschau.de" or "Podcast · Der Tag", with a chevron that opens screen 6.
+  - "News" / "Off", "RSS · tagesschau.de" or "Podcast · example.org", with a chevron that opens screen 6.
 
 Values open the standard Material 3 pickers.
+
+Details decided while building this screen:
+
+- A picker is a Material 3 dialog with one radio button per value, and "Cancel":
+  - Volume ramp: "None", 15 s, 30 s, 1, 2 or 5 min. A ramp longer than "Ring for" is cut to that length when the alarm
+    rings, so that it reaches its full level. The picker keeps showing the chosen value.
+  - Maximum volume: "Not set", then 90% down to 10% in steps of 10. There is no 0%, because an alarm must not be silent.
+    100% would be the same as "Not set".
+  - Ring for: 1, 2, 3, 5, 10 or 15 min.
+  - Snooze length: 1, 5, 10, 15, 20 or 30 min.
+- "Maximum volume" keeps its secondary line also when a value is set, as an explanation of "Not set".
+- The file's own name is kept in the name of the app's copy (`sound-<unique id>-<file name>`), because the settings only
+  store that one name. It shows at most 64 characters of the file name.
+- The "News" row names the feed's host name, without "www.", for both kinds. A feed's own title ("Der Tag") isn't stored.
+- If the phone doesn't say what its default sound is called, the row says "Phone default".
 
 ### 6 News
 
@@ -272,18 +299,52 @@ Values open the standard Material 3 pickers.
   - An `errorContainer` banner reads: "**Test failed.** The server answered “404 Not Found”. Check the address, then try
     again. Until it works, alarms skip the news."
 
+Details decided while building this screen:
+
+- **Detection** starts 0.8 seconds after the typing has paused, for anything that is an http or https address. An address
+  that gives no feed is not complained about, as it may still be being typed. Only "Test playback" shows the failed state.
+- **Saving:** a feed that was found, by detection or by a test, is stored at once and asks for a new plan. A broken
+  address is never stored. A feed with nothing in it to read or play counts as broken. A failed test leaves what is
+  stored alone, so the end of the banner depends on it. If a different feed is stored, it reads "Until it works, alarms
+  keep using tagesschau.de." instead, as those alarms do not skip the news.
+- **The other reasons in the banner**, each followed by "Check the address, then try again." and the end above:
+  - Not a web address: "This isn't a web address: it has to start with https:// or http://."
+  - No message from the server: "The server answered “500”."
+  - No connection: "The server can't be reached, or the phone has no connection."
+  - Too large: "The answer is too large to be read as a feed."
+  - Not a feed: "The answer isn't a feed NextAlarm can read."
+  - Nothing in it: "The feed has nothing in it to play."
+- **A feed that won't play** keeps its card and the helper text of a found feed, and the field no error border. It stays
+  stored, as the failure can be the phone's. The banner reads, followed by the end above:
+  - RSS: "The feed was found, but the phone couldn't read it aloud. Check its text-to-speech settings, then try again."
+  - Podcast: "The podcast was found, but its latest episode wouldn't play. Check the connection, then try again."
+- **The stepper** goes from 5 to 60 min in steps of 5, the default of 15 being one of them. A stored value between two
+  steps goes to the next step. It is disabled while a test runs, which keeps the limit it started with. A change counts
+  for the stored feed at once. Without one, it is kept for the feed that is found next.
+- **The detail line:** "12 headlines today" counts the entries of today, or all of them ("12 headlines") if there are none
+  of today or the feed has no dates. A podcast shows what its feed gives of "Deutschlandfunk · today, 18 min", with
+  "yesterday" or "4 November" as the day, and no line if it gives nothing.
+- **The progress line:** while the feed is on its way, "Getting the news · tagesschau.de". An episode shorter than the
+  maximum duration counts up to its own end: "Playing “Der Tag” · 0:42 of 10:00". The bar moves without a value until the
+  sound has started.
+- **"Turn off news"** empties the field and stores no news. It is disabled when there is nothing to turn off.
+- Emptying the field does not turn the news off: only the button does. Coming back to the screen shows what is stored.
+- The test stops at "Stop test", on leaving the screen, when the screen is hidden (also by a ringing alarm), when the
+  address changes, and at the maximum duration.
+
 ### 7 Diagnostics & history
 
 - **Top bar:** "Diagnostics & history".
 - **Status card**, one per planner state:
   - `Planned` (`successContainer`, check icon): "Alarms are planned" / "Last check today at 19:58 took 0.4 s and found
     4 alarms in the next 48 hours."
-  - `Planning` (`primaryContainer`, refresh icon, indeterminate progress bar): "Checking the calendar…" / "Started at
-    20:00. Alarms already planned stay in place."
+  - `Planning` (`primaryContainer`, refresh icon, indeterminate progress bar): "Checking the calendar…" / "Alarms
+    already planned stay in place." It doesn't say when the check started, because the planner doesn't store that.
   - `FailSafe` (`errorContainer`, warning icon): "Last check failed" / "Today at 19:58: calendar permission was removed.
     The 4 alarms already planned will still ring, but changes in the calendar are not picked up." The second sentence is
     followed by the matching fix, for example "Allow calendar access again to fix it."
-- **Facts:** label–value rows: "Calendar", "Next check" ("When the calendar changes, and at least once a day") and "Full-screen alarms".
+- **Notifications-off banner:** above the status card, the same as on home.
+- **Facts:** label–value rows: "Calendar", "Next check" ("When the calendar changes, and at least once a day"), "Full-screen alarms" and "Notifications" ("On" or "Off: alarms can't show their screen or their buttons").
 - **Buttons:** "Ring a test alarm" (tonal, bell icon) and "Export log" (outlined).
 - **"Past alarms":** one row per alarm with the time ("Thu 07:00"), the title, and an outcome chip:
 
@@ -295,7 +356,41 @@ Values open the standard Material 3 pickers.
 | `Cancelled` | "Event moved or deleted before it rang" | `surfaceVariant`, cross icon |
 | `Missed` | "Missed: phone was off" | `errorContainer`, cross icon |
 
+Details decided while building this screen:
+
+- `Unconfigured` has a neutral card too (`surfaceContainer`, settings icon): "Not set up yet" / "Finish setup to plan
+  alarms." The app shows setup first, so it should not normally be seen.
+- The failure line and the fix for each `PlanningFailure`:
+
+| Failure | Line | Fix |
+|---------|------|-----|
+| `NO_PERMISSION` | "calendar permission was removed" | "Allow calendar access again to fix it." |
+| `NO_CALENDAR` | "no alarm calendar is chosen" | "Choose an alarm calendar in the settings to fix it." |
+| `CALENDAR_GONE` | "the alarm calendar is no longer on this phone" | "Choose another alarm calendar in the settings to fix it." |
+| `READ_FAILED` | "the calendar couldn't be read" | "NextAlarm keeps trying. If this lasts, check that the calendar is still on this phone." |
+| `APPLY_FAILED` | "the alarms couldn't be updated" | "NextAlarm keeps trying. If this lasts, restart the phone." |
+
+- "No alarms are planned, and changes in the calendar are not picked up." replaces the sentence about what still rings
+  when nothing is waiting.
+- In the settings, "Diagnostics & history" says "Not checked yet" before the first finished check.
+- "Calendar" says "Can't be read right now" if the chosen calendar can't be found, for example without the permission,
+  and "No longer on this phone. Choose another" if the last check found that it is gone.
+  "Full-screen alarms" says "Allowed" or "Not allowed: alarms ring as a notification".
+- A past alarm is listed at the time of its event, not of its last snooze; a test alarm has no event, and shows its own
+  time with its seconds. A `Done` alarm that rang late shows that rather than its snoozes. The newest comes first. An
+  empty list says "No alarms have ended yet."
+- The time of a past alarm is `bodyMedium` with tabular figures, on one baseline with the title. It is not the 20 / 28 of
+  other times in lists, because "Thu 07:00" would not fit its 88 dp column at that size, even without seconds.
+- **Test alarm:** it is an alarm titled "Test alarm", with the current settings, 5 seconds ahead. Until then, the button
+  is disabled and a line below it says "“Test alarm” rings in about 5 seconds, with your current settings."
+- **Export log:** a plain text file, suggested name `nextalarm-log-2026-11-06.txt`. It has the planner state, the failures
+  in a row, the last check and the past alarms. Calendar, account and sound names stay out. Under the button, and at the
+  top of the file: "The log includes the titles of your alarms, and nothing else personal." After an export, a second
+  line under the button says "Log saved." or "The log couldn't be saved. Try again."
+
 ### 8 Alarm screen (night)
+
+Screens 8 and 9 stay in portrait, whatever the phone's rotation, so that no button can be cut off.
 
 From top to bottom, under the status-bar inset plus 48 dp:
 
@@ -310,6 +405,21 @@ From top to bottom, under the status-bar inset plus 48 dp:
 5. **Dismiss:** a filled pill with a stop icon and "Dismiss".
 
 Both buttons act on every ringing alarm. Dismiss stops the sound at once.
+
+Details decided while building this screen:
+
+- The time is at most `displayLarge`. A time with seconds doesn't fit at 112 sp ("06:00:30" would be about 420 dp wide,
+  and 363 dp are available), so the time shrinks until it fits on one line (about 97 sp). Its line stays 120 sp high, so
+  nothing else moves.
+- A title is long above 60 characters: about three lines at the size of a single title.
+- The date and the line "3 alarms" are `titleMedium`.
+- The labels are larger than the `labelLarge` of other buttons, because this screen is read half asleep: "Snooze" is
+  `headlineSmall`, "Rings again at 06:10" (inside the button) is `bodyLarge`, and "Dismiss" is `titleLarge` at weight
+  500.
+- The buttons are minimum heights: at a very large font size they grow rather than cut off their labels. Dismiss ends
+  24 dp above the bottom inset. The buttons are always on screen, and only the titles scroll.
+- "Rings again" gives the earliest time if the ringing alarms have different snooze lengths. Like every time, it shows
+  seconds if they are not zero.
 
 ### 9 Wake-up screen (night)
 
@@ -327,6 +437,19 @@ Both buttons act on every ringing alarm. Dismiss stops the sound at once.
 4. A small line: "Unlocking the phone won't stop it."
 5. **Stop:** a filled pill, the same as Dismiss.
 
+Details decided while building this screen:
+
+- The greeting is `titleMedium` in `nightOnSurfaceVariant`, the kind line `bodyMedium` and the small line `bodyMedium`,
+  both in `nightOnSurfaceVariant`, and the times `bodySmall` with tabular figures. The icon disc is 40 dp: speaker for
+  speech, RSS for a feed, microphone for a podcast.
+- Speech has no known length, so its time is what has passed ("0:03"), with no end time and a moving progress bar.
+- While the feed is on its way the card has no times, a moving bar, the kind line "Getting the news" and the address's
+  host as the main line. For an episode the length comes from the player, or from the feed until the player knows; if
+  neither knows, the second time is "up to 15:00". Between two steps, for a moment, there is no card.
+- An event without a title shows as on screen 8. The main line has at most two lines, and only the titles scroll.
+- A podcast feed gives "Der Tag" as its name and "Deutschlandfunk" as its publisher (`itunes:author`). Without a publisher
+  the kind line uses the name.
+
 ## Notifications
 
 All notifications use the standard Android layouts, the small icon `ic_stat_alarm`, and `primary` (`#00639B`) as the
@@ -337,19 +460,45 @@ accent colour (`setColor`).
 | Next alarm (silent, ongoing) | "Next alarm: tomorrow 06:00" | The event title | none |
 | Alarm | The event title ("Flight to Hamburg, leave at 6:15") | "Ringing now" | "Snooze", "Dismiss" |
 | Snoozed | "Snoozed until 06:10" | The event title | "Dismiss" |
-| Wake-up media | "Playing: Der Tag" | "Deutschlandfunk podcast · stops by 06:16 at the latest" | "Stop" |
+| Wake-up media, podcast | "Playing: Der Tag" | "Deutschlandfunk podcast · stops by 06:16 at the latest" | "Stop" |
+| Wake-up media, RSS | "Playing: tagesschau.de" | "Reading the news · stops by 06:16 at the latest" | "Stop" |
+| Wake-up media, speech | "Speaking the title" (or "Speaking the titles") | The title being spoken | "Stop" |
+| Wake-up media, feed on its way | "Getting the news" | "tagesschau.de · stops by 06:16 at the latest" | "Stop" |
 | Fail-safe warning | "New alarms aren't being added" | "NextAlarm can't read your calendar. Alarms already planned will still ring." | "Open diagnostics" |
+| Fail-safe warning, calendar gone | "New alarms aren't being added" | "Your alarm calendar is no longer on this phone. Alarms already planned will still ring. Choose another calendar." | "Open diagnostics" |
 | Late alarm | "An alarm rang 7 min late" | "“Train to Cologne” was due at 06:45, but the phone was off." | "Open history" |
 | Missed alarm | "An alarm didn't ring" | "“Brunch with Lea” at 09:00 was missed because the phone was off." | "Open history" |
 | Alarm not answered | "An alarm wasn't answered" | "“Gym” at 06:30 rang twice with no response. It won't ring again." | "Open history" |
+| Alarm that could not be read | "Alarm (its details couldn't be read)" | "Ringing now" | "Snooze", "Dismiss". Rings the bundled sound at full level, as nothing else about it is known |
+| Alarm may be silent | "This alarm may be silent" | "Android didn't let NextAlarm run in the background, so its sound may not be heard. Tap to open the alarm." | none. Goes when the service comes up |
+| No sound could be played | "An alarm couldn't play a sound" | "NextAlarm tried all its sounds and none would play. Tap to open the alarm." | none. Stays after the alarm |
+| Alarm stopped by the limit | "An alarm was stopped" | "“Gym” at 06:30 rang past its time and NextAlarm couldn't end it the normal way." | "Open history" |
+
+The "Alarm" notification is ongoing. From Android 14 the user can still swipe it away while the phone is unlocked, and no app
+can prevent that, so it comes straight back for as long as the alarm rings.
 
 The relative day in "Next alarm" follows the home screen: "today", "tomorrow", or the weekday.
+
+## Quick settings tile
+
+A read-only tile. It offers nothing to switch; it only answers "when does it ring?" from the notification shade.
+
+| State | Label | Subtitle | Tile state |
+|-------|-------|----------|------------|
+| An alarm is waiting | "Next alarm" | The day and time of the "Next alarm" notification: "tomorrow 06:00" | Active |
+| No alarm is waiting | "Next alarm" | "None in 48 hours" | Inactive |
+
+- The subtitle uses the same words as the notification title, without its "Next alarm: " prefix: "today", "tomorrow" or
+  the weekday, and a time with seconds only if they are not zero ("tomorrow 06:00:30"). A snoozed alarm counts, as it
+  does for the notification. The event title is left out: a tile has no room for it, and it could be private.
+- Tapping it opens the app and closes the panel, whichever state it is in.
+- The icon is `ic_stat_alarm`. Android colours it for the tile state, so the tile has no colour of its own.
 
 ## Icons
 
 - **Launcher:** `mipmap-anydpi/ic_launcher.xml`. An adaptive icon with a `primary` background and the "calendar bell"
   foreground. Its monochrome layer has the bell cut out of the calendar page.
-- **Notification:** `drawable/ic_stat_alarm.xml`. A white 24 dp calendar bell.
+- **Notification and quick settings tile:** `drawable/ic_stat_alarm.xml`. A white 24 dp calendar bell.
 - **In the app:** stroke icons on a 24 dp grid with a 2 dp stroke. You need: settings (sliders), back arrow, chevron,
   external link, calendar, repeat, bin, warning, error (circle with exclamation mark), check, muted speaker, bell,
   refresh, clock, cross, play, stop, microphone (podcast), RSS and speaker (speech). Icon-only buttons need a content

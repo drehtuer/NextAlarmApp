@@ -48,9 +48,9 @@ sealed interface PlanCommand {
 fun diff(plan: Plan, existing: List<AlarmInstance>, now: Instant): List<PlanCommand> {
     val calendarInstances = existing.filter { it.key.isFromCalendar }
 
-    // A restored event leaves a Cancelled instance behind next to the new one, so a live instance takes precedence.
+    // A restored event leaves an old instance behind next to the new one, so a live instance takes precedence.
     val liveByKey = calendarInstances
-        .filter { it.state !is AlarmState.Cancelled }
+        .filter { it.state !is AlarmState.Cancelled && !it.canRingAgain(now) }
         .associateBy { it.key }
 
     val forPlanEntries = plan.entries.mapNotNull { entry ->
@@ -70,3 +70,10 @@ fun diff(plan: Plan, existing: List<AlarmInstance>, now: Instant): List<PlanComm
 
     return forPlanEntries + forRemovedEntries
 }
+
+/**
+ * A forward jump of the clock makes an alarm [AlarmState.Missed] without it having rung. If the clock is corrected, its
+ * time is still to come, and it has to ring then. A snoozed alarm has rung, and never rings twice, so its count rules it out.
+ */
+private fun AlarmInstance.canRingAgain(now: Instant): Boolean =
+    state is AlarmState.Missed && snoozeCount == 0 && triggerAt > now

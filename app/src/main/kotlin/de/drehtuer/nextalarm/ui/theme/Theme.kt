@@ -1,9 +1,16 @@
 package de.drehtuer.nextalarm.ui.theme
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButtonColors
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -79,6 +86,19 @@ val DarkColors = darkColorScheme(
     onErrorContainer = Color(0xFFFFDAD6),
 )
 
+/** Screens 8 and 9. The roles without a night value keep their dark value. */
+val NightColors = DarkColors.copy(
+    primary = Color(0xFF99CBFF),
+    onPrimary = Color(0xFF003354),
+    background = Color(0xFF000000),
+    onBackground = Color(0xFFE6E6E6),
+    surface = Color(0xFF000000),
+    onSurface = Color(0xFFE6E6E6),
+    surfaceContainer = Color(0xFF1A1A1A),
+    onSurfaceVariant = Color(0xFFA8A8A8),
+    outline = Color(0xFF474747),
+)
+
 @Immutable
 data class ExtraColors(
     val success: Color,
@@ -119,6 +139,9 @@ val NextAlarmTypography = Typography(
 /** Times in lists. */
 val ListTimeStyle = style(20, 28, FontWeight.Medium).copy(fontFeatureSettings = TABULAR_FIGURES)
 
+/** A long title on the alarm screen. */
+val LongAlarmTitleStyle = style(24, 32, FontWeight.Medium)
+
 val NextAlarmShapes = Shapes(
     small = RoundedCornerShape(8.dp),
     medium = RoundedCornerShape(12.dp),
@@ -126,12 +149,58 @@ val NextAlarmShapes = Shapes(
     extraLarge = RoundedCornerShape(28.dp),
 )
 
+// Material's own defaults for these components use roles that the design gives another meaning, or leaves on the
+// baseline palette: a tonal button in the warning colour, a switch track with a purple tint.
+
+/** A filled button. */
+@Composable
+fun filledButtonColors(): ButtonColors =
+    ButtonDefaults.buttonColors(disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+
+/** A tonal button: `primaryContainer`, not the warning colour `secondaryContainer`. */
+@Composable
+fun tonalButtonColors(): ButtonColors = ButtonDefaults.filledTonalButtonColors(
+    containerColor = MaterialTheme.colorScheme.primaryContainer,
+    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+)
+
+/** The border of an outlined button, also one with only an icon. */
+@Composable
+fun outlinedButtonBorder(enabled: Boolean = true): BorderStroke {
+    val outline = MaterialTheme.colorScheme.outline
+    return BorderStroke(1.dp, if (enabled) outline else outline.copy(alpha = DISABLED_BORDER_ALPHA))
+}
+
+@Composable
+fun nextAlarmSwitchColors(): SwitchColors =
+    SwitchDefaults.colors(uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+
+@Composable
+fun nextAlarmRadioColors(): RadioButtonColors =
+    RadioButtonDefaults.colors(unselectedColor = MaterialTheme.colorScheme.outline)
+
+private const val DISABLED_BORDER_ALPHA = 0.38f
+
 /** Screens 1 to 7. They follow the system's light or dark setting, with a fixed palette. */
 @Composable
 fun NextAlarmTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalExtraColors provides if (dark) DarkExtraColors else LightExtraColors) {
         MaterialTheme(
             colorScheme = if (dark) DarkColors else LightColors,
+            typography = NextAlarmTypography,
+            shapes = NextAlarmShapes,
+            content = content,
+        )
+    }
+}
+
+/** Screens 8 and 9: always night, whatever the system setting. */
+@Composable
+fun NightTheme(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalExtraColors provides DarkExtraColors) {
+        MaterialTheme(
+            colorScheme = NightColors,
             typography = NextAlarmTypography,
             shapes = NextAlarmShapes,
             content = content,

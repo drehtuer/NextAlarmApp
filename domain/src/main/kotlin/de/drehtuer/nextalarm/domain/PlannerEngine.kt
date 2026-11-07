@@ -9,15 +9,20 @@ interface PlannerEffects {
     fun cancelPlanningJob()
     fun startPlanningJob(generation: Long)
     fun scheduleRetry(delay: Duration)
-    fun showFailSafeWarning()
+
+    /** [failure] says what the warning is about. Empty if that is not known. */
+    fun showFailSafeWarning(failure: PlanningFailure?)
     fun removeFailSafeWarning()
 
     /** Shows the next alarm, or removes the notification if there is none. */
     fun showNextAlarm(alarm: AlarmInstance?)
 }
 
-/** Lets only one caller at a time work on the planner state. */
-interface PlannerLock {
+/**
+ * Lets only one caller at a time work on the state of an engine. The planner and the alarm engine each have their own,
+ * and the planner calls into the alarm engine while it holds its lock, so never the other way round.
+ */
+interface EngineLock {
     suspend fun <T> withLock(block: suspend () -> T): T
 }
 
@@ -32,7 +37,7 @@ class PlannerEngine(
     private val alarms: AlarmRepository,
     private val alarmEngine: AlarmEngine,
     private val effects: PlannerEffects,
-    private val lock: PlannerLock,
+    private val lock: EngineLock,
     private val now: () -> Instant,
 ) {
     suspend fun setupCompleted() = lock.withLock { request(PlannerEvent.SetupCompleted) }
@@ -67,6 +72,7 @@ class PlannerEngine(
 
     private fun classify(failure: Throwable?): PlanningFailure = when (failure) {
         is NoCalendarChosen -> PlanningFailure.NO_CALENDAR
+        is CalendarGoneException -> PlanningFailure.CALENDAR_GONE
         is SecurityException -> PlanningFailure.NO_PERMISSION
         else -> PlanningFailure.READ_FAILED
     }
@@ -104,6 +110,18 @@ class PlannerEngine(
         planner.save(updated)
         perform(result, updated)
         effects.showNextAlarm(nextAlarm(alarms.all(), now()))
+        removeExpiredAlarms()
+    }
+
+    /** Only tidies the history, so it cannot make a run fail. What is left behind goes in the next run. */
+    private suspend fun removeExpiredAlarms() {
+        try {
+            alarmEngine.removeExpired()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // The plan has been applied by now, and nothing depends on old alarms being gone.
+        }
     }
 
     private suspend fun finishFailed(generation: Long, failure: PlanningFailure, startedAt: Instant) {
@@ -139,7 +157,7 @@ class PlannerEngine(
                 is PlannerAction.StartPlanningJob -> effects.startPlanningJob(action.generation)
                 PlannerAction.ApplyPlan -> Unit // Already done, because its outcome decides the next state.
                 PlannerAction.RemoveFailSafeWarning -> effects.removeFailSafeWarning()
-                PlannerAction.ShowFailSafeWarning -> effects.showFailSafeWarning()
+                PlannerAction.ShowFailSafeWarning -> effects.showFailSafeWarning(record.lastRun?.failure)
                 PlannerAction.ScheduleRetry -> effects.scheduleRetry(retryDelay(record.consecutiveFailures))
             }
         }

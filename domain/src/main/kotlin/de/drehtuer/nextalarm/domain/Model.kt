@@ -1,5 +1,6 @@
 package de.drehtuer.nextalarm.domain
 
+import java.time.Duration
 import java.time.Instant
 
 @JvmInline
@@ -8,7 +9,24 @@ value class CalendarId(val value: Long)
 /** The alarm sound: the phone's default alarm sound, or a copy of the file the user picked. */
 sealed interface SoundRef {
     data object SystemDefault : SoundRef
-    data class File(val name: String) : SoundRef
+    data class File(val name: String) : SoundRef {
+        /** What the user knows the file by. The name of the copy has it after a unique part: see [forCopy]. */
+        val displayName: String
+            get() = COPY_NAME.matchEntire(name)?.groupValues?.get(1) ?: name
+
+        companion object {
+            private const val MAX_DISPLAY_NAME = 64
+            private val COPY_NAME = Regex("sound-[0-9a-fA-F-]{36}-(.+)")
+            private val NOT_IN_FILE_NAMES = Regex("[/\\\\\\p{Cntrl}]")
+
+            /**
+             * The sound for a new copy of the file [displayName]. The settings keep only this name, so that is where
+             * the file's own name is kept too. At most 64 characters of it fit, within the 255 bytes of a file name.
+             */
+            fun forCopy(uniqueId: String, displayName: String): File =
+                File("sound-$uniqueId-${displayName.replace(NOT_IN_FILE_NAMES, "_").take(MAX_DISPLAY_NAME)}")
+        }
+    }
 }
 
 enum class NewsType { RSS, PODCAST }
@@ -41,7 +59,7 @@ data class Settings(
     val sound: SoundRef,
     val vibrate: Boolean,
     val volumeRampSeconds: Int,
-    /** Between 0 and 1. Without a value, the system's alarm volume is left as it is. */
+    /** The player's own gain, between 0 and 1. The system's alarm volume is never changed. Without a value: 1. */
     val maxVolume: Float?,
     val ringTimeoutMinutes: Int = DEFAULT_RING_TIMEOUT_MINUTES,
     val snoozeMinutes: Int = DEFAULT_SNOOZE_MINUTES,
@@ -106,6 +124,8 @@ data class AlarmInstance(
     val snoozeCount: Int,
     val autoSnoozed: Boolean,
     val snapshot: AlarmSnapshot,
+    /** How late it rang, if it was late enough to be reported (see [LATE_NOTICE_THRESHOLD]). Empty otherwise. */
+    val lateBy: Duration? = null,
 )
 
 /** Identifies an alarm across planning runs. It contains the start time, so a moved event is a new alarm. */
@@ -115,13 +135,27 @@ value class AlarmKey(val value: String) {
     val isFromCalendar: Boolean
         get() = value.startsWith(EVENT_PREFIX)
 
+    /** True for an alarm that exists only in memory, because its stored one could not be read. See [emergencyAlarm]. */
+    val isEmergency: Boolean
+        get() = value.startsWith(EMERGENCY_PREFIX)
+
+    /**
+     * When the event starts. Unlike the trigger time of an alarm, a snooze does not change it. Empty for an alarm that
+     * does not come from the calendar.
+     */
+    val eventStart: Instant?
+        get() = if (isFromCalendar) Instant.ofEpochMilli(value.substringAfterLast(':').toLong()) else null
+
     companion object {
         private const val EVENT_PREFIX = "event:"
         private const val TEST_PREFIX = "test:"
+        private const val EMERGENCY_PREFIX = "emergency:"
 
         fun forEvent(eventId: Long, instanceBegin: Instant): AlarmKey =
             AlarmKey("$EVENT_PREFIX$eventId:${instanceBegin.toEpochMilli()}")
 
         fun forTestAlarm(id: Long): AlarmKey = AlarmKey("$TEST_PREFIX$id")
+
+        fun forEmergency(id: Long): AlarmKey = AlarmKey("$EMERGENCY_PREFIX$id")
     }
 }

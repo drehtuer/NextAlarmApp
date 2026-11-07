@@ -2,11 +2,24 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Without this, Android hides the text-to-speech engines from the app. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
 
     <application
         android:name=".NextAlarmApplication"
@@ -14,7 +27,8 @@
         android:icon="@mipmap/ic_launcher"
         android:label="NextAlarm"
         android:supportsRtl="true"
-        android:theme="@style/Theme.NextAlarm">
+        android:theme="@style/Theme.NextAlarm"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"
@@ -36,9 +50,79 @@
             </intent-filter>
         </receiver>
 
+        <!-- The alarm path also runs before the first unlock. See docs/architecture.md#direct-boot. -->
+        <activity
+            android:name=".ringing.AlarmActivity"
+            android:screenOrientation="portrait"
+            android:directBootAware="true"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.NextAlarm.Night"
+            android:turnScreenOn="true" />
+
+        <service
+            android:name=".ringing.AlarmService"
+            android:directBootAware="true"
+            android:exported="false"
+            android:foregroundServiceType="systemExempted" />
+
+        <activity
+            android:name=".ringing.WakeUpActivity"
+            android:screenOrientation="portrait"
+            android:directBootAware="true"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.NextAlarm.Night"
+            android:turnScreenOn="true" />
+
+        <service
+            android:name=".ringing.WakeUpService"
+            android:directBootAware="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <receiver
             android:name=".planning.AlarmReceiver"
+            android:directBootAware="true"
             android:exported="false" />
+
+        <receiver
+            android:name=".ringing.AlarmActionReceiver"
+            android:directBootAware="true"
+            android:exported="false" />
+
+        <receiver
+            android:name=".ringing.LockedBootReceiver"
+            android:directBootAware="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            Not directBootAware: it is only for looking at, and nothing on the alarm path needs it. An active tile is only
+            bound when it asks to be, through TileService.requestListeningState. See docs/architecture.md#quick-settings-tile.
+        -->
+        <service
+            android:name=".tile.NextAlarmTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_alarm"
+            android:label="Next alarm"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="true" />
+        </service>
 
         <!-- WorkManager gets its worker factory from NextAlarmApplication, so it must not start on its own. -->
         <provider

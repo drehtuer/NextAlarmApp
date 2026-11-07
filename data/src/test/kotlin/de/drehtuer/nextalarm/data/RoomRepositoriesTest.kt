@@ -131,9 +131,15 @@ class RoomRepositoriesTest {
             autoSnoozed = true,
             triggerAt = time.plusSeconds(600),
             snapshot = MINIMAL_SNAPSHOT,
+            lateBy = Duration.ofMinutes(7),
         )
         alarms.update(changed)
         assertEquals(changed, alarms.find(changed.id))
+    }
+
+    @Test
+    fun `a new alarm has not been late`() = runBlocking {
+        assertNull(alarms.find(alarms.create(key, time, SNAPSHOT).id)?.lateBy)
     }
 
     @Test
@@ -146,6 +152,23 @@ class RoomRepositoriesTest {
     @Test
     fun `no alarms give an empty list`() = runBlocking {
         assertTrue(alarms.all().isEmpty())
+    }
+
+    @Test
+    fun `deleting an alarm removes only that one, and its id is not used again`() = runBlocking {
+        val first = alarms.create(key, time, SNAPSHOT)
+        val second = alarms.create(key, time, SNAPSHOT)
+        alarms.delete(second.id)
+        assertNull(alarms.find(second.id))
+        assertEquals(listOf(first.id), alarms.all().map { it.id })
+        assertTrue(alarms.create(key, time, SNAPSHOT).id > second.id)
+    }
+
+    @Test
+    fun `deleting an unknown alarm does nothing`() = runBlocking {
+        val kept = alarms.create(key, time, SNAPSHOT)
+        alarms.delete(404)
+        assertEquals(listOf(kept.id), alarms.all().map { it.id })
     }
 
     @Test

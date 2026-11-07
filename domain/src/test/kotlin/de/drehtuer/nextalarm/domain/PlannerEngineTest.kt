@@ -19,7 +19,7 @@ class PlannerEngineTest {
     private val clock = FakeClock()
     private val effects = FakePlannerEffects()
     private val lock = FakeLock()
-    private val alarmEngine = AlarmEngine(alarms, scheduler, { _, _ -> }, clock::now)
+    private val alarmEngine = AlarmEngine(alarms, scheduler, NoAlarmEffects, clock::now, FakeLock())
     private val engine = PlannerEngine(planner, settingsRepo, calendars, alarms, alarmEngine, effects, lock, clock::now)
 
     private val future = NOW.plus(Duration.ofHours(2))
@@ -31,6 +31,29 @@ class PlannerEngineTest {
 
     private fun failFrom(exception: Exception) {
         calendars.failure = exception
+    }
+
+    @Test
+    fun `a calendar that is gone is a failed run that keeps every alarm, and the warning says why`() = runBlocking {
+        settingsRepo.settings = settings()
+        alarms.add(AlarmInstance(1, AlarmKey.forEvent(1, future), future, AlarmState.Scheduled, 0, false, snapshot()))
+        planning()
+        failFrom(CalendarGoneException(CalendarId(1)))
+        engine.runPlanning(1)
+        assertEquals(PlannerState.FailSafe, planner.record.state)
+        assertEquals(PlanningFailure.CALENDAR_GONE, planner.record.lastRun?.failure)
+        assertEquals(PlanningFailure.CALENDAR_GONE, effects.warnedAbout)
+        assertEquals(AlarmState.Scheduled, alarms.find(1)?.state)
+    }
+
+    @Test
+    fun `a calendar that exists and has no events is a valid empty result, which removes what it no longer holds`() = runBlocking {
+        settingsRepo.settings = settings()
+        alarms.add(AlarmInstance(1, AlarmKey.forEvent(1, future), future, AlarmState.Scheduled, 0, false, snapshot()))
+        planning()
+        engine.runPlanning(1)
+        assertEquals(PlannerState.Planned, planner.record.state)
+        assertEquals(AlarmState.Cancelled, alarms.find(1)?.state)
     }
 
     @Test
@@ -204,6 +227,68 @@ class PlannerEngineTest {
         assertFailsWith<CancellationException> { engine.runPlanning(1) }
         assertEquals(PlannerState.Planning, planner.record.state)
         assertEquals(0, planner.record.consecutiveFailures)
+    }
+
+    private fun ended(id: Long, state: AlarmState = AlarmState.Done, days: Long = 30) = alarms.add(
+        AlarmInstance(id, AlarmKey.forTestAlarm(id), NOW.minus(Duration.ofDays(days)), state, 0, false, snapshot()),
+    )
+
+    @Test
+    fun `a successful run deletes old ended alarms and keeps the rest`() = runBlocking {
+        ended(101)
+        ended(102, days = 1)
+        ended(103, AlarmState.Ringing)
+        planning()
+        engine.runPlanning(1)
+        assertEquals(PlannerState.Planned, planner.record.state)
+        assertEquals(listOf(102L, 103L), alarms.all().map { it.id })
+    }
+
+    @Test
+    fun `a failed run deletes nothing`() = runBlocking {
+        ended(101)
+        failFrom(IllegalStateException("broken"))
+        planning()
+        engine.runPlanning(1)
+        assertEquals(PlannerState.FailSafe, planner.record.state)
+        assertEquals(listOf(101L), alarms.all().map { it.id })
+    }
+
+    @Test
+    fun `a stale run deletes nothing`() = runBlocking {
+        ended(101)
+        planning(generation = 2)
+        engine.runPlanning(1)
+        assertEquals(listOf(101L), alarms.all().map { it.id })
+    }
+
+    @Test
+    fun `a failure to delete does not make a successful run fail`() = runBlocking {
+        ended(101)
+        alarms.failOnDelete = true
+        planning()
+        engine.runPlanning(1)
+        assertEquals(PlannerState.Planned, planner.record.state)
+        assertEquals(0, planner.record.consecutiveFailures)
+        assertEquals(listOf(101L), alarms.all().map { it.id })
+
+        alarms.failOnDelete = false
+        engine.replanRequested()
+        engine.runPlanning(2)
+        assertTrue(alarms.all().isEmpty())
+    }
+
+    @Test
+    fun `a cancelled deletion stays cancelled`() = runBlocking {
+        val cancelling = object : AlarmRepository by alarms {
+            override suspend fun delete(id: Long): Unit = throw CancellationException("replaced")
+        }
+        val alarmEngine = AlarmEngine(cancelling, scheduler, NoAlarmEffects, clock::now, FakeLock())
+        val engine = PlannerEngine(planner, settingsRepo, calendars, cancelling, alarmEngine, effects, lock, clock::now)
+        ended(101)
+        planning()
+        assertFailsWith<CancellationException> { engine.runPlanning(1) }
+        assertEquals(PlannerState.Planned, planner.record.state)
     }
 
     @Test

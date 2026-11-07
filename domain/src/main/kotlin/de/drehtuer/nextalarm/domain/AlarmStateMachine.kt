@@ -21,6 +21,13 @@ sealed interface AlarmState {
     data object Missed : AlarmState
 }
 
+/** True if the alarm has ended: no event changes the state any more. */
+val AlarmState.isTerminal: Boolean
+    get() = when (this) {
+        AlarmState.Done, AlarmState.Unanswered, AlarmState.Cancelled, AlarmState.Missed -> true
+        AlarmState.Scheduled, AlarmState.Ringing, AlarmState.Snoozed, AlarmState.Announcing, AlarmState.NewsPlaying -> false
+    }
+
 sealed interface AlarmEvent {
     /** Only creates an instance, see [createAlarm]. It is ignored on an existing one. */
     data object Create : AlarmEvent

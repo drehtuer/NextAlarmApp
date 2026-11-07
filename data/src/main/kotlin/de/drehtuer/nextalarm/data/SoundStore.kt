@@ -4,8 +4,10 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.RingtoneManager
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.annotation.RawRes
 import de.drehtuer.nextalarm.domain.SoundRef
+import de.drehtuer.nextalarm.domain.SoundRejection
 import java.io.File
 import java.io.IOException
 import java.util.UUID
@@ -42,9 +44,18 @@ val MEDIA_METADATA_AUDIO_PROBE = AudioProbe { file ->
 
 sealed interface SoundImportResult {
     data class Imported(val sound: SoundRef.File) : SoundImportResult
-    data class Rejected(val reason: Reason) : SoundImportResult
 
-    enum class Reason { UNSUPPORTED_TYPE, UNREADABLE, NOT_PLAYABLE }
+    /** [fileName] is what the user knows the file by. */
+    data class Rejected(val reason: SoundRejection, val fileName: String) : SoundImportResult
+}
+
+/** What the alarm settings need of the sound copies. */
+interface SoundFiles {
+    /** Takes a copy of the file the user picked, or says why it was not taken. */
+    suspend fun import(uri: Uri): SoundImportResult
+
+    /** Deletes the app's copy of a sound that is no longer selected. The user's original is not affected. */
+    fun delete(sound: SoundRef)
 }
 
 /** Where to play a sound from. */
@@ -62,27 +73,44 @@ class SoundStore(
     private val context: Context,
     private val probe: AudioProbe = MEDIA_METADATA_AUDIO_PROBE,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-) {
+) : SoundFiles {
     private val resolver = context.contentResolver
     private val directory = File(context.createDeviceProtectedStorageContext().filesDir, "sounds")
 
-    suspend fun import(uri: Uri): SoundImportResult = withContext(ioDispatcher) {
+    /** The sound that needs nothing from the phone or the database. */
+    val bundled: SoundSource = SoundSource.Bundled(R.raw.alarm_fallback)
+
+    override suspend fun import(uri: Uri): SoundImportResult = withContext(ioDispatcher) {
+        val fileName = displayName(uri)
         if (resolver.getType(uri) !in SUPPORTED_SOUND_MIME_TYPES) {
-            return@withContext SoundImportResult.Rejected(SoundImportResult.Reason.UNSUPPORTED_TYPE)
+            return@withContext SoundImportResult.Rejected(SoundRejection.UNSUPPORTED_TYPE, fileName)
         }
         directory.mkdirs()
-        val file = File(directory, "sound-${UUID.randomUUID()}")
+        val sound = SoundRef.File.forCopy(UUID.randomUUID().toString(), fileName)
+        val file = File(directory, sound.name)
         val rejection = when {
-            !copy(uri, file) -> SoundImportResult.Reason.UNREADABLE
-            !probe.isPlayable(file) -> SoundImportResult.Reason.NOT_PLAYABLE
+            !copy(uri, file) -> SoundRejection.UNREADABLE
+            !probe.isPlayable(file) -> SoundRejection.NOT_PLAYABLE
             else -> null
         }
         if (rejection == null) {
-            SoundImportResult.Imported(SoundRef.File(file.name))
+            SoundImportResult.Imported(sound)
         } else {
             removeQuietly(file)
-            SoundImportResult.Rejected(rejection)
+            SoundImportResult.Rejected(rejection, fileName)
         }
+    }
+
+    /** The picker's name for the file, or else the end of its address. A provider may refuse or fail to answer. */
+    private fun displayName(uri: Uri): String {
+        val name = try {
+            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        } catch (_: RuntimeException) {
+            null
+        }
+        return name ?: uri.lastPathSegment?.substringAfterLast('/') ?: UNNAMED_FILE
     }
 
     /**
@@ -92,11 +120,10 @@ class SoundStore(
     fun sources(sound: SoundRef): List<SoundSource> = listOfNotNull(
         storedFile(sound)?.let { SoundSource.Stored(it) },
         RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)?.let { SoundSource.System(it) },
-        SoundSource.Bundled(R.raw.alarm_fallback),
+        bundled,
     )
 
-    /** Deletes the app's copy of a sound that is no longer selected. The user's original is not affected. */
-    fun delete(sound: SoundRef) {
+    override fun delete(sound: SoundRef) {
         storedFile(sound)?.let(::removeQuietly)
     }
 
@@ -120,5 +147,9 @@ class SoundStore(
         false
     } catch (_: SecurityException) {
         false
+    }
+
+    private companion object {
+        const val UNNAMED_FILE = "file"
     }
 }

@@ -79,7 +79,7 @@ class DiffTest {
         AlarmInstance(id, key, triggerAt, state, snoozeCount = 0, autoSnoozed = false, snapshot = snapshot)
 
     private val startedStates = listOf(AlarmState.Ringing, AlarmState.Snoozed, AlarmState.Announcing, AlarmState.NewsPlaying)
-    private val finishedStates = listOf(AlarmState.Done, AlarmState.Unanswered, AlarmState.Missed)
+    private val finishedStates = listOf(AlarmState.Done, AlarmState.Unanswered)
 
     @Test
     fun `a new entry is created`() {
@@ -140,6 +140,36 @@ class DiffTest {
             assertEquals(emptyList(), diff(planWithEntry, listOf(instance(state)), NOW), "in plan: $state")
             assertEquals(emptyList(), diff(emptyPlan, listOf(instance(state)), NOW), "not in plan: $state")
         }
+    }
+
+    @Test
+    fun `a missed alarm is created again if the clock was corrected and its time is still to come`() {
+        assertEquals(listOf(PlanCommand.Create(entry)), diff(planWithEntry, listOf(instance(AlarmState.Missed)), NOW))
+    }
+
+    @Test
+    fun `a missed alarm whose time has passed stays missed`() {
+        val past = instance(AlarmState.Missed, triggerAt = NOW.minusSeconds(60))
+        assertEquals(emptyList(), diff(planWithEntry, listOf(past), NOW))
+        val atNow = instance(AlarmState.Missed, triggerAt = NOW)
+        assertEquals(emptyList(), diff(planWithEntry, listOf(atNow), NOW))
+    }
+
+    @Test
+    fun `a missed alarm that had already rung and been snoozed does not ring twice`() {
+        val snoozed = instance(AlarmState.Missed).copy(snoozeCount = 1)
+        assertEquals(emptyList(), diff(planWithEntry, listOf(snoozed), NOW))
+    }
+
+    @Test
+    fun `a missed alarm not in the plan needs nothing`() {
+        assertEquals(emptyList(), diff(emptyPlan, listOf(instance(AlarmState.Missed)), NOW))
+    }
+
+    @Test
+    fun `a live instance takes precedence over a missed one with the same key`() {
+        val instances = listOf(instance(AlarmState.Missed, id = 10), instance(AlarmState.Scheduled, id = 11))
+        assertEquals(emptyList(), diff(planWithEntry, instances, NOW))
     }
 
     @Test

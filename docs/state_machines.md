@@ -44,7 +44,7 @@ transitions that change something.
 | `SetupCompleted`             | Onboarding finished (or re-run) with the required permissions |
 | `ReplanRequested`            | Any [re-planning trigger](architecture.md#re-planning-triggers) |
 | `PlanSucceeded(generation)`  | Planning job finished                                         |
-| `PlanFailed(generation)`     | Planning job threw (e.g. calendar permission revoked, provider error) |
+| `PlanFailed(generation)`     | Planning job threw (e.g. calendar permission revoked, alarm calendar gone, provider error) |
 
 `generation` identifies the planning run. A result whose `generation` differs from the current one is stale.
 
@@ -84,7 +84,7 @@ Notes:
 |---------------|-------------------------------------------------|-------------------------------------------------------------------------------------------|
 | `Scheduled`   | Waiting for its trigger time.                   | Register with `AlarmManager.setAlarmClock()` at `triggerAt`.                              |
 | `Ringing`     | Sound/vibration active, alarm screen shown.     | Join `AlarmService` (start it if not running): add this alarm to the ringing alarms, post its notification, restart the shared ring timeout. If `lateBy > 1 min` and the alarm was not already ringing, post a "late alarm" notification. |
-| `Snoozed`     | Waiting for the snooze to end.                  | Leave `AlarmService` (it stops when no alarm rings), `snoozeCount += 1`, set `triggerAt` to now + `snoozeMinutes` and register the alarm there, show snooze notification. |
+| `Snoozed`     | Waiting for the snooze to end.                  | Leave `AlarmService` (it stops when no alarm rings), `snoozeCount += 1`, set `triggerAt` to the current minute + `snoozeMinutes`, so that it rings on the minute the screen announced, and register the alarm there, show snooze notification. |
 | `Announcing`  | Speaking the event title (TTS).                 | Leave `AlarmService`, cancel any snooze alarm, join `WakeUpService` with TTS.             |
 | `NewsPlaying` | Reading/playing the news.                       | Leave `AlarmService`, cancel any snooze alarm, start news playback in `WakeUpService`.    |
 | `Done`        | Finished normally. Terminal.                    | Leave all services, cancel `AlarmManager` alarm, remove notifications.                    |
@@ -92,7 +92,13 @@ Notes:
 | `Cancelled`   | Removed by re-planning (event deleted in the calendar). Terminal. | Cancel `AlarmManager` alarm, remove notifications.                               |
 | `Missed`      | Trigger time passed more than 60 min ago (device was off). Terminal. | Leave `AlarmService`, remove notifications, post a "missed alarm" notification. |
 
-Terminal instances are kept for a few days for the history view and then deleted.
+Terminal instances are kept for 7 days after their trigger time for the history view. The end of each successful
+planning run deletes the older ones. A non-terminal instance is never deleted, however old it is.
+
+"Remove notifications" means the alarm's "Alarm" and "Snoozed" notifications: those reporting what happened stay.
+Leaving `AlarmService` removes the same two, and joining it removes "Snoozed", so an alarm that rings again or is
+dismissed while snoozed never keeps a stale one. Every change of state also refreshes the "Next alarm" notification.
+`AlarmEngine` stores `lateBy` when a `Fire` posts the "late alarm" notification, and leaves it alone otherwise.
 
 Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the current snooze was started by
 `RingTimeout`, not by the user) and the snapshot (`snoozeMinutes`, `ringTimeoutMinutes`, `speakReason`, `news`).
@@ -103,14 +109,14 @@ Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the cur
 |----------------------|-------------------------------------------------------------------------------------|
 | `Create`             | Planner commits a new plan entry (only creates the instance in `Scheduled`)          |
 | `Fire(lateBy)`       | `AlarmManager` alarm, or the [recovery sweep](architecture.md#recovery) at boot / process start |
-| `Snooze`             | User taps "Snooze" on the alarm screen (sent to every ringing alarm)                |
-| `Dismiss`            | User taps "Dismiss" on the alarm screen (sent to every ringing alarm) or on a snooze notification (sent to that alarm) |
+| `Snooze`             | User taps "Snooze" on the alarm screen or an alarm's notification (sent to every ringing alarm) |
+| `Dismiss`            | User taps "Dismiss" on the alarm screen or an alarm's notification (sent to every ringing alarm), or on a snooze notification (sent to that alarm) |
 | `RingTimeout`        | The ringing alarms rang for `ringTimeoutMinutes` without interaction (sent to every ringing alarm) |
 | `Refresh(snapshot)`  | Re-planning found a different snapshot (event title or settings changed)            |
 | `Remove`             | Re-planning no longer contains this entry                                           |
 | `AnnouncementDone`   | TTS finished (or failed)                                                            |
 | `NewsDone`           | News finished (or failed, e.g. no network)                                          |
-| `StopWakeUp`         | User stops the wake-up automation, or the recovery sweep ends an interrupted one     |
+| `StopWakeUp`         | User stops the wake-up automation (sent to every alarm in it), or the recovery sweep ends an interrupted one |
 
 Guards:
 
@@ -188,8 +194,12 @@ Rationale for the less obvious entries:
 - **`Snoozed` + `Dismiss` → [G3]:** dismissing from the snooze notification starts the wake-up automation, the same
   as dismissing a ringing alarm.
 - **`Missed`:** a missed alarm is reported but never rung more than 60 minutes late, because ringing hours later is
-  more harmful than useful. An alarm that rings late (up to 60 minutes) also gets a "late alarm" notification.
+  more harmful than useful. An alarm that rings late (up to 60 minutes) also gets a "late alarm" notification. The state
+  itself is terminal, but if the clock jumped and was corrected, the [plan diff](architecture.md#planning) creates a new
+  instance for an alarm whose time is still to come.
 - **Several alarms at once:** all alarms use the same sound, so a second alarm that fires while another one rings
   joins the running `AlarmService` instead of being delayed. It gets its own notification, is listed on the alarm
   screen and restarts the shared ring timeout. `Snooze`, `Dismiss` and `RingTimeout` are sent to every ringing
-  alarm; each machine transitions on its own (see [Ringing](architecture.md#ringing)).
+  alarm; each machine transitions on its own (see [Ringing](architecture.md#ringing)). They then also share one
+  [wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen), in which each still gets its own
+  `AnnouncementDone` and `NewsDone`.

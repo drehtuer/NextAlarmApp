@@ -13,17 +13,33 @@ import dagger.hilt.components.SingletonComponent
 import de.drehtuer.nextalarm.MainActivity
 import de.drehtuer.nextalarm.data.AlarmIntents
 import de.drehtuer.nextalarm.data.DataComponents
-import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
+import de.drehtuer.nextalarm.domain.EngineLock
+import de.drehtuer.nextalarm.domain.NewsTestPlayer
 import de.drehtuer.nextalarm.domain.PlannerEngine
-import de.drehtuer.nextalarm.domain.PlannerLock
+import de.drehtuer.nextalarm.ringing.AndroidRingWakeLock
+import de.drehtuer.nextalarm.ringing.HandlerRingTimers
+import de.drehtuer.nextalarm.ringing.MediaPlayerPodcastOutput
+import de.drehtuer.nextalarm.ringing.TextToSpeechOutput
+import de.drehtuer.nextalarm.ui.AndroidPhoneAudio
 import de.drehtuer.nextalarm.ui.AppPorts
+import de.drehtuer.nextalarm.ui.ContentResolverLogDocuments
+import de.drehtuer.nextalarm.ui.NewsPorts
+import de.drehtuer.nextalarm.ui.PhonePorts
+import de.drehtuer.nextalarm.ui.alarmNotificationsAllowed
+import de.drehtuer.nextalarm.ui.canUseFullScreenIntent
 import java.time.Instant
 import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** The intent data keeps the alarms apart, so that each one can be cancelled on its own. */
+/** The data of an alarm's intents. It keeps the alarms apart, so that each one can be cancelled on its own. */
+fun alarmUri(instanceId: Long): Uri = Uri.parse("nextalarm://alarm/$instanceId")
+
+/** Which alarm an intent is about, if any. */
+fun alarmInstanceId(intent: Intent): Long? = intent.data?.lastPathSegment?.toLongOrNull()
+
 class AppAlarmIntents(private val context: Context) : AlarmIntents {
     override fun fire(instanceId: Long): PendingIntent = PendingIntent.getBroadcast(
         context,
@@ -38,19 +54,18 @@ class AppAlarmIntents(private val context: Context) : AlarmIntents {
         Intent(context, MainActivity::class.java).setData(alarmUri(instanceId)),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
-
-    private fun alarmUri(instanceId: Long) = Uri.parse("nextalarm://alarm/$instanceId")
 }
 
-class MutexPlannerLock : PlannerLock {
+class MutexEngineLock : EngineLock {
     private val mutex = Mutex()
 
     override suspend fun <T> withLock(block: suspend () -> T): T = mutex.withLock { block() }
 }
 
-/** Nothing can ring yet, so these actions cannot happen. Step 6.2 replaces this with the real services. */
-val NO_ALARM_EFFECTS = AlarmEffects { _, _ -> }
-
+/**
+ * The planning side, which only runs after the first unlock. The alarm path must not depend on anything here except
+ * [dataComponents], which works from device-protected storage: see `AlarmModule`.
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 object PlanningModule {
@@ -68,14 +83,15 @@ object PlanningModule {
         @ApplicationContext context: Context,
         data: DataComponents,
         planning: PlanningWork,
+        alarmEngine: AlarmEngine,
     ): PlannerEngine = PlannerEngine(
         planner = data.planner,
         settings = data.settings,
         calendars = data.calendars,
         alarms = data.alarms,
-        alarmEngine = AlarmEngine(data.alarms, data.scheduler(AppAlarmIntents(context)), NO_ALARM_EFFECTS, Instant::now),
+        alarmEngine = alarmEngine,
         effects = AppPlannerEffects(planning, AppNotifications(context)),
-        lock = MutexPlannerLock(),
+        lock = MutexEngineLock(),
         now = Instant::now,
     )
 
@@ -85,12 +101,32 @@ object PlanningModule {
         @ApplicationContext context: Context,
         data: DataComponents,
         engine: PlannerEngine,
+        alarmEngine: AlarmEngine,
     ) = AppPorts(
         settings = data.settings,
         planner = data.planner,
         alarms = data.alarms,
         calendars = data.calendars,
         engine = engine,
+        alarmEngine = alarmEngine,
         planningChanges = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(PlanningWork.PLAN_WORK),
+        phone = PhonePorts(
+            audio = AndroidPhoneAudio(context),
+            sounds = data.sounds,
+            logs = ContentResolverLogDocuments(context.contentResolver),
+            notificationsAllowed = { alarmNotificationsAllowed(context) },
+            fullScreenAllowed = { canUseFullScreenIntent(context) },
+        ),
+        news = NewsPorts(
+            feeds = data.feeds,
+            player = NewsTestPlayer(
+                speech = TextToSpeechOutput(context),
+                podcast = MediaPlayerPodcastOutput(context),
+                timers = HandlerRingTimers(),
+                wakeLock = AndroidRingWakeLock(context, "NextAlarm:newstest"),
+                now = Instant::now,
+            ),
+        ),
+        io = Dispatchers.IO,
     )
 }

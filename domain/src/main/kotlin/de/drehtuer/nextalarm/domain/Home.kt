@@ -47,11 +47,20 @@ data class HomeModel(
     /** Only in `FailSafe`. */
     val failSafeBody: String?,
     val footer: String?,
+    /** Only while notifications are off. */
+    val notificationsOff: BannerText? = null,
 )
 
 data class NextAlarmText(
     val title: String,
     val text: String,
+)
+
+/** What the quick settings tile shows. It is highlighted when [active]. */
+data class NextAlarmTile(
+    val label: String,
+    val subtitle: String,
+    val active: Boolean,
 )
 
 data class CalendarGroup(
@@ -63,6 +72,20 @@ data class CalendarGroup(
 fun formatTime(instant: Instant, zone: ZoneId): String {
     val time = instant.atZone(zone)
     return time.format(if (time.second == 0) TIME else TIME_WITH_SECONDS)
+}
+
+/** A time without its seconds, for when something happened rather than when something rings. */
+internal fun formatMinute(instant: Instant, zone: ZoneId): String = instant.atZone(zone).format(TIME)
+
+/** "today at 19:58", "yesterday at 19:58" or "Thursday at 19:58". */
+internal fun relativeDayAndTime(instant: Instant, today: LocalDate, zone: ZoneId): String {
+    val time = instant.atZone(zone)
+    val day = when (time.toLocalDate()) {
+        today -> "today"
+        today.minusDays(1) -> "yesterday"
+        else -> time.format(WEEKDAY)
+    }
+    return "$day at ${time.format(TIME)}"
 }
 
 /** The alarms that are still to ring, in order. */
@@ -78,6 +101,7 @@ fun buildHome(
     alarms: List<AlarmInstance>,
     record: PlannerRecord,
     calendar: DeviceCalendar?,
+    notificationsAllowed: Boolean = true,
 ): HomeModel {
     val waiting = waitingAlarms(alarms, now)
     val today = now.atZone(zone).toLocalDate()
@@ -89,6 +113,7 @@ fun buildHome(
         emptyBody = if (waiting.isEmpty()) emptyBody(now, zone, calendar) else null,
         failSafeBody = if (record.state == PlannerState.FailSafe) failSafeBody(record, zone) else null,
         footer = homeFooter(now, zone, record, calendar),
+        notificationsOff = notificationsOffBanner(notificationsAllowed),
     )
 }
 
@@ -157,6 +182,10 @@ private fun emptyBody(now: Instant, zone: ZoneId, calendar: DeviceCalendar?): St
 
 private fun failSafeBody(record: PlannerRecord, zone: ZoneId): String {
     val at = record.lastRun?.let { " at ${it.startedAt.atZone(zone).format(TIME)}" }.orEmpty()
+    if (record.lastRun?.failure == PlanningFailure.CALENDAR_GONE) {
+        return "Your alarm calendar was no longer on this phone$at. The alarms below will still ring, but nothing new is " +
+            "added, and after 48 hours nothing rings. Choose another calendar in the settings."
+    }
     return "NextAlarm couldn't read your calendar$at. The alarms below will still ring. Anything you add or change " +
         "in the calendar won't, and if this lasts 48 hours, nothing rings."
 }
@@ -164,18 +193,13 @@ private fun failSafeBody(record: PlannerRecord, zone: ZoneId): String {
 private fun homeFooter(now: Instant, zone: ZoneId, record: PlannerRecord, calendar: DeviceCalendar?): String? {
     val source = calendar?.let { "From the calendar “${it.name}”${calendarSource(it)?.let { name -> " ($name)" }.orEmpty()}." }
     val checked = record.lastRun?.let {
-        val day = when (it.startedAt.atZone(zone).toLocalDate()) {
-            now.atZone(zone).toLocalDate() -> "today"
-            now.atZone(zone).toLocalDate().minusDays(1) -> "yesterday"
-            else -> it.startedAt.atZone(zone).format(WEEKDAY)
-        }
-        "Checked $day at ${it.startedAt.atZone(zone).format(TIME)}."
+        "Checked ${relativeDayAndTime(it.startedAt, now.atZone(zone).toLocalDate(), zone)}."
     }
     return listOfNotNull(source, checked).joinToString(" ").ifEmpty { null }
 }
 
-/** The title and text of the "Next alarm" notification. */
-fun nextAlarmText(alarm: AlarmInstance, now: Instant, zone: ZoneId): NextAlarmText {
+/** "today 06:00", "tomorrow 06:00" or "Sunday 06:00". */
+private fun nextAlarmDayAndTime(alarm: AlarmInstance, now: Instant, zone: ZoneId): String {
     val today = now.atZone(zone).toLocalDate()
     val date = alarm.triggerAt.atZone(zone).toLocalDate()
     val day = when (date) {
@@ -183,9 +207,22 @@ fun nextAlarmText(alarm: AlarmInstance, now: Instant, zone: ZoneId): NextAlarmTe
         today.plusDays(1) -> "tomorrow"
         else -> date.format(WEEKDAY)
     }
-    return NextAlarmText(
-        title = "Next alarm: $day ${formatTime(alarm.triggerAt, zone)}",
-        text = alarm.snapshot.reason ?: "No title",
+    return "$day ${formatTime(alarm.triggerAt, zone)}"
+}
+
+/** The title and text of the "Next alarm" notification. */
+fun nextAlarmText(alarm: AlarmInstance, now: Instant, zone: ZoneId): NextAlarmText = NextAlarmText(
+    title = "Next alarm: ${nextAlarmDayAndTime(alarm, now, zone)}",
+    text = alarm.snapshot.reason ?: "No title",
+)
+
+/** The quick settings tile: the same alarm as the notification, in the same words. */
+fun nextAlarmTile(alarms: List<AlarmInstance>, now: Instant, zone: ZoneId): NextAlarmTile {
+    val next = nextAlarm(alarms, now)
+    return NextAlarmTile(
+        label = "Next alarm",
+        subtitle = next?.let { nextAlarmDayAndTime(it, now, zone) } ?: "None in 48 hours",
+        active = next != null,
     )
 }
 

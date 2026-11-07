@@ -6,10 +6,22 @@ import java.time.Instant
 class FakeAlarmRepository : AlarmRepository {
     val stored = linkedMapOf<Long, AlarmInstance>()
     var failOnCreate = false
+    var failOnDelete = false
+    var failOnRead = false
+
+    /** The alarms whose new state cannot be stored. */
+    var failOnUpdate: (Long) -> Boolean = { false }
     private var nextId = 1L
 
-    override suspend fun all() = stored.values.toList()
-    override suspend fun find(id: Long) = stored[id]
+    override suspend fun all(): List<AlarmInstance> {
+        check(!failOnRead) { "storage failed" }
+        return stored.values.toList()
+    }
+
+    override suspend fun find(id: Long): AlarmInstance? {
+        check(!failOnRead) { "storage failed" }
+        return stored[id]
+    }
 
     override suspend fun create(key: AlarmKey, triggerAt: Instant, snapshot: AlarmSnapshot): AlarmInstance {
         check(!failOnCreate) { "storage failed" }
@@ -19,7 +31,13 @@ class FakeAlarmRepository : AlarmRepository {
     }
 
     override suspend fun update(instance: AlarmInstance) {
+        check(!failOnUpdate(instance.id)) { "storage failed" }
         stored[instance.id] = instance
+    }
+
+    override suspend fun delete(id: Long) {
+        check(!failOnDelete) { "storage failed" }
+        stored.remove(id)
     }
 
     fun add(instance: AlarmInstance): AlarmInstance {
@@ -29,11 +47,20 @@ class FakeAlarmRepository : AlarmRepository {
     }
 }
 
+object NoAlarmEffects : AlarmEffects {
+    override fun perform(instance: AlarmInstance, action: AlarmAction) = Unit
+    override fun showNextAlarm(alarm: AlarmInstance?) = Unit
+}
+
 class FakeScheduler : AlarmScheduler {
     val scheduled = linkedMapOf<Long, Instant>()
     val cancelled = mutableListOf<Long>()
 
+    /** The alarms the system refuses to register. */
+    var failFor: Set<Long> = emptySet()
+
     override fun schedule(instanceId: Long, at: Instant) {
+        check(instanceId !in failFor) { "not registered" }
         scheduled[instanceId] = at
     }
 
@@ -79,6 +106,7 @@ class FakeCalendarRepository : CalendarRepository {
 
 class FakePlannerEffects : PlannerEffects {
     val calls = mutableListOf<String>()
+    var warnedAbout: PlanningFailure? = null
 
     override fun cancelPlanningJob() {
         calls += "cancel"
@@ -92,8 +120,9 @@ class FakePlannerEffects : PlannerEffects {
         calls += "retry:${delay.toMinutes()}"
     }
 
-    override fun showFailSafeWarning() {
+    override fun showFailSafeWarning(failure: PlanningFailure?) {
         calls += "showWarning"
+        warnedAbout = failure
     }
 
     override fun removeFailSafeWarning() {
@@ -106,7 +135,7 @@ class FakePlannerEffects : PlannerEffects {
 }
 
 /** Counts how the lock is used. Tests run on one coroutine, so it does not have to exclude anyone. */
-class FakeLock : PlannerLock {
+class FakeLock : EngineLock {
     var uses = 0
 
     override suspend fun <T> withLock(block: suspend () -> T): T {
