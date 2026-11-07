@@ -65,7 +65,7 @@ Later, after the MVP:
 - [x] Quick settings tile showing the next alarm
 - [ ] Philips Hue: recall a scene from the Hue app with ramp-up, maximum brightness and a lead time for a sunrise effect
 
-There is no public distribution yet. If the app is published later, it will be on F-Droid, so the build uses no proprietary dependencies.
+Signed APKs (`NextAlarm-<version>.apk`) are attached to the [GitHub releases](https://github.com/drehtuer/NextAlarmApp/releases), with their SHA-256 checksums and a build provenance attestation. There is no app store distribution yet. If the app is published in one later, it will be F-Droid, so the build uses no proprietary dependencies.
 
 ## Documentation
 

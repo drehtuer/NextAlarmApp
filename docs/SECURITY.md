@@ -2,8 +2,11 @@
 
 ## Supported versions
 
-NextAlarm has no public distribution yet. Security fixes go into `main` and the next release; older releases are not
-patched.
+Releases are published on GitHub. Security fixes go into `main` and the next release; older releases are not patched, as
+the releases cannot be changed once published.
+
+Each release APK is signed with the project's release key, and has a SHA-256 checksum and a build provenance
+attestation. To check a download: `gh attestation verify NextAlarm-<version>.apk --repo drehtuer/NextAlarmApp`.
 
 ## Reporting a vulnerability
 
