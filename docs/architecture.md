@@ -170,12 +170,18 @@ The diff decides per key:
 | `Scheduled`, trigger in the future               | `Refresh` if the snapshot differs, else nothing | `Remove`                              |
 | `Scheduled`, trigger reached                     | Cannot happen (outside the horizon)           | Nothing: overdue, it receives `Fire`    |
 | `Ringing`, `Snoozed`, `Announcing`, `NewsPlaying` | Nothing: changes have no effect once started | Nothing                                 |
-| `Done`, `Unanswered`, `Missed`                   | Nothing: never rings twice, e.g. if the clock is set back | Nothing                     |
+| `Done`, `Unanswered`                             | Nothing: never rings twice, e.g. if the clock is set back | Nothing                     |
+| `Missed`, trigger in the future, never snoozed   | `Create`: it has not rung, and the clock was corrected | Nothing                        |
+| `Missed`, otherwise                              | Nothing: its time has passed, or it rang before it was snoozed | Nothing                |
 | `Cancelled`                                      | `Create`: the event was restored              | Nothing                                 |
 
 Alarm instances that do not come from the calendar, which is only the test alarm (key `test:<id>`), are left out of
 the diff. The test alarm is created through `AlarmEngine`, 5 seconds ahead and with the current settings, so it rings
 the normal way.
+
+A forward jump of the clock by more than 60 minutes makes waiting alarms `Missed`. If that was a mistake and the clock is
+corrected, `TIME_SET` starts a planning run, and the `Create` in the table brings them back as new instances. The old
+`Missed` instance stays in the history.
 
 At the end of a successful run, `AlarmEngine` deletes terminal instances whose trigger time is more than 7 days ago. A
 failure to delete does not fail the run; the next run tries again. An event that old is outside the plan, so its alarm

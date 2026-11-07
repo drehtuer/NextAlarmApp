@@ -194,7 +194,9 @@ Rationale for the less obvious entries:
 - **`Snoozed` + `Dismiss` → [G3]:** dismissing from the snooze notification starts the wake-up automation, the same
   as dismissing a ringing alarm.
 - **`Missed`:** a missed alarm is reported but never rung more than 60 minutes late, because ringing hours later is
-  more harmful than useful. An alarm that rings late (up to 60 minutes) also gets a "late alarm" notification.
+  more harmful than useful. An alarm that rings late (up to 60 minutes) also gets a "late alarm" notification. The state
+  itself is terminal, but if the clock jumped and was corrected, the [plan diff](architecture.md#planning) creates a new
+  instance for an alarm whose time is still to come.
 - **Several alarms at once:** all alarms use the same sound, so a second alarm that fires while another one rings
   joins the running `AlarmService` instead of being delayed. It gets its own notification, is listed on the alarm
   screen and restarts the shared ring timeout. `Snooze`, `Dismiss` and `RingTimeout` are sent to every ringing
