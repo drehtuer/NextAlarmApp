@@ -177,11 +177,14 @@ class WakeUpScreenTest {
     fun `the background is black, whatever the system setting`() {
         show(playing = null)
         rule.onNodeWithText("Stop").assertIsDisplayed()
-        val pixels = rule.onRoot().captureToImage().toPixelMap()
-        // In the side margin, where nothing but the background is.
+        // In the side margin, where nothing but the background is. The first capture can come before the first
+        // drawing, and shows the test activity's own window then, so this waits. A wrong colour still fails here.
         val margin = (4 * rule.density.density).toInt()
-        assertEquals(Color(0xFF000000), pixels[margin, pixels.height / 2])
-        assertEquals(Color(0xFF000000), pixels[pixels.width - margin, pixels.height / 2])
+        rule.waitUntil(WAIT_MILLIS) {
+            val pixels = rule.onRoot().captureToImage().toPixelMap()
+            pixels[margin, pixels.height / 2] == Color(0xFF000000) &&
+                pixels[pixels.width - margin, pixels.height / 2] == Color(0xFF000000)
+        }
     }
 
     @Test
@@ -198,5 +201,9 @@ class WakeUpScreenTest {
         rule.waitForIdle()
         assertEquals(Color(0xFF1A1A1A), surface)
         assertEquals(Color(0xFF99CBFF), primary)
+    }
+
+    private companion object {
+        const val WAIT_MILLIS = 5_000L
     }
 }
