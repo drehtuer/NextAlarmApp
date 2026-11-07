@@ -33,6 +33,7 @@ import de.drehtuer.nextalarm.domain.WakeUpStatus
 import de.drehtuer.nextalarm.domain.snapshotFor
 import de.drehtuer.nextalarm.planning.AlarmReceiver
 import de.drehtuer.nextalarm.planning.alarmUri
+import de.drehtuer.nextalarm.tile.AndroidTileRefresh
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -174,6 +175,15 @@ class AlarmPathTest {
 
     private fun alarmFor(snapshot: AlarmSnapshot) =
         AlarmInstance(77, AlarmKey.forTestAlarm(77), Instant.now(), AlarmState.Ringing, 0, false, snapshot)
+
+    @Test
+    fun `asking for a refresh of the tile needs no storage, before the first unlock`() {
+        // The context fails with an error, which the refresh does not catch.
+        AndroidTileRefresh(context).request()
+        var asked = false
+        AndroidTileRefresh(context) { _, _ -> asked = true }.request()
+        assertTrue(asked)
+    }
 
     @Test
     fun `an alarm is registered with the system`() {

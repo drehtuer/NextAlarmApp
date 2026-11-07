@@ -35,8 +35,8 @@ a reboot. They are reached from notifications, not from the in-app navigation. S
 starts the wake-up automation; after a Dismiss on a notification, the media notification opens it. Neither requires unlocking the
 phone (see [Wake-up automation and the lock screen](architecture.md#wake-up-automation-and-the-lock-screen)).
 
-There is no home screen widget and no quick settings tile in the first version. A quick settings tile (next alarm)
-is planned for later.
+There is no home screen widget. A read-only [quick settings tile](design.md#quick-settings-tile) shows the next alarm,
+and tapping it opens home.
 
 ## Screen list
 

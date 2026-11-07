@@ -212,6 +212,44 @@ class HomeTest {
     }
 
     @Test
+    fun `the tile says the day and time of the next alarm, in the words of the notification`() {
+        fun tile(at: String) = nextAlarmTile(listOf(alarm(at)), now, zone)
+
+        assertEquals(NextAlarmTile("Next alarm", "today 22:30", true), tile("2026-11-06T21:30:00Z"))
+        assertEquals(NextAlarmTile("Next alarm", "tomorrow 06:00", true), tile("2026-11-07T05:00:00Z"))
+        assertEquals(NextAlarmTile("Next alarm", "Sunday 06:00", true), tile("2026-11-08T05:00:00Z"))
+        assertEquals(NextAlarmTile("Next alarm", "tomorrow 06:00:30", true), tile("2026-11-07T05:00:30Z"))
+        assertEquals(
+            nextAlarmText(alarm("2026-11-07T05:00:00Z"), now, zone).title,
+            "Next alarm: ${tile("2026-11-07T05:00:00Z").subtitle}",
+        )
+    }
+
+    @Test
+    fun `the tile is inactive without an alarm`() {
+        assertEquals(NextAlarmTile("Next alarm", "None in 48 hours", false), nextAlarmTile(emptyList(), now, zone))
+    }
+
+    @Test
+    fun `the tile shows the earliest alarm still to ring`() {
+        val alarms = listOf(
+            alarm("2026-11-08T05:00:00Z", id = 1),
+            alarm("2026-11-07T05:00:00Z", id = 2),
+            alarm("2026-11-06T18:00:00Z", id = 3),
+            alarm("2026-11-06T20:00:00Z", id = 4, state = AlarmState.Done),
+        )
+        assertEquals("tomorrow 06:00", nextAlarmTile(alarms, now, zone).subtitle)
+    }
+
+    @Test
+    fun `the tile counts a snoozed alarm, and neither a passed nor a ringing one`() {
+        val snoozed = alarm("2026-11-06T19:10:00Z", state = AlarmState.Snoozed)
+        assertEquals("today 20:10", nextAlarmTile(listOf(snoozed), now, zone).subtitle)
+        val gone = listOf(alarm("2026-11-06T18:00:00Z"), alarm("2026-11-06T20:00:00Z", state = AlarmState.Ringing))
+        assertEquals("None in 48 hours", nextAlarmTile(gone, now, zone).subtitle)
+    }
+
+    @Test
     fun `calendars are grouped by account and sorted`() {
         val groups = groupCalendars(
             listOf(

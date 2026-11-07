@@ -479,11 +479,26 @@ can prevent that, so it comes straight back for as long as the alarm rings.
 
 The relative day in "Next alarm" follows the home screen: "today", "tomorrow", or the weekday.
 
+## Quick settings tile
+
+A read-only tile. It offers nothing to switch; it only answers "when does it ring?" from the notification shade.
+
+| State | Label | Subtitle | Tile state |
+|-------|-------|----------|------------|
+| An alarm is waiting | "Next alarm" | The day and time of the "Next alarm" notification: "tomorrow 06:00" | Active |
+| No alarm is waiting | "Next alarm" | "None in 48 hours" | Inactive |
+
+- The subtitle uses the same words as the notification title, without its "Next alarm: " prefix: "today", "tomorrow" or
+  the weekday, and a time with seconds only if they are not zero ("tomorrow 06:00:30"). A snoozed alarm counts, as it
+  does for the notification. The event title is left out: a tile has no room for it, and it could be private.
+- Tapping it opens the app and closes the panel, whichever state it is in.
+- The icon is `ic_stat_alarm`. Android colours it for the tile state, so the tile has no colour of its own.
+
 ## Icons
 
 - **Launcher:** `mipmap-anydpi/ic_launcher.xml`. An adaptive icon with a `primary` background and the "calendar bell"
   foreground. Its monochrome layer has the bell cut out of the calendar page.
-- **Notification:** `drawable/ic_stat_alarm.xml`. A white 24 dp calendar bell.
+- **Notification and quick settings tile:** `drawable/ic_stat_alarm.xml`. A white 24 dp calendar bell.
 - **In the app:** stroke icons on a 24 dp grid with a 2 dp stroke. You need: settings (sliders), back arrow, chevron,
   external link, calendar, repeat, bin, warning, error (circle with exclamation mark), check, muted speaker, bell,
   refresh, clock, cross, play, stop, microphone (podcast), RSS and speaker (speech). Icon-only buttons need a content

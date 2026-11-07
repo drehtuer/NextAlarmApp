@@ -54,7 +54,7 @@ Sound, vibration, snooze and the wake-up automation are configured once in the a
 
 Later, after the MVP:
 
-- [ ] Quick settings tile showing the next alarm
+- [x] Quick settings tile showing the next alarm
 - [ ] Philips Hue: recall a scene from the Hue app with ramp-up, maximum brightness and a lead time for a sunrise effect
 
 There is no public distribution yet. If the app is published later, it will be on F-Droid, so the build uses no proprietary dependencies.

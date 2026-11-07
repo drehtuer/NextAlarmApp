@@ -466,6 +466,43 @@ storage and the calendar provider are not available. To ring anyway:
 - The chosen alarm sound is a copy in device-protected storage (see [Ringing](#ringing)). The phone's default
   alarm sound may not be readable before the first unlock; the bundled sound is then played instead.
 - Re-planning only starts after `BOOT_COMPLETED` (user unlocked).
+- The [quick settings tile](#quick-settings-tile) is not `directBootAware`. It only shows up after the first unlock.
+
+## Quick settings tile
+
+`NextAlarmTileService` shows the next alarm (wording in [design](design.md#quick-settings-tile)). It only reads: it
+loads the alarms from the database, and `nextAlarmTile` in `domain` decides what the tile says.
+
+It is an *active* tile (`android.service.quicksettings.ACTIVE_TILE`), because `TileService.requestListeningState` has no
+effect on any other kind. Android then binds it when it is added, tapped or asked to refresh, and not each time the
+panel opens.
+
+```mermaid
+sequenceDiagram
+    participant E as AlarmEngine or PlannerEngine
+    participant N as AppNotifications
+    participant S as System UI
+    participant T as NextAlarmTileService
+    E->>N: showNextAlarm(alarm)
+    N->>N: post or remove the notification
+    N->>S: requestListeningState
+    S->>T: onStartListening
+    T->>T: read the alarms, nextAlarmTile
+    T->>S: updateTile
+```
+
+- **When it refreshes.** Every path that can change the next alarm ends in `AppNotifications.showNextAlarm`, so the tile
+  is asked there. This includes planning runs, so the daily re-plan just after midnight and the re-plan after a clock
+  or time zone change also bring "tomorrow" up to date.
+- **What can stay old.** Between midnight and that re-plan, or while planning runs fail, the tile can say "tomorrow" for
+  an alarm that is now today. The time is still right, and the notification says the same.
+- **The alarm path.** `showNextAlarm` runs on the alarm path, also before the first unlock. There it only makes a call
+  to the system through `AndroidTileRefresh`, which touches neither WorkManager nor storage and catches any failure.
+  Before the first unlock the tile cannot start; it is brought up to date by the re-plan after `BOOT_COMPLETED`.
+- **The tile's process.** The service runs in the process that rings alarms. `NextAlarmTileReader` catches any failure,
+  so that none reaches the main thread, and leaves the tile showing what it did: it never says "None in 48 hours"
+  because a read failed. Binding it can start the process, which runs the [recovery sweep](#recovery) as any process
+  start does, and that asks for one more refresh.
 
 ## Recovery
 
