@@ -341,6 +341,8 @@ Details decided while building this screen:
 
 ### 8 Alarm screen (night)
 
+Screens 8 and 9 stay in portrait, whatever the phone's rotation, so that no button can be cut off.
+
 From top to bottom, under the status-bar inset plus 48 dp:
 
 1. The date in `nightOnSurfaceVariant`: "Saturday 7 November".

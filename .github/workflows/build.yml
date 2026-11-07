@@ -40,7 +40,7 @@ jobs:
           key: robolectric-${{ hashFiles('gradle/libs.versions.toml') }}
 
       - name: Build and test with coverage
-        run: ./gradlew coverageReports :app:assembleDebug
+        run: ./gradlew coverageReports :app:assembleDebug :app:assembleDebugAndroidTest
 
       # Pull requests from forks have no access to the token.
       - name: Analyse with SonarCloud

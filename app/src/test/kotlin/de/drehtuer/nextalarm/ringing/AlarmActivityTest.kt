@@ -1,6 +1,8 @@
 package de.drehtuer.nextalarm.ringing
 
+import android.content.ComponentName
 import android.content.Context
+import android.content.pm.ActivityInfo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -16,6 +18,7 @@ import de.drehtuer.nextalarm.domain.AlarmState
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.snapshotFor
 import java.time.Instant
+import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
@@ -51,6 +54,14 @@ class AlarmActivityTest {
     }
 
     private fun state(id: Long) = runBlocking { data.alarms.find(id)?.state }
+
+    @Test
+    fun `the night screens stay in portrait, so that no button can be cut off`() {
+        listOf(AlarmActivity::class.java, WakeUpActivity::class.java).forEach { activity ->
+            val info = context.packageManager.getActivityInfo(ComponentName(context, activity), 0)
+            assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, info.screenOrientation, activity.name)
+        }
+    }
 
     @Test
     fun `the screen shows the ringing alarm, and Snooze acts on it`() {

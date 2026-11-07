@@ -53,7 +53,7 @@ be missed, and the build then fails on a clean machine such as CI:
 
 ```bash
 GRADLE_USER_HOME=$(mktemp -d) ./gradlew --write-verification-metadata sha256 --no-configuration-cache \
-    clean coverageReports :app:assembleDebug sonarResolver
+    clean coverageReports :app:assembleDebug :app:assembleDebugAndroidTest sonarResolver
 ```
 
 ## Continuous integration and SonarCloud
@@ -92,3 +92,20 @@ To install and start the debug build:
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -W -n de.drehtuer.nextalarm/.MainActivity
 ```
+
+### Silent device tests
+
+`app/src/androidTest` holds tests that only a real phone can answer. They fire real alarms through the real receivers,
+but every alarm plays at volume 0, without vibration or speech, so they can run at any time. Their screen can still
+light up. They use their own alarms in the app's database and delete them.
+
+```bash
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w de.drehtuer.nextalarm.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+`am instrument` force-stops the app first. That clears its registered alarms until the app next starts, when the
+recovery sweep registers them again, so open the app afterwards. Add `-e holdSeconds 15` to keep the alarm screen up for
+a screenshot.

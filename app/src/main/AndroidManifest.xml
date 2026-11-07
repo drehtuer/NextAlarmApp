@@ -53,6 +53,7 @@
         <!-- The alarm path also runs before the first unlock. See docs/architecture.md#direct-boot. -->
         <activity
             android:name=".ringing.AlarmActivity"
+            android:screenOrientation="portrait"
             android:directBootAware="true"
             android:excludeFromRecents="true"
             android:exported="false"
@@ -70,6 +71,7 @@
 
         <activity
             android:name=".ringing.WakeUpActivity"
+            android:screenOrientation="portrait"
             android:directBootAware="true"
             android:excludeFromRecents="true"
             android:exported="false"
