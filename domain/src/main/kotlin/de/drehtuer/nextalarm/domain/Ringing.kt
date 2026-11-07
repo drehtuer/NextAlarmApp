@@ -210,14 +210,17 @@ class FallbackSound<S>(
     @Synchronized
     private fun prepared(sound: PreparedSound?, which: Int): Boolean {
         if (which != attempt) return false
-        try {
-            sound?.start(gain)
-            current = sound
-            if (sound != null) cancelLimit() else playNext()
-        } catch (_: RuntimeException) {
-            // The player gave up after all, so this is released like any source that failed.
-            sound?.release()
+        if (sound == null) {
             playNext()
+            return true
+        }
+        current = sound
+        try {
+            sound.start(gain)
+            cancelLimit()
+        } catch (_: RuntimeException) {
+            // The player gave up after all, which makes it a source that failed.
+            failed(which)
         }
         return true
     }

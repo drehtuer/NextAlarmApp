@@ -163,6 +163,22 @@ class AlarmScreenControllerTest {
     }
 
     @Test
+    fun `being cancelled is not a failure to go by the ringer for`() {
+        controller.start(screenScope)
+        alarms.failure = kotlin.coroutines.cancellation.CancellationException("cancelled")
+        controller.dismiss()
+        assertFalse(controller.finished.value)
+    }
+
+    @Test
+    fun `being cancelled while reading the alarms changes nothing`() {
+        alarms.failure = kotlin.coroutines.cancellation.CancellationException("cancelled")
+        controller.start(screenScope)
+        assertTrue(controller.ringing.value.isEmpty())
+        assertFalse(controller.finished.value)
+    }
+
+    @Test
     fun `the clock keeps running`() {
         controller.start(screenScope)
         time = AT.plusSeconds(60)

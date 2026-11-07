@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
     private val viewModel: AppViewModel by viewModels()
     private val resumeCount = mutableIntStateOf(0)
     private val diagnosticsRequests = mutableIntStateOf(0)
-    private var alarmWatch: Job? = null
+    private var alarmWatch: Job = Job()
 
     @Inject
     lateinit var ringing: RingingChanges
@@ -74,7 +74,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        alarmWatch?.cancel()
+        alarmWatch.cancel()
         super.onStop()
     }
 

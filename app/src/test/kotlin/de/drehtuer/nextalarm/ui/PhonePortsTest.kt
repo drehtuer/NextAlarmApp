@@ -155,6 +155,11 @@ class PhonePortsTest {
         manager.createNotificationChannel(NotificationChannel("other", "Other", NotificationManager.IMPORTANCE_NONE))
         assertTrue(alarmNotificationsAllowed(context))
         manager.createNotificationChannel(
+            NotificationChannel(AlarmNotifications.ALARM_CHANNEL, "Alarm", NotificationManager.IMPORTANCE_HIGH),
+        )
+        assertTrue(alarmNotificationsAllowed(context))
+        manager.deleteNotificationChannel(AlarmNotifications.ALARM_CHANNEL)
+        manager.createNotificationChannel(
             NotificationChannel(AlarmNotifications.ALARM_CHANNEL, "Alarm", NotificationManager.IMPORTANCE_NONE),
         )
         assertFalse(alarmNotificationsAllowed(context))

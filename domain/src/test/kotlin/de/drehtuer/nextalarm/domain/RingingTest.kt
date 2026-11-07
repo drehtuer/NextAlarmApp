@@ -133,6 +133,16 @@ class FallbackSoundTest {
     }
 
     @Test
+    fun `a player that fails to start and to release does not get in the way either`() {
+        val output = FakeOutput().apply {
+            failToStart = setOf("file")
+            failToRelease = true
+        }
+        sound(output).play(SoundRef.SystemDefault, 1f)
+        assertEquals("start:system:1.0", output.log.last())
+    }
+
+    @Test
     fun `if the sources cannot be had, the last resort plays`() {
         val output = FakeOutput()
         sound(output, sources = { error("settings failed") }).play(SoundRef.SystemDefault, 1f)

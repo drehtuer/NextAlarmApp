@@ -230,8 +230,8 @@ sequenceDiagram
     AM->>R: alarm intent (instance id)
     R->>SM: Fire(lateBy)
     SM-->>R: Ringing
-    R->>S: startForegroundService
-    S->>S: play sound (USAGE_ALARM), vibrate, ring timeout timer
+    R->>S: vibrate, ring timeout timer, notification, startForegroundService
+    S->>S: startForeground, then play sound (USAGE_ALARM)
     S->>A: full-screen intent notification
     A->>SM: Dismiss
     SM-->>A: Announcing
@@ -258,8 +258,8 @@ sequenceDiagram
   keeps the process alive, holds the first ringing alarm's notification, and is what lets the sound be heard (see
   [Background audio on Android 17](#background-audio-on-android-17)); the other alarms' notifications are posted as usual.
   A partial wake lock is held while alarms ring, so that the ramp and the ring timeout run with the screen off.
-- **Order when an alarm starts:** wake lock, ring timeout and vibration; then the notification and the service; the sound
-  comes last. `MediaPlayer.prepare()` blocks and can hang on a provider, so nothing about the sound holds up what comes
+- **Order when an alarm starts:** wake lock, ring timeout and vibration; then the notification, posted at once, and the
+  service, which takes it over; the sound comes last. `MediaPlayer.prepare()` blocks and can hang on a provider, so nothing about the sound holds up what comes
   before it, and neither `AlarmRinger`'s nor `AlarmEngine`'s lock is held while it runs. `FallbackSound` asks for the
   sources and prepares each one on a thread of its own (`SoundWorker`), and gives a source 5 seconds before it moves on.
 - Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it passes Do Not Disturb. **The app never changes the system's

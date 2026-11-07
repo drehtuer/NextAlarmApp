@@ -20,6 +20,7 @@ import de.drehtuer.nextalarm.NextAlarmApplication
 import de.drehtuer.nextalarm.data.DataComponents
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmEvent
+import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.AlarmKey
 import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.domain.AlarmSnapshot
@@ -159,6 +160,20 @@ class AlarmPathTest {
         engine.sendToRinging(AlarmEvent.Dismiss)
         awaitUntil { host.finished }
     }
+
+    @Test
+    fun `an alarm that nothing else ends is stopped by the limit, and reported`() {
+        val stuck = parts.ringerWithout { error("The engine does not answer") }
+        val silent = alarmFor(Settings.DEFAULT.copy(maxVolume = 0f).snapshotFor("Gym"))
+        stuck.join(silent)
+        idleFor(Duration.ofMinutes(3).plusSeconds(30))
+        assertTrue(stuck.ringing().isEmpty())
+        val report = assertNotNull(shadowOf(manager).getNotification(AlarmNotifications.unansweredId(silent.id)))
+        assertEquals("An alarm was stopped", report.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+    }
+
+    private fun alarmFor(snapshot: AlarmSnapshot) =
+        AlarmInstance(77, AlarmKey.forTestAlarm(77), Instant.now(), AlarmState.Ringing, 0, false, snapshot)
 
     @Test
     fun `an alarm is registered with the system`() {
@@ -310,7 +325,7 @@ class AlarmPathTest {
 }
 
 /** Puts the alarm path together like Hilt does, through the same provider functions. */
-private class AlarmPathParts(context: Context, data: DataComponents) {
+private class AlarmPathParts(private val context: Context, private val data: DataComponents) {
     private val scope = AlarmModule.scope(AlarmModule.dispatcher())
     private val notifications = AlarmModule.notifications(context)
     val foreground: AlarmForeground = AlarmModule.foreground(context, notifications, Lazy { ringer })
@@ -327,6 +342,9 @@ private class AlarmPathParts(context: Context, data: DataComponents) {
     private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(director))
     val engine: AlarmEngine = AlarmModule.engine(context, data, effects)
     private val controllerData = data
+
+    fun ringerWithout(engine: Lazy<AlarmEngine>): AlarmRinger =
+        AlarmModule.ringer(context, data, foreground, changes, notifications, AlarmModule.soundWorker(scope), scope, engine)
 
     fun controller() = AlarmModule.screenController(controllerData, engine, changes, foreground, scope)
 

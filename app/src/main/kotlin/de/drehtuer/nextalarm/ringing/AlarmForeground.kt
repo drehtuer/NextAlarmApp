@@ -104,8 +104,10 @@ class AlarmForeground(
         }
     }
 
+    /** The notifications come first, so that they are there whatever the service does. It takes its own over when it comes up. */
     private fun start() {
         try {
+            ringing.forEach(notifications::showRinging)
             startService()
         } catch (refused: RuntimeException) {
             refused("The alarm service could not start", refused)

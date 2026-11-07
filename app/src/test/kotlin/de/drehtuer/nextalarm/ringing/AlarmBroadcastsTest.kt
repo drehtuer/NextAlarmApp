@@ -214,6 +214,14 @@ class AlarmBroadcastsTest {
     }
 
     @Test
+    fun `an alarm that cannot be read joins another that rings`() {
+        alarms.failure = IllegalStateException("storage failed")
+        ringer.join(alarm(id = 9))
+        ringingBroadcasts.fired(Intent().setData(alarmUri(1))) {}
+        assertEquals(listOf(9L, 1L), ringer.ringing().map { it.id })
+    }
+
+    @Test
     fun `Dismiss ends it without the database, which it does not touch`() {
         alarms.failure = IllegalStateException("storage failed")
         val before = alarms.stored.toMap()

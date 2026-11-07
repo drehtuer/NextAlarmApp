@@ -129,6 +129,13 @@ class AlarmForegroundTest {
     }
 
     @Test
+    fun `the notifications are posted at once, before the service has started`() {
+        foreground.ringingChanged(listOf(alarm(1), alarm(2)))
+        assertNotNull(posted(1))
+        assertNotNull(posted(2))
+    }
+
+    @Test
     fun `the first ringing alarm starts the service`() {
         foreground.ringingChanged(listOf(alarm()))
         assertEquals(1, starts)
@@ -147,7 +154,6 @@ class AlarmForegroundTest {
         val host = FakeHost()
         foreground.attach(host)
         assertEquals(listOf(AlarmNotifications.ringingId(1) to "One"), host.shown)
-        assertNull(posted(1))
         assertNotNull(posted(2))
     }
 

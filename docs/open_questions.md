@@ -9,6 +9,14 @@ question is answered, move the decision into the relevant document and remove it
 |------|----------|------------------|
 | Q-S1 | The low-volume banner in [design.md](design.md) (screen 5) suggests "or set a maximum volume below". The maximum volume is only the player's own gain and the system's stream volume is never changed, so it can only make an alarm quieter. What should the banner say instead? | Drop that part: "Alarms may be too quiet to wake you. Turn it up in the phone's sound settings." This default is what step 8.2 built, and it is recorded in [design.md](design.md). The owner still has to confirm it. |
 
+## Reliability
+
+| ID   | Question | Proposed default |
+|------|----------|------------------|
+| Q-R1 | An emergency alarm (one rung because its stored alarm could not be read) that is snoozed gets a "Snoozed" notification, whose Dismiss goes by the stored alarm. That is still `Scheduled`, so the Dismiss does nothing, or fails if the database is still down. The alarm then rings at the end of the snooze, where its Dismiss works. Should that Dismiss cancel the registration on its own? | Leave it: it needs two failures in a row, and the alarm can still be stopped when it rings. |
+| Q-R2 | `stopWakeUp` goes by the stored state, so with an unreadable database Stop cannot end a running automation. It ends at its maximum duration. Should it go by `WakeUpDirector` as a last resort, as `sendToRinging` goes by the ringer? | Yes, when this is next worked on. It isn't alarm-critical: it is media volume and has a limit. |
+| Q-R3 | `PlannerEngine.applyPlan` stops at the first failing command, so one failure leaves the later alarms of that run uncreated until the retry. Should each command be handled on its own, like the sweep? | Yes. The run should still count as failed. |
+
 ## Wake-up automation
 
 | ID   | Question | Proposed default |
