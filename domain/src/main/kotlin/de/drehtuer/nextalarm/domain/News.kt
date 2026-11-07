@@ -330,15 +330,13 @@ class NewsTestPlayer(
         snapshot = Settings.DEFAULT.snapshotFor(null).copy(news = source),
     )
 
-    private inner class HeardSpeech(private val output: SpeechOutput) : SpeechOutput {
+    private inner class HeardSpeech(private val output: SpeechOutput) : SpeechOutput by output {
         override fun speak(text: String, onDone: (Boolean) -> Unit) {
             output.speak(text) { worked ->
                 if (worked) heard = true
                 onDone(worked)
             }
         }
-
-        override fun stop() = output.stop()
     }
 
     private inner class HeardPodcast(private val output: PodcastOutput) : PodcastOutput by output {
