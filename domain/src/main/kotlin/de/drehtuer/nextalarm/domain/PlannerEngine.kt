@@ -66,8 +66,8 @@ class PlannerEngine(
 
     private suspend fun readPlan(at: Instant): Plan {
         val current = settings.load()
-        val calendar = current.alarmCalendar ?: throw NoCalendarChosen()
-        return plan(at, calendars.events(calendar, at, at.plus(PLANNING_HORIZON)), current)
+        if (current.alarmCalendars.isEmpty()) throw NoCalendarChosen()
+        return plan(at, calendars.events(current.alarmCalendars, at, at.plus(PLANNING_HORIZON)), current)
     }
 
     private fun classify(failure: Throwable?): PlanningFailure = when (failure) {

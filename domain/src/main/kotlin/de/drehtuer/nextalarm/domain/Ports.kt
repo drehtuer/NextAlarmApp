@@ -3,7 +3,7 @@ package de.drehtuer.nextalarm.domain
 import java.time.Duration
 import java.time.Instant
 
-/** A calendar on the device that can be chosen as the alarm calendar. */
+/** A calendar on the device that can be chosen as an alarm calendar. */
 data class DeviceCalendar(
     val id: CalendarId,
     val name: String,
@@ -13,18 +13,21 @@ data class DeviceCalendar(
     val color: Int?,
 )
 
-/** The chosen alarm calendar is no longer on the phone. */
-class CalendarGoneException(calendar: CalendarId) : Exception("Calendar ${calendar.value} is gone")
+/** At least one of the chosen alarm calendars is no longer on the phone. [calendars] are the ones that are gone. */
+class CalendarGoneException(val calendars: Set<CalendarId>) :
+    Exception("Calendars ${calendars.map { it.value }} are gone")
 
 /** Reads the calendar provider. A failed read throws, so that it can never be mistaken for "no alarms". */
 interface CalendarRepository {
     suspend fun calendars(): List<DeviceCalendar>
 
     /**
-     * The event instances of [calendar] in this range. They can include events that started before [from]. Throws
-     * [CalendarGoneException] if the calendar does not exist. A calendar that exists and has no events gives an empty list.
+     * The event instances of all of [calendars] in this range, whether or not a calendar app shows those calendars.
+     * They can include events that started before [from]. Throws [CalendarGoneException] if any of the calendars does
+     * not exist, and reads nothing then. A calendar that exists and has no events simply adds nothing. Asking for no
+     * calendars is an error: a planning run knows that none are chosen, and it must not look like "no alarms".
      */
-    suspend fun events(calendar: CalendarId, from: Instant, to: Instant): List<CalendarEvent>
+    suspend fun events(calendars: Set<CalendarId>, from: Instant, to: Instant): List<CalendarEvent>
 }
 
 interface SettingsRepository {

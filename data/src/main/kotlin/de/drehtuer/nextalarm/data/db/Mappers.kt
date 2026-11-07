@@ -114,8 +114,15 @@ internal fun AlarmInstanceEntity.toDomain() = AlarmInstance(
     lateBy = lateByMillis?.let(Duration::ofMillis),
 )
 
+/** Sorted, so that the same choice is always stored the same way. */
+internal fun toAlarmCalendarsColumn(calendars: Set<CalendarId>): String =
+    calendars.map { it.value }.sorted().joinToString(",")
+
+internal fun alarmCalendarsFromColumn(value: String): Set<CalendarId> =
+    if (value.isEmpty()) emptySet() else value.split(",").map { CalendarId(it.toLong()) }.toSet()
+
 internal fun Settings.toEntity() = SettingsEntity(
-    alarmCalendarId = alarmCalendar?.value,
+    alarmCalendarIds = toAlarmCalendarsColumn(alarmCalendars),
     config = AlarmConfigColumns(
         soundFile = sound.toColumn(),
         vibrate = vibrate,
@@ -129,7 +136,7 @@ internal fun Settings.toEntity() = SettingsEntity(
 )
 
 internal fun SettingsEntity.toDomain() = Settings(
-    alarmCalendar = alarmCalendarId?.let(::CalendarId),
+    alarmCalendars = alarmCalendarsFromColumn(alarmCalendarIds),
     sound = soundRefFromColumn(config.soundFile),
     vibrate = config.vibrate,
     volumeRampSeconds = config.volumeRampSeconds,

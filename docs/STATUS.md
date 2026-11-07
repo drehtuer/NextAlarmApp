@@ -4,7 +4,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 **Last updated:** 2026-11-07
 
-**Summary:** Phases 0 to 5 are merged. Phases 6 to 8, the device tests, reliability fixes, visual fixes and the quick settings tile are a stack of unmerged, unreviewed pull requests. Everything so far ran silently: **no alarm has been heard on a real phone yet**. Phase 9 needs the owner and an audible test. Hue is waiting for Q-H5.
+**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are on the branch `impl/audio-and-calendars`, not merged. No alarm has been heard on a real phone yet. Phase 9 needs the owner and an audible test. Hue is waiting for Q-H5.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -91,39 +91,39 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 | Step | Topic                  | Status        | Notes |
 |------|------------------------|---------------|-------|
-| 6.1  | `AlarmReceiver`        | `In progress` | In #12, not merged. |
-| 6.2  | `AlarmService`         | `In progress` | In #12, not merged. |
-| 6.3  | Alarm screen           | `In progress` | In #12, not merged. |
-| 6.4  | Snooze and timeout     | `In progress` | In #12, not merged. |
-| 6.5  | Direct boot, recovery  | `In progress` | In #12, not merged. |
-| 6.6  | Late and missed alarms | `In progress` | In #12, not merged. |
+| 6.1  | `AlarmReceiver`        | `Done`        | Merged in #12. |
+| 6.2  | `AlarmService`         | `Done`        | Merged in #12. |
+| 6.3  | Alarm screen           | `Done`        | Merged in #12. |
+| 6.4  | Snooze and timeout     | `Done`        | Merged in #12. |
+| 6.5  | Direct boot, recovery  | `Done`        | Merged in #12. |
+| 6.6  | Late and missed alarms | `Done`        | Merged in #12. |
 
 ## Phase 7: Wake-up automation
 
 | Step | Topic                | Status        | Notes |
 |------|----------------------|---------------|-------|
-| 7.1  | `WakeUpService`      | `In progress` | In #13, not merged. |
-| 7.2  | Speak the title      | `In progress` | In #13, not merged. |
-| 7.3  | Wake-up screen       | `In progress` | In #13, not merged. |
-| 7.4  | RSS news             | `In progress` | In #13, not merged. |
-| 7.5  | Podcast news         | `In progress` | In #13, not merged. |
-| 7.6  | News limits, failure | `In progress` | In #13, not merged. |
+| 7.1  | `WakeUpService`      | `Done`        | Merged in #13. |
+| 7.2  | Speak the title      | `Done`        | Merged in #13. |
+| 7.3  | Wake-up screen       | `Done`        | Merged in #13. |
+| 7.4  | RSS news             | `Done`        | Merged in #13. |
+| 7.5  | Podcast news         | `Done`        | Merged in #13. |
+| 7.6  | News limits, failure | `Done`        | Merged in #13. |
 
 ## Phase 8: Remaining screens
 
 | Step | Topic                   | Status        | Notes |
 |------|-------------------------|---------------|-------|
-| 8.1  | Settings                | `In progress` | In #14, not merged. |
-| 8.2  | Alarm settings          | `In progress` | In #14, not merged. |
-| 8.3  | News source             | `In progress` | In #14, not merged. |
-| 8.4  | Diagnostics and history | `In progress` | In #14, not merged. |
-| 8.5  | History cleanup         | `In progress` | In #14, not merged. |
+| 8.1  | Settings                | `Done`        | Merged in #14. |
+| 8.2  | Alarm settings          | `Done`        | Merged in #14. |
+| 8.3  | News source             | `Done`        | Merged in #14. |
+| 8.4  | Diagnostics and history | `Done`        | Merged in #14. |
+| 8.5  | History cleanup         | `Done`        | Merged in #14. |
 
 ## Phase 9: Device verification
 
 | Step | Topic              | Status        | Notes |
 |------|--------------------|---------------|-------|
-| 9.1  | Instrumented tests | `In progress` | In #15. Silent suite passes on the phone. Direct boot needs a reboot, so it needs the owner. |
+| 9.1  | Instrumented tests | `In progress` | Merged in #15. Silent suite passes on the phone. Direct boot needs a reboot, so it needs the owner. |
 | 9.2  | Calendar sources   | `Not started` |       |
 | 9.3  | Reliability        | `Not started` |       |
 | 9.4  | Sound and wake-up  | `Not started` |       |
@@ -133,7 +133,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 | Step | Topic                | Status        | Notes                  |
 |------|----------------------|---------------|------------------------|
-| 10.1 | Quick settings tile  | `In progress` | Stacked last, not merged. Not yet seen in a real System UI. |
+| 10.1 | Quick settings tile  | `Done`        | Merged in #18. Not yet seen in a real System UI. |
 | 10.2 | Hue: silent alarm decision | `Not started` | Answers Q-H5.    |
 | 10.3 | Hue: bridge pairing  | `Not started` |                        |
 | 10.4 | Hue: scene recall    | `Not started` | Answers Q-H4.          |

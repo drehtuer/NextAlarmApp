@@ -47,7 +47,7 @@ class RoomRepositoriesTest {
     @Test
     fun `settings keep every field`() = runBlocking {
         val saved = Settings(
-            alarmCalendar = CalendarId(9),
+            alarmCalendars = setOf(CalendarId(9), CalendarId(3)),
             sound = SoundRef.File("sound-1"),
             vibrate = false,
             volumeRampSeconds = 12,

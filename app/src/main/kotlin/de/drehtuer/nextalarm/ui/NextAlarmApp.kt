@@ -28,7 +28,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import de.drehtuer.nextalarm.BuildConfig
 import de.drehtuer.nextalarm.data.SUPPORTED_SOUND_MIME_TYPES
 import de.drehtuer.nextalarm.domain.CalendarId
-import de.drehtuer.nextalarm.domain.calendarSummary
+import de.drehtuer.nextalarm.domain.READ_CALENDARS_DESCRIPTION
 import de.drehtuer.nextalarm.ui.screens.AlarmSettingsScreen
 import de.drehtuer.nextalarm.ui.screens.CalendarScreen
 import de.drehtuer.nextalarm.ui.screens.DiagnosticsScreen
@@ -56,7 +56,7 @@ enum class Route { HOME, SETTINGS, CALENDAR, ALARM_SETTINGS, NEWS, DIAGNOSTICS, 
 fun NextAlarmApp(
     state: AppState,
     resumeCount: Int,
-    onSelectCalendar: (CalendarId) -> Unit,
+    onToggleCalendar: (CalendarId, Boolean) -> Unit,
     onCompleteSetup: () -> Unit,
     actions: AppActions,
     diagnosticsRequests: Int = 0,
@@ -87,8 +87,8 @@ fun NextAlarmApp(
                 onStepChange = { step = it },
                 permissions = permissionCards(resumeCount, canUseFullScreen),
                 calendars = state.calendars,
-                selected = state.selectedCalendar,
-                onSelect = onSelectCalendar,
+                selected = state.selectedCalendars,
+                onToggle = onToggleCalendar,
                 onDone = {
                     onCompleteSetup()
                     step = 0
@@ -97,7 +97,7 @@ fun NextAlarmApp(
             )
         }
         route == Route.SETTINGS -> SettingsScreen(
-            calendarSummary = calendarSummary(state.calendars.find { it.id == state.selectedCalendar }),
+            calendarSummary = state.diagnostics.calendar,
             diagnosticsSummary = state.diagnosticsSummary,
             version = VERSION_TEXT_FORMAT.format(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
             targets = SettingsTargets(
@@ -141,8 +141,8 @@ fun NextAlarmApp(
         }
         route == Route.CALENDAR -> CalendarScreen(
             calendars = state.calendars,
-            selected = state.selectedCalendar,
-            onSelect = onSelectCalendar,
+            selected = state.selectedCalendars,
+            onToggle = onToggleCalendar,
             onBack = { stack = stack.dropLast(1) },
         )
         else -> HomeScreen(
@@ -195,7 +195,7 @@ private fun permissionCards(resumeCount: Int, canUseFullScreen: (Context) -> Boo
     return listOf(
         PermissionCard(
             title = "Read your calendars",
-            description = "To see the events in your alarm calendar. Only that one calendar is read.",
+            description = READ_CALENDARS_DESCRIPTION,
             granted = context.has(Manifest.permission.READ_CALENDAR),
             deniedNote = if (calendarAsked) {
                 "Calendar access was denied, so NextAlarm can't see any alarms and nothing will ring. Allow it in " +

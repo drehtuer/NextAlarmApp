@@ -9,11 +9,22 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.Settings
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsToggleable
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -22,8 +33,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import de.drehtuer.nextalarm.data.SUPPORTED_SOUND_MIME_TYPES
+import de.drehtuer.nextalarm.domain.ALARM_CALENDARS_LEAD
+import de.drehtuer.nextalarm.domain.CHOOSE_CALENDARS_LEAD
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.DeviceCalendar
+import de.drehtuer.nextalarm.domain.MISSING_CALENDARS_HEADER
+import de.drehtuer.nextalarm.domain.MISSING_CALENDAR_ROW
 import de.drehtuer.nextalarm.domain.HomeDay
 import de.drehtuer.nextalarm.domain.HomeHero
 import de.drehtuer.nextalarm.domain.BannerText
@@ -136,32 +151,80 @@ class ScreensTest {
     }
 
     @Test
-    fun `the calendar screen groups calendars and reports the choice`() {
-        var chosen: CalendarId? = null
+    fun `the calendar screen groups calendars and reports the ticks`() {
+        val toggled = mutableListOf<Pair<CalendarId, Boolean>>()
         var back = false
         rule.setContent {
             NextAlarmTheme {
-                CalendarScreen(listOf(ALARMS, PLAIN), ALARMS.id, { chosen = it }, { back = true })
+                CalendarScreen(listOf(ALARMS, PLAIN), setOf(ALARMS.id), { id, ticked -> toggled += id to ticked }, { back = true })
             }
         }
+        rule.onNodeWithText("Alarm calendars").assertIsDisplayed()
         rule.onNodeWithText("DAVx⁵ · me@cloud.example").assertIsDisplayed()
         rule.onNodeWithText("On this phone").assertIsDisplayed()
-        rule.onNodeWithText("NextAlarm").assertIsSelected()
         rule.onNodeWithText("Phone").performClick()
-        assertEquals(PLAIN.id, chosen)
+        rule.onNodeWithText("NextAlarm").performClick()
+        assertEquals(listOf(PLAIN.id to true, ALARMS.id to false), toggled)
         rule.onNodeWithContentDescription("Back").performClick()
         assertTrue(back)
     }
 
+    private val checkboxRole = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Checkbox)
+
+    @Test
+    fun `the calendars are checkboxes, not radio buttons, and any number can be ticked`() {
+        val third = PLAIN.copy(id = CalendarId(3), name = "Third")
+        rule.setContent {
+            NextAlarmTheme { CalendarScreen(listOf(ALARMS, PLAIN, third), setOf(ALARMS.id, PLAIN.id), { _, _ -> }, {}) }
+        }
+        rule.onNodeWithText("NextAlarm").assert(checkboxRole).assertIsToggleable().assertIsOn()
+        rule.onNodeWithText("Phone").assert(checkboxRole).assertIsToggleable().assertIsOn()
+        rule.onNodeWithText("Third").assert(checkboxRole).assertIsToggleable().assertIsOff()
+        rule.onAllNodes(isSelectable()).assertCountEquals(0)
+        rule.onNodeWithText("No calendar chosen.").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the lead warns that every event in a ticked calendar rings, and that a hidden calendar still does`() {
+        rule.setContent { NextAlarmTheme { CalendarScreen(listOf(PLAIN), emptySet(), { _, _ -> }, {}) } }
+        rule.onNodeWithText(ALARM_CALENDARS_LEAD).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a chosen calendar that is gone can still be unticked`() {
+        val toggled = mutableListOf<Pair<CalendarId, Boolean>>()
+        var selected by mutableStateOf(setOf(ALARMS.id, CalendarId(9)))
+        rule.setContent {
+            NextAlarmTheme {
+                CalendarScreen(listOf(ALARMS), selected, { id, ticked -> toggled += id to ticked }, {})
+            }
+        }
+        rule.onNodeWithText(MISSING_CALENDARS_HEADER).assertIsDisplayed()
+        rule.onNodeWithText(MISSING_CALENDAR_ROW).assert(checkboxRole).assertIsOn().performClick()
+        selected = setOf(ALARMS.id, CalendarId(8))
+        rule.onNodeWithText(MISSING_CALENDAR_ROW).performClick()
+        assertEquals(listOf(CalendarId(9) to false, CalendarId(8) to false), toggled)
+    }
+
+    @Test
+    fun `without missing calendars there is no such group, nor without any list to compare with`() {
+        var calendars by mutableStateOf(listOf(ALARMS))
+        rule.setContent { NextAlarmTheme { CalendarScreen(calendars, setOf(ALARMS.id), { _, _ -> }, {}) } }
+        rule.onNodeWithText(MISSING_CALENDARS_HEADER).assertDoesNotExist()
+        calendars = emptyList()
+        rule.onNodeWithText("No calendars on this phone").assertIsDisplayed()
+        rule.onNodeWithText(MISSING_CALENDARS_HEADER).assertDoesNotExist()
+    }
+
     @Test
     fun `the calendar screen warns when none is chosen`() {
-        rule.setContent { NextAlarmTheme { CalendarScreen(listOf(PLAIN), null, {}, {}) } }
+        rule.setContent { NextAlarmTheme { CalendarScreen(listOf(PLAIN), emptySet(), { _, _ -> }, {}) } }
         rule.onNodeWithText("No calendar chosen.").assertIsDisplayed()
     }
 
     @Test
     fun `the calendar screen explains when the phone has none`() {
-        rule.setContent { NextAlarmTheme { CalendarScreen(emptyList(), null, {}, {}) } }
+        rule.setContent { NextAlarmTheme { CalendarScreen(emptyList(), emptySet(), { _, _ -> }, {}) } }
         rule.onNodeWithText("No calendars on this phone").assertIsDisplayed()
     }
 
@@ -210,14 +273,14 @@ class ScreensTest {
         step: Int,
         permissions: List<PermissionCard> = emptyList(),
         calendars: List<DeviceCalendar> = emptyList(),
-        selected: CalendarId? = null,
+        selected: Set<CalendarId> = emptySet(),
         onStep: (Int) -> Unit = {},
-        onSelect: (CalendarId) -> Unit = {},
+        onToggle: (CalendarId, Boolean) -> Unit = { _, _ -> },
         onDone: () -> Unit = {},
     ) {
         rule.setContent {
             NextAlarmTheme(dark = true) {
-                OnboardingScreen(step, onStep, permissions, calendars, selected, onSelect, onDone)
+                OnboardingScreen(step, onStep, permissions, calendars, selected, onToggle, onDone)
             }
         }
     }
@@ -289,17 +352,27 @@ class ScreensTest {
     @Test
     fun `the last step needs a calendar`() {
         onboarding(2, calendars = listOf(ALARMS))
-        rule.onNodeWithText("Choose the alarm calendar").assertIsDisplayed()
+        rule.onNodeWithText("Choose the alarm calendars").assertIsDisplayed()
+        rule.onNodeWithText(CHOOSE_CALENDARS_LEAD).assertIsDisplayed()
+        rule.onNodeWithText("No calendar chosen.").assertIsDisplayed()
         rule.onNodeWithText("Done").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `the last step takes any number of calendars`() {
+        onboarding(2, calendars = listOf(ALARMS, PLAIN), selected = setOf(ALARMS.id, PLAIN.id))
+        rule.onNodeWithText("NextAlarm").assertIsOn()
+        rule.onNodeWithText("Phone").assertIsOn()
+        rule.onNodeWithText("Done").assertIsEnabled()
     }
 
     @Test
     fun `the last step finishes setup and reports the choice`() {
         var done = false
-        var chosen: CalendarId? = null
-        onboarding(2, calendars = listOf(ALARMS, PLAIN), selected = ALARMS.id, onSelect = { chosen = it }, onDone = { done = true })
+        var ticked: Pair<CalendarId, Boolean>? = null
+        onboarding(2, calendars = listOf(ALARMS, PLAIN), selected = setOf(ALARMS.id), onToggle = { id, on -> ticked = id to on }, onDone = { done = true })
         rule.onNodeWithText("Phone").performClick()
-        assertEquals(PLAIN.id, chosen)
+        assertEquals(PLAIN.id to true, ticked)
         rule.onNodeWithText("Done").performClick()
         assertTrue(done)
     }
@@ -327,7 +400,13 @@ class NextAlarmAppTest {
     val rule = createComposeRule()
 
     private val application = ApplicationProvider.getApplicationContext<Application>()
-    private val ready = AppState(loaded = true, setupDone = true, calendars = listOf(ALARMS), selectedCalendar = ALARMS.id)
+    private val ready = AppState(
+        loaded = true,
+        setupDone = true,
+        calendars = listOf(ALARMS),
+        selectedCalendars = setOf(ALARMS.id),
+        diagnostics = AppState().diagnostics.copy(calendar = "NextAlarm · DAVx⁵"),
+    )
     private val completed = mutableListOf<String>()
     private val actions = RecordingActions()
     private val requests = mutableIntStateOf(0)
@@ -335,7 +414,7 @@ class NextAlarmAppTest {
     private fun show(state: AppState) {
         rule.setContent {
             NextAlarmTheme(dark = false) {
-                NextAlarmApp(state, 0, { completed += "choose:${it.value}" }, { completed += "complete" }, actions, requests.intValue)
+                NextAlarmApp(state, 0, { id, ticked -> completed += "tick:${id.value}:$ticked" }, { completed += "complete" }, actions, requests.intValue)
             }
         }
     }
@@ -408,7 +487,7 @@ class NextAlarmAppTest {
     @Test
     fun `setup goes through its steps to the end`() {
         shadowOf(application).grantPermissions(Manifest.permission.READ_CALENDAR, Manifest.permission.POST_NOTIFICATIONS)
-        show(AppState(loaded = true, calendars = listOf(ALARMS), selectedCalendar = ALARMS.id))
+        show(AppState(loaded = true, calendars = listOf(ALARMS), selectedCalendars = setOf(ALARMS.id)))
         rule.onNodeWithText("Get started").performClick()
         rule.onNodeWithText("Allow three things").assertIsDisplayed()
         rule.onNodeWithText("Continue").performClick()
@@ -431,8 +510,8 @@ class NextAlarmAppTest {
         show(ready)
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.onNodeWithText("NextAlarm · DAVx⁵").assertIsDisplayed()
-        rule.onNodeWithText("Alarm calendar").performClick()
-        rule.onNodeWithText("Every timed event in this calendar rings at its start time. No other calendar is read.").assertIsDisplayed()
+        rule.onNodeWithText("Alarm calendars").performClick()
+        rule.onNodeWithText(ALARM_CALENDARS_LEAD).assertIsDisplayed()
         rule.onNodeWithContentDescription("Back").performClick()
         rule.onNodeWithText("Run setup again").assertIsDisplayed()
         rule.onNodeWithContentDescription("Back").performClick()
@@ -499,12 +578,13 @@ class NextAlarmAppTest {
     }
 
     @Test
-    fun `choosing a calendar is reported`() {
+    fun `ticking and unticking a calendar is reported`() {
         show(ready.copy(calendars = listOf(ALARMS, PLAIN)))
         rule.onNodeWithContentDescription("Settings").performClick()
-        rule.onNodeWithText("Alarm calendar").performClick()
+        rule.onNodeWithText("Alarm calendars").performClick()
         rule.onNodeWithText("Phone").performClick()
-        assertEquals(listOf("choose:2"), completed)
+        rule.onNodeWithText("NextAlarm").performClick()
+        assertEquals(listOf("tick:2:true", "tick:1:false"), completed)
     }
 
     @Test
@@ -544,7 +624,7 @@ class DocumentPickersTest {
 
     private fun open(row: String) {
         rule.setContent {
-            NextAlarmTheme(dark = false) { NextAlarmApp(ready, 0, {}, {}, actions) }
+            NextAlarmTheme(dark = false) { NextAlarmApp(ready, 0, { _, _ -> }, {}, actions) }
         }
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.onNodeWithText(row).performClick()
@@ -623,7 +703,7 @@ class NewsLifecycleTest {
     private val actions = RecordingActions()
 
     private fun show(state: AppState) {
-        rule.setContent { NextAlarmTheme(dark = false) { NextAlarmApp(state, 0, {}, {}, actions) } }
+        rule.setContent { NextAlarmTheme(dark = false) { NextAlarmApp(state, 0, { _, _ -> }, {}, actions) } }
     }
 
     private fun hide() {
@@ -662,7 +742,7 @@ class PermissionRequestsTest {
     private fun showPermissions() {
         rule.setContent {
             NextAlarmTheme(dark = false) {
-                NextAlarmApp(AppState(loaded = true), 0, {}, {}, RecordingActions(), canUseFullScreen = { false })
+                NextAlarmApp(AppState(loaded = true), 0, { _, _ -> }, {}, RecordingActions(), canUseFullScreen = { false })
             }
         }
         rule.onNodeWithText("Get started").performClick()

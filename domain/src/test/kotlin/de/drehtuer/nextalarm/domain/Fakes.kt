@@ -135,15 +135,21 @@ class FakeCalendarRepository : CalendarRepository {
     var events = listOf<CalendarEvent>()
     var failure: Exception? = null
     var readRange: Pair<Instant, Instant>? = null
-    var readCalendar: CalendarId? = null
+    var readCalendars: Set<CalendarId>? = null
+
+    /** If set, what each calendar on the phone holds: a run gets what the calendars it asks for hold, and others are gone. */
+    var onThePhone: Map<CalendarId, List<CalendarEvent>>? = null
 
     override suspend fun calendars() = emptyList<DeviceCalendar>()
 
-    override suspend fun events(calendar: CalendarId, from: Instant, to: Instant): List<CalendarEvent> {
-        readCalendar = calendar
+    override suspend fun events(calendars: Set<CalendarId>, from: Instant, to: Instant): List<CalendarEvent> {
+        readCalendars = calendars
         readRange = from to to
         failure?.let { throw it }
-        return events
+        val phone = onThePhone ?: return events
+        val gone = calendars - phone.keys
+        if (gone.isNotEmpty()) throw CalendarGoneException(gone)
+        return calendars.flatMap { phone.getValue(it) }
     }
 }
 

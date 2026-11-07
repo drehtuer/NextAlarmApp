@@ -42,7 +42,8 @@ data class AlarmInstanceEntity(
 @Entity(tableName = "settings")
 data class SettingsEntity(
     @PrimaryKey val id: Int = SINGLE_ROW_ID,
-    val alarmCalendarId: Long?,
+    /** The chosen calendars, as `3,9`. Empty if none is chosen. */
+    val alarmCalendarIds: String,
     @Embedded val config: AlarmConfigColumns,
 )
 

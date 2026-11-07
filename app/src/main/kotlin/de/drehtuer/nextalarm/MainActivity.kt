@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
                 NextAlarmApp(
                     state = state,
                     resumeCount = resumeCount.intValue,
-                    onSelectCalendar = viewModel::chooseCalendar,
+                    onToggleCalendar = viewModel::setCalendarTicked,
                     onCompleteSetup = viewModel::completeSetup,
                     actions = viewModel,
                     diagnosticsRequests = diagnosticsRequests.intValue,

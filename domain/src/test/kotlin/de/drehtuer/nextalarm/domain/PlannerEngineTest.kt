@@ -38,7 +38,7 @@ class PlannerEngineTest {
         settingsRepo.settings = settings()
         alarms.add(AlarmInstance(1, AlarmKey.forEvent(1, future), future, AlarmState.Scheduled, 0, false, snapshot()))
         planning()
-        failFrom(CalendarGoneException(CalendarId(1)))
+        failFrom(CalendarGoneException(setOf(CalendarId(1))))
         engine.runPlanning(1)
         assertEquals(PlannerState.FailSafe, planner.record.state)
         assertEquals(PlanningFailure.CALENDAR_GONE, planner.record.lastRun?.failure)
@@ -80,11 +80,136 @@ class PlannerEngineTest {
         assertEquals(listOf("cancel", "start:5"), effects.calls)
     }
 
+    private val first = CalendarId(1)
+    private val second = CalendarId(2)
+    private val laterEvent = CalendarEvent(2, future.plusSeconds(60), "Special case")
+
+    private fun chosen(calendars: Set<CalendarId>) {
+        settingsRepo.settings = settings().copy(alarmCalendars = calendars)
+    }
+
+    private suspend fun run(generation: Long = 1) {
+        planning(generation)
+        engine.runPlanning(generation)
+    }
+
+    @Test
+    fun `a run reads all the chosen calendars at once, and plans the events of all of them`() = runBlocking {
+        chosen(setOf(first, second))
+        calendars.onThePhone = mapOf(first to listOf(event), second to listOf(laterEvent))
+        run()
+        assertEquals(setOf(first, second), calendars.readCalendars)
+        assertEquals(PlannerState.Planned, planner.record.state)
+        assertEquals(2, planner.record.lastRun?.alarmCount)
+        assertEquals(listOf("Flight", "Special case"), alarms.all().map { it.snapshot.reason })
+    }
+
+    @Test
+    fun `an empty calendar among several adds nothing and is no failure`() = runBlocking {
+        chosen(setOf(first, second))
+        calendars.onThePhone = mapOf(first to listOf(event), second to emptyList())
+        run()
+        assertEquals(PlannerState.Planned, planner.record.state)
+        assertEquals(listOf("Flight"), alarms.all().map { it.snapshot.reason })
+    }
+
+    @Test
+    fun `one missing calendar among several fails the run and keeps all planned alarms, of every calendar`() = runBlocking {
+        chosen(setOf(first, second))
+        calendars.onThePhone = mapOf(first to listOf(event), second to listOf(laterEvent))
+        run()
+        val planned = alarms.all()
+
+        calendars.onThePhone = mapOf(first to emptyList())
+        run(generation = 2)
+        assertEquals(PlannerState.FailSafe, planner.record.state)
+        assertEquals(PlanningFailure.CALENDAR_GONE, planner.record.lastRun?.failure)
+        assertEquals(PlanningFailure.CALENDAR_GONE, effects.warnedAbout)
+        assertEquals(planned, alarms.all())
+    }
+
+    @Test
+    fun `unticking the missing calendar lets planning go on`() = runBlocking {
+        chosen(setOf(first, second))
+        calendars.onThePhone = mapOf(first to listOf(event))
+        run()
+        assertEquals(PlannerState.FailSafe, planner.record.state)
+
+        chosen(setOf(first))
+        run(generation = 2)
+        assertEquals(PlannerState.Planned, planner.record.state)
+        assertEquals(listOf("Flight"), alarms.all().map { it.snapshot.reason })
+    }
+
+    @Test
+    fun `unticking a calendar removes its alarms that have not started, and keeps those of the others`() = runBlocking {
+        chosen(setOf(first, second))
+        calendars.onThePhone = mapOf(first to listOf(event), second to listOf(laterEvent))
+        run()
+
+        chosen(setOf(first))
+        run(generation = 2)
+        assertEquals(PlannerState.Planned, planner.record.state)
+        assertEquals(
+            listOf("Flight" to AlarmState.Scheduled, "Special case" to AlarmState.Cancelled),
+            alarms.all().map { it.snapshot.reason to it.state },
+        )
+    }
+
+    @Test
+    fun `unticking a calendar does not stop its alarm that has already started`() = runBlocking {
+        chosen(setOf(first, second))
+        calendars.onThePhone = mapOf(first to emptyList(), second to emptyList())
+        alarms.add(AlarmInstance(5, AlarmKey.forEvent(2, future), future, AlarmState.Snoozed, 1, false, snapshot()))
+
+        chosen(setOf(first))
+        run()
+        assertEquals(AlarmState.Snoozed, alarms.find(5)?.state)
+    }
+
+    @Test
+    fun `ticking a calendar again brings its alarms back`() = runBlocking {
+        chosen(setOf(first, second))
+        calendars.onThePhone = mapOf(first to emptyList(), second to listOf(laterEvent))
+        run()
+        chosen(setOf(first))
+        run(generation = 2)
+        chosen(setOf(first, second))
+        run(generation = 3)
+        assertEquals(1, alarms.all().count { it.state == AlarmState.Scheduled })
+    }
+
+    @Test
+    fun `an alarm planned from one calendar is not created again now that several can be chosen`() = runBlocking {
+        // The key as version 2 of the database stored it. It holds the event and its start, and no calendar.
+        val stored = AlarmKey("event:1:${future.toEpochMilli()}")
+        alarms.add(AlarmInstance(5, stored, future, AlarmState.Scheduled, 0, false, settings().snapshotFor("Flight")))
+        chosen(setOf(first, second))
+        calendars.onThePhone = mapOf(first to listOf(event), second to emptyList())
+        run()
+        assertEquals(PlannerState.Planned, planner.record.state)
+        val alarm = alarms.all().single()
+        assertEquals(5, alarm.id)
+        assertEquals(AlarmState.Scheduled, alarm.state)
+        assertEquals(stored, alarm.key)
+    }
+
+    @Test
+    fun `unticking every calendar is a failed run that keeps the planned alarms, and the warning says why`() = runBlocking {
+        alarms.add(AlarmInstance(1, AlarmKey.forEvent(1, future), future, AlarmState.Scheduled, 0, false, snapshot()))
+        chosen(emptySet())
+        run()
+        assertEquals(PlannerState.FailSafe, planner.record.state)
+        assertEquals(PlanningFailure.NO_CALENDAR, planner.record.lastRun?.failure)
+        assertEquals(PlanningFailure.NO_CALENDAR, effects.warnedAbout)
+        assertEquals(AlarmState.Scheduled, alarms.find(1)?.state)
+    }
+
     @Test
     fun `a run reads the 48 hours of the chosen calendar`() = runBlocking {
         planning()
         engine.runPlanning(1)
-        assertEquals(CalendarId(1), calendars.readCalendar)
+        assertEquals(setOf(CalendarId(1)), calendars.readCalendars)
         assertEquals(NOW to NOW.plus(Duration.ofHours(48)), calendars.readRange)
     }
 
@@ -184,11 +309,11 @@ class PlannerEngineTest {
 
     @Test
     fun `no chosen calendar is reported as such, without reading any`() = runBlocking {
-        settingsRepo.settings = settings().copy(alarmCalendar = null)
+        settingsRepo.settings = settings().copy(alarmCalendars = emptySet())
         planning()
         engine.runPlanning(1)
         assertEquals(PlanningFailure.NO_CALENDAR, planner.record.lastRun?.failure)
-        assertNull(calendars.readCalendar)
+        assertNull(calendars.readCalendars)
     }
 
     @Test

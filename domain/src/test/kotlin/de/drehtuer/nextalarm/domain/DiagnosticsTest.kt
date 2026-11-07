@@ -136,8 +136,8 @@ class DiagnosticsTest {
             PlanningFailure.NO_CALENDAR to listOf("no alarm calendar is chosen", "Choose an alarm calendar in the settings to fix it."),
             PlanningFailure.NO_PERMISSION to listOf("calendar permission was removed", "Allow calendar access again to fix it."),
             PlanningFailure.CALENDAR_GONE to listOf(
-                "the alarm calendar is no longer on this phone",
-                "Choose another alarm calendar in the settings to fix it.",
+                "an alarm calendar is no longer on this phone",
+                "Untick it under Alarm calendars in the settings to fix it.",
             ),
             PlanningFailure.READ_FAILED to listOf(
                 "the calendar couldn't be read",
@@ -195,12 +195,27 @@ class DiagnosticsTest {
 
     @Test
     fun `the calendar fact tells a calendar that can't be read from none chosen`() {
-        assertEquals("NextAlarm · DAVx⁵", calendarFact(davx.id, davx))
-        assertEquals("None chosen. Nothing rings", calendarFact(null, null))
-        assertEquals("Can't be read right now", calendarFact(davx.id, null))
-        assertEquals("Can't be read right now", calendarFact(davx.id, null, PlanningFailure.READ_FAILED))
-        assertEquals("No longer on this phone. Choose another", calendarFact(davx.id, null, PlanningFailure.CALENDAR_GONE))
-        assertEquals("NextAlarm · DAVx⁵", calendarFact(davx.id, davx, PlanningFailure.CALENDAR_GONE))
+        val one = setOf(davx.id)
+        assertEquals("NextAlarm · DAVx⁵", calendarFact(one, listOf(davx)))
+        assertEquals("None chosen. Nothing rings", calendarFact(emptySet(), emptyList()))
+        assertEquals("Can't be read right now", calendarFact(one, emptyList()))
+        assertEquals("Can't be read right now", calendarFact(one, emptyList(), PlanningFailure.READ_FAILED))
+        assertEquals("No longer on this phone. Untick and choose again", calendarFact(one, emptyList(), PlanningFailure.CALENDAR_GONE))
+        assertEquals("NextAlarm · DAVx⁵", calendarFact(one, listOf(davx), PlanningFailure.CALENDAR_GONE))
+    }
+
+    @Test
+    fun `the calendar fact sums up several calendars, and says how many of them are gone`() {
+        val local = DeviceCalendar(CalendarId(2), "Special cases", null, "LOCAL", null)
+        val both = setOf(davx.id, local.id)
+        assertEquals("2 calendars: NextAlarm, Special cases", calendarFact(both, listOf(davx, local)))
+        assertEquals("NextAlarm · DAVx⁵. 1 no longer on this phone", calendarFact(both, listOf(davx)))
+        assertEquals(
+            "2 calendars: NextAlarm, Special cases. 2 no longer on this phone",
+            calendarFact(both + CalendarId(8) + CalendarId(9), listOf(davx, local), PlanningFailure.CALENDAR_GONE),
+        )
+        assertEquals("Can't be read right now", calendarFact(both, emptyList()))
+        assertEquals("No longer on this phone. Untick and choose again", calendarFact(both, emptyList(), PlanningFailure.CALENDAR_GONE))
     }
 
     @Test
