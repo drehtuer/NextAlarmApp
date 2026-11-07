@@ -8,6 +8,7 @@ import android.media.RingtoneManager
 import android.net.Uri
 import android.provider.MediaStore
 import de.drehtuer.nextalarm.domain.AlarmVolume
+import de.drehtuer.nextalarm.ringing.AlarmNotifications
 import java.io.IOException
 
 /** What the alarm settings show about the phone's own sound. */
@@ -73,3 +74,13 @@ class ContentResolverLogDocuments(private val resolver: ContentResolver) : LogDo
 /** Whether a ringing alarm can fill the screen, which the user can turn off in the system settings. */
 fun canUseFullScreenIntent(context: Context): Boolean =
     context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
+
+/**
+ * Whether a ringing alarm can show anything. The user can turn off all notifications of the app, or only the channel of
+ * the ringing alarm. A channel that does not exist yet is created when it is first needed, and is not off.
+ */
+fun alarmNotificationsAllowed(context: Context): Boolean {
+    val manager = context.getSystemService(NotificationManager::class.java)
+    val channel = manager.getNotificationChannel(AlarmNotifications.ALARM_CHANNEL)
+    return manager.areNotificationsEnabled() && channel?.importance != NotificationManager.IMPORTANCE_NONE
+}

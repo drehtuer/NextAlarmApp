@@ -26,6 +26,7 @@ import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import de.drehtuer.nextalarm.domain.HomeDay
 import de.drehtuer.nextalarm.domain.HomeHero
+import de.drehtuer.nextalarm.domain.BannerText
 import de.drehtuer.nextalarm.domain.HomeModel
 import de.drehtuer.nextalarm.domain.HomeRow
 import de.drehtuer.nextalarm.ui.screens.CalendarScreen
@@ -62,6 +63,13 @@ class ScreensTest {
     val rule = createComposeRule()
 
     private val empty = HomeModel(null, emptyList(), "Nothing is planned until Sunday 20:00.", null, null)
+
+    @Test
+    fun `home shows the warning while notifications are off`() {
+        home(empty.copy(notificationsOff = BannerText("Notifications are off", "Open NextAlarm to stop it.")))
+        rule.onNodeWithText("Notifications are off").assertIsDisplayed()
+        rule.onNodeWithText("Open NextAlarm to stop it.").assertIsDisplayed()
+    }
 
     private fun home(model: HomeModel, onDiagnostics: () -> Unit = {}, onSettings: () -> Unit = {}) {
         rule.setContent { NextAlarmTheme(dark = false) { HomeScreen(model, onSettings, onDiagnostics) } }

@@ -9,16 +9,26 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import de.drehtuer.nextalarm.ringing.AlarmActivity
+import de.drehtuer.nextalarm.ringing.RingingChanges
 import de.drehtuer.nextalarm.ui.AppViewModel
 import de.drehtuer.nextalarm.ui.NextAlarmApp
 import de.drehtuer.nextalarm.ui.theme.NextAlarmTheme
+import javax.inject.Inject
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: AppViewModel by viewModels()
     private val resumeCount = mutableIntStateOf(0)
     private val diagnosticsRequests = mutableIntStateOf(0)
+    private var alarmWatch: Job? = null
+
+    @Inject
+    lateinit var ringing: RingingChanges
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +58,24 @@ class MainActivity : ComponentActivity() {
 
     private fun handleRequest(intent: Intent) {
         if (intent.action == ACTION_OPEN_DIAGNOSTICS) diagnosticsRequests.intValue++
+    }
+
+    /**
+     * Opening the app while an alarm rings leads to the alarm screen. If notifications are off, that is the only way to
+     * stop the alarm: without them it has no screen of its own and no buttons.
+     */
+    override fun onStart() {
+        super.onStart()
+        alarmWatch = lifecycleScope.launch {
+            ringing.alarms.collect { alarms ->
+                if (alarms.isNotEmpty()) startActivity(Intent(this@MainActivity, AlarmActivity::class.java))
+            }
+        }
+    }
+
+    override fun onStop() {
+        alarmWatch?.cancel()
+        super.onStop()
     }
 
     override fun onResume() {

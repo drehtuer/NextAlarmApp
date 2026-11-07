@@ -78,6 +78,7 @@ class PhonePorts(
     val audio: PhoneAudio,
     val sounds: SoundFiles,
     val logs: LogDocuments,
+    val notificationsAllowed: () -> Boolean = { true },
     val fullScreenAllowed: () -> Boolean,
 )
 
@@ -194,11 +195,12 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         val phone = ports.phone
         val volume = withContext(ports.io) { phone.audio.alarmVolume() }
         val soundName = withContext(ports.io) { phone.audio.defaultSoundName() }
+        val notificationsAllowed = phone.notificationsAllowed()
         mutableState.update {
             it.copy(
                 loaded = true,
                 setupDone = record.state != PlannerState.Unconfigured,
-                home = buildHome(now, zone, alarms, record, calendar),
+                home = buildHome(now, zone, alarms, record, calendar, notificationsAllowed),
                 calendars = calendars,
                 selectedCalendar = selected,
                 alarmSettings = buildAlarmSettings(settings, soundName, volume, soundRejection),
@@ -210,6 +212,7 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
                     zone,
                     calendarFact(selected, calendar, record.lastRun?.failure),
                     phone.fullScreenAllowed(),
+                    notificationsAllowed,
                 ),
             )
         }

@@ -154,6 +154,16 @@ class DiagnosticsTest {
     }
 
     @Test
+    fun `diagnostics warn while notifications are off, and only then`() {
+        val on = buildDiagnostics(record(PlannerState.Planned), emptyList(), now, zone, "NextAlarm", true)
+        assertNull(on.notificationsOff)
+        assertEquals("On", on.notifications)
+        val off = buildDiagnostics(record(PlannerState.Planned), emptyList(), now, zone, "NextAlarm", true, false)
+        assertEquals("Notifications are off", off.notificationsOff?.title)
+        assertEquals("Off: alarms can't show their screen or their buttons", off.notifications)
+    }
+
+    @Test
     fun `a card for FailSafe counts what still rings`() {
         val one = status(PlannerState.FailSafe, failed(PlanningFailure.READ_FAILED), waiting(1)).body
         assertTrue("The 1 alarm already planned will still ring" in one, one)

@@ -47,6 +47,8 @@ data class HomeModel(
     /** Only in `FailSafe`. */
     val failSafeBody: String?,
     val footer: String?,
+    /** Only while notifications are off. */
+    val notificationsOff: BannerText? = null,
 )
 
 data class NextAlarmText(
@@ -92,6 +94,7 @@ fun buildHome(
     alarms: List<AlarmInstance>,
     record: PlannerRecord,
     calendar: DeviceCalendar?,
+    notificationsAllowed: Boolean = true,
 ): HomeModel {
     val waiting = waitingAlarms(alarms, now)
     val today = now.atZone(zone).toLocalDate()
@@ -103,6 +106,7 @@ fun buildHome(
         emptyBody = if (waiting.isEmpty()) emptyBody(now, zone, calendar) else null,
         failSafeBody = if (record.state == PlannerState.FailSafe) failSafeBody(record, zone) else null,
         footer = homeFooter(now, zone, record, calendar),
+        notificationsOff = notificationsOffBanner(notificationsAllowed),
     )
 }
 

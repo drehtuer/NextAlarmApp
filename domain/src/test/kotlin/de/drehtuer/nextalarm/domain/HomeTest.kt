@@ -159,6 +159,18 @@ class HomeTest {
         )
     }
 
+    @Test
+    fun `home warns while notifications are off, and only then`() {
+        assertNull(home().notificationsOff)
+        val banner = buildHome(now, zone, emptyList(), planned, davx, notificationsAllowed = false).notificationsOff
+        assertEquals("Notifications are off", banner?.title)
+        assertEquals(
+            "A ringing alarm can't show its screen or its Snooze and Dismiss buttons. Open NextAlarm to stop it. Allow " +
+                "notifications in the app settings to fix this.",
+            banner?.body,
+        )
+    }
+
     private fun checkedAt(at: String) =
         planned.copy(lastRun = PlanningRun(Instant.parse(at), Duration.ZERO, 0, null))
 

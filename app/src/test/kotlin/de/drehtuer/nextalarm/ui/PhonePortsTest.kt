@@ -1,6 +1,8 @@
 package de.drehtuer.nextalarm.ui
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
@@ -12,6 +14,7 @@ import android.provider.MediaStore
 import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
 import de.drehtuer.nextalarm.domain.AlarmVolume
+import de.drehtuer.nextalarm.ringing.AlarmNotifications
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.OutputStream
@@ -22,6 +25,7 @@ import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -132,5 +136,27 @@ class PhonePortsTest {
     fun `a document that may no longer be written says so`() {
         shadowOf(context.contentResolver).registerOutputStream(document, failing(SecurityException("revoked")))
         assertFalse(documents.write(document, "the log"))
+    }
+
+    @Test
+    fun `alarms can show something while notifications are on, also before their channel exists`() {
+        assertTrue(alarmNotificationsAllowed(context))
+    }
+
+    @Test
+    fun `alarms cannot show anything while the app's notifications are off`() {
+        shadowOf(context.getSystemService(NotificationManager::class.java)).setNotificationsEnabled(false)
+        assertFalse(alarmNotificationsAllowed(context))
+    }
+
+    @Test
+    fun `alarms cannot show anything while their channel is off, but another channel does not matter`() {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(NotificationChannel("other", "Other", NotificationManager.IMPORTANCE_NONE))
+        assertTrue(alarmNotificationsAllowed(context))
+        manager.createNotificationChannel(
+            NotificationChannel(AlarmNotifications.ALARM_CHANNEL, "Alarm", NotificationManager.IMPORTANCE_NONE),
+        )
+        assertFalse(alarmNotificationsAllowed(context))
     }
 }

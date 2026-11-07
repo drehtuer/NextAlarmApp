@@ -69,6 +69,15 @@ fun DiagnosticsScreen(
                 .padding(16.dp),
             Arrangement.spacedBy(16.dp),
         ) {
+            model.notificationsOff?.let { banner ->
+                Banner(
+                    title = banner.title,
+                    body = banner.body,
+                    container = MaterialTheme.colorScheme.errorContainer,
+                    content = MaterialTheme.colorScheme.onErrorContainer,
+                    icon = R.drawable.ic_warning,
+                )
+            }
             Status(model.status)
             Facts(model)
             Buttons(testAlarmPending, logNote, onRingTestAlarm, onExportLog)
@@ -124,6 +133,7 @@ private fun Facts(model: DiagnosticsModel) {
             Fact("Calendar", model.calendar)
             Fact("Next check", model.nextCheck)
             Fact("Full-screen alarms", model.fullScreen)
+            Fact("Notifications", model.notifications)
         }
     }
 }

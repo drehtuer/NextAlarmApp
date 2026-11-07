@@ -247,6 +247,13 @@ sequenceDiagram
   `WakeUpService` uses type `mediaPlayback` with a `MediaSession`, so the news can be controlled from the lock screen.
 - The full-screen intent requires `USE_FULL_SCREEN_INTENT`. Onboarding checks
   `NotificationManager.canUseFullScreenIntent()`; if it is denied, the alarm still rings with a heads-up notification.
+- **Without notifications a ringing alarm is invisible and has no buttons,** as its screen is delivered by a notification
+  and Android does not let an app in the background open an activity. The user can turn them off at any time, also after
+  setup. So `MainActivity` sends anyone who opens the app to `AlarmActivity` while an alarm rings, and home and diagnostics
+  warn while notifications are off.
+- **A swiped notification comes back.** `setOngoing` does not stop the user from swiping away the notification of a
+  foreground service while the phone is unlocked (Android 14 and later), so it has a delete intent that leads to
+  `AlarmForeground.sync`, which posts it again.
 - The sound, vibration and shared ring timeout live in `AlarmRinger` (`domain`), in the app's process. `AlarmService`
   keeps the process alive, holds the first ringing alarm's notification, and is what lets the sound be heard (see
   [Background audio on Android 17](#background-audio-on-android-17)); the other alarms' notifications are posted as usual.

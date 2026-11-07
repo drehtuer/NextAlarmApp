@@ -48,6 +48,17 @@ fun HomeScreen(model: HomeModel, onSettings: () -> Unit, onDiagnostics: () -> Un
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            model.notificationsOff?.let { banner ->
+                item {
+                    Banner(
+                        title = banner.title,
+                        body = banner.body,
+                        container = MaterialTheme.colorScheme.errorContainer,
+                        content = MaterialTheme.colorScheme.onErrorContainer,
+                        icon = R.drawable.ic_warning,
+                    )
+                }
+            }
             model.failSafeBody?.let { body ->
                 item {
                     Banner(

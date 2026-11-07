@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import de.drehtuer.nextalarm.domain.BannerText
 import de.drehtuer.nextalarm.domain.DiagnosticsModel
 import de.drehtuer.nextalarm.domain.LOG_FAILED_NOTE
 import de.drehtuer.nextalarm.domain.LOG_TITLES_NOTE
@@ -57,6 +58,19 @@ class DiagnosticsScreenTest {
     }
 
     private fun visible(text: String) = rule.onNodeWithText(text).performScrollTo().assertIsDisplayed()
+
+    @Test
+    fun `it shows the warning and the fact while notifications are off`() {
+        show(
+            model().copy(
+                notificationsOff = BannerText("Notifications are off", "Open NextAlarm to stop it."),
+                notifications = "Off: alarms can't show their screen or their buttons",
+            ),
+        )
+        visible("Notifications are off")
+        visible("Notifications")
+        visible("Off: alarms can't show their screen or their buttons")
+    }
 
     @Test
     fun `the status, the facts and the buttons are there`() {

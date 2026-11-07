@@ -13,16 +13,27 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
+import androidx.lifecycle.Lifecycle
 import androidx.work.impl.WorkManagerImpl
 import de.drehtuer.nextalarm.data.DataComponents
+import de.drehtuer.nextalarm.domain.AlarmInstance
+import de.drehtuer.nextalarm.domain.AlarmKey
+import de.drehtuer.nextalarm.domain.AlarmState
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.PlannerState
+import de.drehtuer.nextalarm.domain.Settings
+import de.drehtuer.nextalarm.domain.snapshotFor
+import de.drehtuer.nextalarm.ringing.AlarmActivity
+import java.time.Instant
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.util.ReflectionHelpers
 
@@ -84,6 +95,51 @@ class MainActivityRequestsTest {
             waitFor("Diagnostics & history")
         }
     }
+
+    @Test
+    fun `opening the app while an alarm rings leads to the alarm screen`() {
+        ActivityScenario.launch<MainActivity>(intent(Intent.ACTION_MAIN)).use { scenario ->
+            waitForHome()
+            scenario.onActivity { activity ->
+                assertNull(shadowOf(activity).nextStartedActivity)
+                activity.ringing.report(listOf(ringingAlarm()))
+            }
+            rule.waitForIdle()
+            scenario.onActivity { activity ->
+                assertEquals(AlarmActivity::class.java.name, shadowOf(activity).nextStartedActivity?.component?.className)
+                activity.ringing.report(emptyList())
+            }
+        }
+    }
+
+    @Test
+    fun `coming back to the app while an alarm still rings leads there again, and not in the background`() {
+        ActivityScenario.launch<MainActivity>(intent(Intent.ACTION_MAIN)).use { scenario ->
+            waitForHome()
+            scenario.moveToState(Lifecycle.State.CREATED)
+            scenario.onActivity { activity ->
+                activity.ringing.report(listOf(ringingAlarm()))
+            }
+            rule.waitForIdle()
+            scenario.onActivity { assertNull(shadowOf(it).nextStartedActivity) }
+            scenario.moveToState(Lifecycle.State.RESUMED)
+            rule.waitForIdle()
+            scenario.onActivity { activity ->
+                assertEquals(AlarmActivity::class.java.name, shadowOf(activity).nextStartedActivity?.component?.className)
+                activity.ringing.report(emptyList())
+            }
+        }
+    }
+
+    private fun ringingAlarm() = AlarmInstance(
+        1,
+        AlarmKey.forTestAlarm(1),
+        Instant.EPOCH,
+        AlarmState.Ringing,
+        0,
+        false,
+        Settings.DEFAULT.snapshotFor("Gym"),
+    )
 
     private fun deliver(activity: MainActivity, intent: Intent) {
         ReflectionHelpers.callInstanceMethod<Unit>(

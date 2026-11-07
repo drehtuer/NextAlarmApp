@@ -26,6 +26,7 @@ import de.drehtuer.nextalarm.ui.AppPorts
 import de.drehtuer.nextalarm.ui.ContentResolverLogDocuments
 import de.drehtuer.nextalarm.ui.NewsPorts
 import de.drehtuer.nextalarm.ui.PhonePorts
+import de.drehtuer.nextalarm.ui.alarmNotificationsAllowed
 import de.drehtuer.nextalarm.ui.canUseFullScreenIntent
 import java.time.Instant
 import javax.inject.Singleton
@@ -113,6 +114,7 @@ object PlanningModule {
             audio = AndroidPhoneAudio(context),
             sounds = data.sounds,
             logs = ContentResolverLogDocuments(context.contentResolver),
+            notificationsAllowed = { alarmNotificationsAllowed(context) },
             fullScreenAllowed = { canUseFullScreenIntent(context) },
         ),
         news = NewsPorts(

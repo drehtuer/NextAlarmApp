@@ -60,6 +60,8 @@ class AlarmBroadcasts(
             AlarmActionReceiver.ACTION_DISMISS_ALL -> engine.sendToRinging(AlarmEvent.Dismiss)
             AlarmActionReceiver.ACTION_DISMISS -> alarmInstanceId(intent)?.let { engine.handle(it, AlarmEvent.Dismiss) }
             AlarmActionReceiver.ACTION_STOP_WAKE_UP -> engine.stopWakeUp()
+            // Syncing shows the notifications of whatever still rings, and does nothing if nothing does.
+            AlarmActionReceiver.ACTION_RINGING_SWIPED -> foreground.sync()
         }
     }
 
@@ -99,6 +101,7 @@ class AlarmActionReceiver : BroadcastReceiver() {
         const val ACTION_DISMISS_ALL = "de.drehtuer.nextalarm.DISMISS_ALL"
         const val ACTION_DISMISS = "de.drehtuer.nextalarm.DISMISS"
         const val ACTION_STOP_WAKE_UP = "de.drehtuer.nextalarm.STOP_WAKE_UP"
+        const val ACTION_RINGING_SWIPED = "de.drehtuer.nextalarm.RINGING_SWIPED"
     }
 }
 

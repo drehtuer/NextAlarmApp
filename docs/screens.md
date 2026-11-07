@@ -61,6 +61,7 @@ is planned for later.
 | Snoozed              | `Snoozed`                                    | Dismiss                    |
 | Wake-up media        | `Announcing`, `NewsPlaying`                  | Stop                       |
 | Fail-safe warning    | Planner in `FailSafe`                        | Open diagnostics           |
+| Launcher icon        | While an alarm rings                         | Alarm screen, as the app sends you there |
 | Late alarm           | Alarm rang more than 1 min late (phone was off) | Open history            |
 | Missed alarm         | Alarm entered `Missed` (more than 60 min late) | Open history             |
 | Alarm not answered   | Alarm entered `Unanswered`                   | Open history               |

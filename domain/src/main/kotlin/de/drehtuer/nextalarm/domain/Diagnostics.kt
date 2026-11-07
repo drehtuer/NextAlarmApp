@@ -45,6 +45,9 @@ data class DiagnosticsModel(
     val calendar: String,
     val nextCheck: String,
     val fullScreen: String,
+    /** Only while notifications are off. */
+    val notificationsOff: BannerText? = null,
+    val notifications: String = NOTIFICATIONS_ALLOWED,
     val pastAlarms: List<PastAlarmRow>,
     /** What the exported log is suggested to be called. */
     val logFileName: String,
@@ -148,6 +151,22 @@ fun calendarFact(selected: CalendarId?, calendar: DeviceCalendar?, lastFailure: 
     else -> "Can't be read right now"
 }
 
+private const val NOTIFICATIONS_ALLOWED = "On"
+
+fun notificationsFact(allowed: Boolean): String =
+    if (allowed) NOTIFICATIONS_ALLOWED else "Off: alarms can't show their screen or their buttons"
+
+/** Without notifications a ringing alarm is invisible, and can only be stopped by opening the app. */
+fun notificationsOffBanner(allowed: Boolean): BannerText? = if (allowed) {
+    null
+} else {
+    BannerText(
+        "Notifications are off",
+        "A ringing alarm can't show its screen or its Snooze and Dismiss buttons. Open NextAlarm to stop it. Allow " +
+            "notifications in the app settings to fix this.",
+    )
+}
+
 fun fullScreenFact(allowed: Boolean): String = if (allowed) "Allowed" else "Not allowed: alarms ring as a notification"
 
 private fun snoozes(count: Int) = if (count == 1) "1 snooze" else "$count snoozes"
@@ -199,11 +218,14 @@ fun buildDiagnostics(
     zone: ZoneId,
     calendar: String,
     fullScreenAllowed: Boolean,
+    notificationsAllowed: Boolean = true,
 ): DiagnosticsModel = DiagnosticsModel(
     status = statusCard(record, alarms, now, zone),
     calendar = calendar,
     nextCheck = NEXT_CHECK_TEXT,
     fullScreen = fullScreenFact(fullScreenAllowed),
+    notificationsOff = notificationsOffBanner(notificationsAllowed),
+    notifications = notificationsFact(notificationsAllowed),
     pastAlarms = pastAlarmRows(alarms, zone),
     logFileName = logFileName(now, zone),
 )

@@ -46,6 +46,15 @@ class AlarmNotificationsTest {
     }
 
     @Test
+    fun `a ringing alarm is ongoing, and being swiped away is reported, as Android lets that happen`() {
+        val notification = notifications.ringing(alarm())
+        assertEquals(Notification.FLAG_ONGOING_EVENT, notification.flags and Notification.FLAG_ONGOING_EVENT)
+        val swiped = shadowOf(notification.deleteIntent).savedIntent
+        assertEquals(AlarmActionReceiver.ACTION_RINGING_SWIPED, swiped.action)
+        assertEquals(AlarmActionReceiver::class.java.name, swiped.component?.className)
+    }
+
+    @Test
     fun `a ringing alarm opens the alarm screen in full screen`() {
         val notification = notifications.ringing(alarm())
         val fullScreen = shadowOf(notification.fullScreenIntent).savedIntent

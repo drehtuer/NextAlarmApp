@@ -29,6 +29,10 @@ import java.time.ZoneId
  *
  * A full-screen intent needs a permission the user can deny. Android then shows the notification as a heads-up one,
  * which the high importance of the channel allows, with the same actions.
+ *
+ * A notification can be ongoing, but from Android 14 the user can still swipe away that of a foreground service while the
+ * phone is unlocked, and nothing an app sets can prevent this. So a ringing alarm's notification comes back: see
+ * `AlarmActionReceiver.ACTION_RINGING_SWIPED`.
  */
 class AlarmNotifications(
     private val context: Context,
@@ -42,6 +46,7 @@ class AlarmNotifications(
         return ringingBuilder(ringingText(alarm))
             .setContentIntent(screen)
             .setFullScreenIntent(screen, true)
+            .setDeleteIntent(actionIntent(AlarmActionReceiver.ACTION_RINGING_SWIPED))
             .addAction(action("Snooze", actionIntent(AlarmActionReceiver.ACTION_SNOOZE_ALL)))
             .addAction(action("Dismiss", actionIntent(AlarmActionReceiver.ACTION_DISMISS_ALL)))
             .build()

@@ -122,6 +122,7 @@ class AppViewModelTest {
     private val sounds = FakeSounds(data.settings)
     private val logs = FakeLogs()
     private var fullScreen = true
+    private var notificationsOn = true
     private val news = NewsParts { NOW }
     private val viewModel = AppViewModel(
         AppPorts(
@@ -132,7 +133,7 @@ class AppViewModelTest {
             engine = engine,
             alarmEngine = alarmEngine,
             planningChanges = changes,
-            phone = PhonePorts(audio, sounds, logs) { fullScreen },
+            phone = PhonePorts(audio, sounds, logs, { notificationsOn }) { fullScreen },
             news = news.ports,
             io = Dispatchers.Unconfined,
             now = { NOW },
@@ -494,6 +495,18 @@ class AppViewModelTest {
     }
 
     @Test
+    fun `home and the diagnostics warn while notifications are off`() {
+        assertEquals(null, load().home.notificationsOff)
+        notificationsOn = false
+        viewModel.startWatching()
+        val state = awaitState { it.home.notificationsOff != null }
+        viewModel.stopWatching()
+        assertEquals("Notifications are off", state.home.notificationsOff?.title)
+        assertEquals("Notifications are off", state.diagnostics.notificationsOff?.title)
+        assertEquals("Off: alarms can't show their screen or their buttons", state.diagnostics.notifications)
+    }
+
+    @Test
     fun `a test alarm goes through the engine with the current settings, and is pending until it rings`() = runBlocking {
         data.settings.save(Settings.DEFAULT.copy(vibrate = true))
         viewModel.ringTestAlarm()
@@ -738,6 +751,7 @@ class AppPlannerEffectsTest {
         assertEquals(data.feeds, ports.news.feeds)
         assertNull(ports.news.player.playing())
         assertEquals(context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent(), ports.phone.fullScreenAllowed())
+        assertEquals(de.drehtuer.nextalarm.ui.alarmNotificationsAllowed(context), ports.phone.notificationsAllowed())
         assertEquals(PlannerState.Unconfigured, ports.planner.load().state)
         assertTrue(ports.alarms.all().isEmpty())
         assertEquals(Settings.DEFAULT, ports.settings.load())

@@ -147,6 +147,31 @@ class AlarmBroadcastsTest {
     }
 
     @Test
+    fun `a swiped notification of a ringing alarm comes back`() {
+        foreground.ringingChanged(listOf(alarm(id = 2)))
+        val shown = mutableListOf<Int>()
+        val service = object : AlarmForegroundHost {
+            override fun showForeground(id: Int, notification: android.app.Notification) {
+                shown += id
+            }
+
+            override fun finishRinging() = Unit
+        }
+        foreground.attach(service)
+        shown.clear()
+        broadcasts.actionTapped(action(AlarmActionReceiver.ACTION_RINGING_SWIPED)) { finished++ }
+        assertEquals(listOf(AlarmNotifications.ringingId(2)), shown)
+        assertEquals(1, finished)
+    }
+
+    @Test
+    fun `a swipe that comes after the alarm has ended brings nothing back`() {
+        broadcasts.actionTapped(action(AlarmActionReceiver.ACTION_RINGING_SWIPED)) { finished++ }
+        assertEquals(0, serviceStarts)
+        assertEquals(1, finished)
+    }
+
+    @Test
     fun `an unknown action does nothing`() {
         broadcasts.actionTapped(action("something else")) { finished++ }
         assertEquals(AlarmState.Ringing, state(2))

@@ -182,6 +182,12 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
     alarms below will still ring, but nothing new is added, and after 48 hours nothing rings. Choose another calendar in
     the settings."
   - Outlined button: "See what went wrong", which opens screen 7.
+- **Notifications-off banner** (`errorContainer`, warning icon, above the fail-safe banner, only while the app's
+  notifications or its "Alarm" channel are off):
+  - Title: "Notifications are off"
+  - Body: "A ringing alarm can't show its screen or its Snooze and Dismiss buttons. Open NextAlarm to stop it. Allow
+    notifications in the app settings to fix this."
+- **While an alarm rings,** opening the app leads straight to screen 8, whatever screen was open.
 - **Hero card** (`primaryContainer`, 28 dp corners, 24 dp padding):
   - A label: "Next alarm", "Next alarm · 2 alarms at 06:00" or "Snoozed".
   - The time in `displayMedium`.
@@ -336,7 +342,8 @@ Details decided while building this screen:
   - `FailSafe` (`errorContainer`, warning icon): "Last check failed" / "Today at 19:58: calendar permission was removed.
     The 4 alarms already planned will still ring, but changes in the calendar are not picked up." The second sentence is
     followed by the matching fix, for example "Allow calendar access again to fix it."
-- **Facts:** label–value rows: "Calendar", "Next check" ("When the calendar changes, and at least once a day") and "Full-screen alarms".
+- **Notifications-off banner:** above the status card, the same as on home.
+- **Facts:** label–value rows: "Calendar", "Next check" ("When the calendar changes, and at least once a day"), "Full-screen alarms" and "Notifications" ("On" or "Off: alarms can't show their screen or their buttons").
 - **Buttons:** "Ring a test alarm" (tonal, bell icon) and "Export log" (outlined).
 - **"Past alarms":** one row per alarm with the time ("Thu 07:00"), the title, and an outcome chip:
 
@@ -463,6 +470,9 @@ accent colour (`setColor`).
 | Alarm may be silent | "This alarm may be silent" | "Android didn't let NextAlarm run in the background, so its sound may not be heard. Tap to open the alarm." | none. Goes when the service comes up |
 | No sound could be played | "An alarm couldn't play a sound" | "NextAlarm tried all its sounds and none would play. Tap to open the alarm." | none. Stays after the alarm |
 | Alarm stopped by the limit | "An alarm was stopped" | "“Gym” at 06:30 rang past its time and NextAlarm couldn't end it the normal way." | "Open history" |
+
+The "Alarm" notification is ongoing. From Android 14 the user can still swipe it away while the phone is unlocked, and no app
+can prevent that, so it comes straight back for as long as the alarm rings.
 
 The relative day in "Next alarm" follows the home screen: "today", "tomorrow", or the weekday.
 
