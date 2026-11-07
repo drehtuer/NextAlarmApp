@@ -194,7 +194,7 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
   - The relative day: "Today · in 2 h 30 min", "Tomorrow, Saturday · in 10 h" or "Rings again in 10 min".
   - The title, at most three lines.
 - **Day groups:** a `labelLarge` header in `primary`, followed by one `surfaceContainer` list with 16 dp corners and
-  `outlineVariant` dividers. Each row is the time (100 dp wide, so that a time with seconds fits) and the title, at most two lines. A snoozed row adds a
+  `outlineVariant` dividers. Each row is the time (100 dp wide, so that a time with seconds fits) and the title, at most two lines, on one baseline. A snoozed row adds a
   `primaryContainer` chip: "Snoozed until 06:10".
 - **Event without a title:** show "No title" in italics in `onSurfaceVariant`.
 - **Empty state** (`surfaceContainer` card, calendar icon):
@@ -228,7 +228,8 @@ Below the rows come a divider and a section headed "About". It is always present
 - **Lead:** "Every timed event in this calendar rings at its start time. No other calendar is read."
 - **Calendars:** grouped by account, with the account name as a `primary` header ("DAVx⁵ · me@cloud.example",
   "ICSx⁵ · Holidays", "On this phone"). Each row is a radio button, the calendar's own colour as a 12 dp square, and its
-  name. The selected row has a `surfaceContainer` background.
+  name. A calendar without a colour leaves the square's place empty, so that the names line up. The selected row has a
+  `surfaceContainer` background.
 - **None selected** (`errorContainer` banner): "**No calendar chosen.** Until you choose one, no alarm rings."
 - **No calendars:**
   - Title: "No calendars on this phone"
@@ -378,6 +379,8 @@ Details decided while building this screen:
 - A past alarm is listed at the time of its event, not of its last snooze; a test alarm has no event, and shows its own
   time with its seconds. A `Done` alarm that rang late shows that rather than its snoozes. The newest comes first. An
   empty list says "No alarms have ended yet."
+- The time of a past alarm is `bodyMedium` with tabular figures, on one baseline with the title. It is not the 20 / 28 of
+  other times in lists, because "Thu 07:00" would not fit its 88 dp column at that size, even without seconds.
 - **Test alarm:** it is an alarm titled "Test alarm", with the current settings, 5 seconds ahead. Until then, the button
   is disabled and a line below it says "“Test alarm” rings in about 5 seconds, with your current settings."
 - **Export log:** a plain text file, suggested name `nextalarm-log-2026-11-06.txt`. It has the planner state, the failures
