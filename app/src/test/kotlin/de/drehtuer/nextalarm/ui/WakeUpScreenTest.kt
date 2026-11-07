@@ -176,8 +176,12 @@ class WakeUpScreenTest {
     @Test
     fun `the background is black, whatever the system setting`() {
         show(playing = null)
+        rule.onNodeWithText("Stop").assertIsDisplayed()
         val pixels = rule.onRoot().captureToImage().toPixelMap()
-        assertEquals(Color(0xFF000000), pixels[pixels.width / 2, 2])
+        // In the side margin, where nothing but the background is.
+        val margin = (4 * rule.density.density).toInt()
+        assertEquals(Color(0xFF000000), pixels[margin, pixels.height / 2])
+        assertEquals(Color(0xFF000000), pixels[pixels.width - margin, pixels.height / 2])
     }
 
     @Test
