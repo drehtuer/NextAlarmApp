@@ -71,6 +71,10 @@ SonarCloud can only import coverage from a CI analysis, so this needs two settin
 
 The SDK versions in the workflow must match those in `.devcontainer/Dockerfile`.
 
+Findings that are wrong for this project are ignored in the `sonar` block of `build.gradle.kts`, each with its reason,
+rather than in SonarCloud, so that the decision is reviewed with the code. The only one is `xml:S5332` (clear-text
+traffic) in the manifest: it is allowed on purpose, for podcasts (see [Feeds](architecture.md#feeds)).
+
 ## Dependency updates and security
 
 | What | Where | What it does |

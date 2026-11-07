@@ -363,23 +363,27 @@ private class AlarmPathParts(private val context: Context, private val data: Dat
     private val notifications = AlarmModule.notifications(context)
     val foreground: AlarmForeground = AlarmModule.foreground(context, notifications, Lazy { ringer })
     private val changes = AlarmModule.ringingChanges()
-    private val lazyEngine: Lazy<AlarmEngine> = Lazy { engine }
+    private val engineCalls = AlarmModule.engineCalls(scope, Lazy { engine })
     val ringer: AlarmRinger =
-        AlarmModule.ringer(context, data, foreground, changes, notifications, AlarmModule.soundWorker(scope), scope, lazyEngine)
+        AlarmModule.ringer(context, data, foreground, changes, notifications, AlarmModule.soundWorker(scope), engineCalls)
     private val wakeUpNotifications = AlarmModule.wakeUpNotifications(context)
-    val wakeUpMedia = AlarmModule.wakeUpMedia(context, scope, lazyEngine)
+    val wakeUpMedia = AlarmModule.wakeUpMedia(context, engineCalls)
     private val wakeUpFocus = AlarmModule.wakeUpFocus(context)
     private val wakeUpGate = AlarmModule.wakeUpGate(wakeUpFocus)
     val wakeUpForeground = AlarmModule.wakeUpForeground(context, wakeUpNotifications, wakeUpMedia, wakeUpGate)
     val wakeUpChanges = AlarmModule.wakeUpChanges()
-    val director = AlarmModule.wakeUpDirector(context, data, wakeUpForeground, wakeUpGate, wakeUpFocus, wakeUpChanges, scope, lazyEngine)
+    val director = AlarmModule.wakeUpDirector(
+        context, wakeUpForeground, wakeUpGate, wakeUpFocus, wakeUpChanges, AlarmModule.newsFetcher(scope, data), engineCalls,
+    )
     val preview = AlarmModule.soundPreview(context, data, AlarmModule.soundWorker(scope), Lazy { ringer })
     private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(director), preview)
     val engine: AlarmEngine = AlarmModule.engine(context, data, effects)
     private val controllerData = data
 
     fun ringerWithout(engine: Lazy<AlarmEngine>): AlarmRinger =
-        AlarmModule.ringer(context, data, foreground, changes, notifications, AlarmModule.soundWorker(scope), scope, engine)
+        AlarmModule.ringer(
+            context, data, foreground, changes, notifications, AlarmModule.soundWorker(scope), AlarmModule.engineCalls(scope, engine),
+        )
 
     fun controller() = AlarmModule.screenController(controllerData, engine, changes, foreground, scope)
 

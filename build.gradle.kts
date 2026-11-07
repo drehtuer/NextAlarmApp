@@ -16,6 +16,12 @@ sonar {
         property("sonar.androidVariant", "debug")
         // Generated code, such as Hilt's, is not ours to fix and would distort the coverage.
         property("sonar.exclusions", "**/build/**")
+        // Clear-text traffic is allowed on purpose, for podcasts that still use plain http; Android can only allow it for
+        // the whole app, and the app refuses it for RSS and Atom feeds itself. See the comment in the manifest and
+        // docs/architecture.md#feeds.
+        property("sonar.issue.ignore.multicriteria", "cleartext")
+        property("sonar.issue.ignore.multicriteria.cleartext.ruleKey", "xml:S5332")
+        property("sonar.issue.ignore.multicriteria.cleartext.resourceKey", "app/src/main/AndroidManifest.xml")
         // The reports are written by the task `coverageReports`, which has to run before `sonar`.
         property(
             "sonar.coverage.jacoco.xmlReportPaths",
