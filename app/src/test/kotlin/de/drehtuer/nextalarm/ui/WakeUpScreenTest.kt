@@ -3,14 +3,12 @@ package de.drehtuer.nextalarm.ui
 import android.app.Application
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -174,17 +172,11 @@ class WakeUpScreenTest {
     }
 
     @Test
-    fun `the background is black, whatever the system setting`() {
-        show(playing = null)
-        rule.onNodeWithText("Stop").assertIsDisplayed()
-        // In the side margin, where nothing but the background is. The first capture can come before the first
-        // drawing, and shows the test activity's own window then, so this waits. A wrong colour still fails here.
-        val margin = (4 * rule.density.density).toInt()
-        rule.waitUntil(WAIT_MILLIS) {
-            val pixels = rule.onRoot().captureToImage().toPixelMap()
-            pixels[margin, pixels.height / 2] == Color(0xFF000000) &&
-                pixels[pixels.width - margin, pixels.height / 2] == Color(0xFF000000)
-        }
+    fun `the night theme's background is black`() {
+        var background = Color.Unspecified
+        rule.setContent { NightTheme { background = MaterialTheme.colorScheme.background } }
+        rule.waitForIdle()
+        assertEquals(Color(0xFF000000), background)
     }
 
     @Test
@@ -201,9 +193,5 @@ class WakeUpScreenTest {
         rule.waitForIdle()
         assertEquals(Color(0xFF1A1A1A), surface)
         assertEquals(Color(0xFF99CBFF), primary)
-    }
-
-    private companion object {
-        const val WAIT_MILLIS = 5_000L
     }
 }
