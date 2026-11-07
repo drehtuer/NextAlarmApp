@@ -4,6 +4,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 private val ALARM_DATE = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.ENGLISH)
@@ -24,16 +25,16 @@ data class AlarmScreenModel(
 )
 
 /**
- * The alarm screen at [now]. Each alarm snoozes by the length in its own snapshot, so if these differ, "Rings again"
+ * The alarm screen at [now], to the minute: a clock with running seconds would only distract. Each alarm snoozes by the length in its own snapshot, so if these differ, "Rings again"
  * gives the earliest of them: that is when the phone next rings.
  */
 fun alarmScreenModel(now: Instant, zone: ZoneId, ringing: List<AlarmInstance>): AlarmScreenModel = AlarmScreenModel(
     date = now.atZone(zone).format(ALARM_DATE),
-    time = formatTime(now, zone),
+    time = formatTime(now.truncatedTo(ChronoUnit.MINUTES), zone),
     countLine = if (ringing.size > 1) "${ringing.size} alarms" else null,
     titles = ringing.sortedWith(compareBy({ it.triggerAt }, { it.id })).map { it.snapshot.reason },
     ringsAgain = ringing.minOfOrNull { it.snapshot.snoozeMinutes }
-        ?.let { minutes -> "Rings again at ${formatTime(now.plus(Duration.ofMinutes(minutes.toLong())), zone)}" }
+        ?.let { minutes -> "Rings again at ${formatTime(now.truncatedTo(ChronoUnit.MINUTES).plus(Duration.ofMinutes(minutes.toLong())), zone)}" }
         .orEmpty(),
 )
 

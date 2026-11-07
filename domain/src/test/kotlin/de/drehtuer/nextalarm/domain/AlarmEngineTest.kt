@@ -80,6 +80,14 @@ class AlarmEngineTest {
     }
 
     @Test
+    fun `a snooze rings on the minute the screen announced`() = runBlocking {
+        val instance = stored(AlarmState.Ringing)
+        clock.time = NOW.plusSeconds(30)
+        engine.handle(instance.id, AlarmEvent.Snooze)
+        assertEquals(NOW.plus(Duration.ofMinutes(10)), alarms.find(instance.id)?.triggerAt)
+    }
+
+    @Test
     fun `a manual snooze moves the alarm, counts it and clears the automatic mark`() = runBlocking {
         val instance = stored(AlarmState.Ringing, autoSnoozed = true)
         engine.handle(instance.id, AlarmEvent.Snooze)

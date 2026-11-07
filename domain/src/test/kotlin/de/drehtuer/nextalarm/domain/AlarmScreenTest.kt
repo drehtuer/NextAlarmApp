@@ -64,10 +64,10 @@ class AlarmScreenTest {
     }
 
     @Test
-    fun `the time shows seconds only if they are not zero, and so does the time it rings again`() {
+    fun `the clock and the time it rings again are to the minute`() {
         val model = alarmScreenModel(now.plusSeconds(30), zone, listOf(ringing(1, "Flight")))
-        assertEquals("06:00:30", model.time)
-        assertEquals("Rings again at 06:10:30", model.ringsAgain)
+        assertEquals("06:00", model.time)
+        assertEquals("Rings again at 06:10", model.ringsAgain)
     }
 
     @Test

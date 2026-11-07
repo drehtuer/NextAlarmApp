@@ -84,7 +84,7 @@ Notes:
 |---------------|-------------------------------------------------|-------------------------------------------------------------------------------------------|
 | `Scheduled`   | Waiting for its trigger time.                   | Register with `AlarmManager.setAlarmClock()` at `triggerAt`.                              |
 | `Ringing`     | Sound/vibration active, alarm screen shown.     | Join `AlarmService` (start it if not running): add this alarm to the ringing alarms, post its notification, restart the shared ring timeout. If `lateBy > 1 min` and the alarm was not already ringing, post a "late alarm" notification. |
-| `Snoozed`     | Waiting for the snooze to end.                  | Leave `AlarmService` (it stops when no alarm rings), `snoozeCount += 1`, set `triggerAt` to now + `snoozeMinutes` and register the alarm there, show snooze notification. |
+| `Snoozed`     | Waiting for the snooze to end.                  | Leave `AlarmService` (it stops when no alarm rings), `snoozeCount += 1`, set `triggerAt` to the current minute + `snoozeMinutes`, so that it rings on the minute the screen announced, and register the alarm there, show snooze notification. |
 | `Announcing`  | Speaking the event title (TTS).                 | Leave `AlarmService`, cancel any snooze alarm, join `WakeUpService` with TTS.             |
 | `NewsPlaying` | Reading/playing the news.                       | Leave `AlarmService`, cancel any snooze alarm, start news playback in `WakeUpService`.    |
 | `Done`        | Finished normally. Terminal.                    | Leave all services, cancel `AlarmManager` alarm, remove notifications.                    |

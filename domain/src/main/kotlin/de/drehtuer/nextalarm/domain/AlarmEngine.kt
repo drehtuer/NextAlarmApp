@@ -1,6 +1,7 @@
 package de.drehtuer.nextalarm.domain
 
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 /** The parts of an alarm that need Android services and notifications. They run while the engine holds its lock. */
 interface AlarmEffects {
@@ -92,7 +93,7 @@ class AlarmEngine(
         is AlarmAction.SetAutoSnoozed -> instance.copy(autoSnoozed = action.value)
         AlarmAction.IncrementSnoozeCount -> instance.copy(snoozeCount = instance.snoozeCount + 1)
         is AlarmAction.RegisterSnoozeAlarm ->
-            instance.copy(triggerAt = now().plusSeconds(action.minutes * SECONDS_PER_MINUTE))
+            instance.copy(triggerAt = now().truncatedTo(ChronoUnit.MINUTES).plusSeconds(action.minutes * SECONDS_PER_MINUTE))
         else -> instance
     }
 
