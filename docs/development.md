@@ -112,3 +112,23 @@ silent, and rings the bundled sound at full level. See [When the database fails]
 `am instrument` force-stops the app first. That clears its registered alarms until the app next starts, when the
 recovery sweep registers them again, so open the app afterwards. Add `-e holdSeconds 15` to keep the alarm screen up for
 a screenshot.
+
+These fire with `sendBroadcast`. Two more tests go through the real `AlarmManager`, and are skipped unless an argument asks
+for them. The first leaves a silent alarm behind, and the process ends with the test, so the alarm fires later in a cold
+process. The second ends it:
+
+```bash
+# Rings silently in 5 minutes. The title of the alarm starts with "Device test".
+adb shell am instrument -w -e class de.drehtuer.nextalarm.SilentDeviceTest#silentAlarmThroughAlarmManager \
+    -e silentAlarmIn 300 de.drehtuer.nextalarm.test/androidx.test.runner.AndroidJUnitRunner
+
+# Dismisses every device test alarm, and deletes it.
+adb shell am instrument -w -e class de.drehtuer.nextalarm.SilentDeviceTest#endSilentAlarms \
+    -e endSilentAlarms true de.drehtuer.nextalarm.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+The alarm has volume 0, no vibration, no speech and no news, and the test fails rather than create one with anything else.
+It stays silent through its ring timeout and snooze. Android may clear the registration when the instrumentation ends and
+stops the app: if the alarm does not fire, that is the first thing to check (`adb shell dumpsys alarm`), rather than a fault
+in the alarm path. Opening the app registers it again, through the recovery sweep. The second command starts a process of
+its own, so it finds no sound to stop unless the sweep rang the alarm in it, and it goes by the stored state.

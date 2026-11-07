@@ -19,6 +19,7 @@ import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.parseFeed
 import de.drehtuer.nextalarm.domain.snapshotFor
 import de.drehtuer.nextalarm.planning.AlarmReceiver
+import de.drehtuer.nextalarm.planning.AppAlarmIntents
 import de.drehtuer.nextalarm.planning.AppNotifications
 import de.drehtuer.nextalarm.planning.alarmUri
 import de.drehtuer.nextalarm.ringing.AlarmActionReceiver
@@ -28,9 +29,11 @@ import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -40,6 +43,9 @@ import org.junit.runner.RunWith
  * real database and delete them, and they don't touch the settings or the planner.
  *
  * Set the argument `holdSeconds` to keep the alarm screen up for a screenshot.
+ *
+ * Two tests only run when asked for, and leave or end an alarm that goes through the real `AlarmManager`: see
+ * [silentAlarmThroughAlarmManager] and [endSilentAlarms].
  */
 @RunWith(AndroidJUnit4::class)
 class SilentDeviceTest {
@@ -153,6 +159,51 @@ class SilentDeviceTest {
         awaitState(second.id, AlarmState.Done)
     }
 
+    /**
+     * With `-e silentAlarmIn <seconds>`: leaves an alarm registered with the real `AlarmManager`. The test ends, and so does
+     * this process, so that the alarm fires later in a cold one. [endSilentAlarms] ends it. It is deliberately not in
+     * [created], which would delete it. It fails rather than leave an alarm that can make a sound.
+     */
+    @Test
+    fun silentAlarmThroughAlarmManager() {
+        val seconds = arguments.getString(ARGUMENT_ALARM_IN)
+        assumeTrue("Only with -e $ARGUMENT_ALARM_IN <seconds>", seconds != null)
+        val snapshot = silent.snapshotFor("$DEVICE_TEST_PREFIX through AlarmManager")
+        assertEquals("A device test alarm must be silent", 0f, snapshot.maxVolume!!, 0f)
+        assertFalse("A device test alarm must not vibrate", snapshot.vibrate)
+        assertFalse("A device test alarm must not speak", snapshot.speakReason)
+        assertNull("A device test alarm must not play news", snapshot.news)
+        val delay = seconds!!.toLong()
+        assertTrue("The alarm has to be in the future", delay > 0)
+        val at = Instant.now().plusSeconds(delay)
+        runBlocking {
+            val alarm = data.alarms.create(AlarmKey.forTestAlarm(at.toEpochMilli()), at, snapshot)
+            data.scheduler(AppAlarmIntents(context)).schedule(alarm.id, at)
+        }
+    }
+
+    /** With `-e endSilentAlarms true`: dismisses every device test alarm, whatever state it is in, and deletes it. */
+    @Test
+    fun endSilentAlarms() {
+        assumeTrue("Only with -e $ARGUMENT_END true", arguments.getString(ARGUMENT_END) == "true")
+        val scheduler = data.scheduler(AppAlarmIntents(context))
+        val alarms = runBlocking { data.alarms.all() }.filter { it.snapshot.reason.orEmpty().startsWith(DEVICE_TEST_PREFIX) }
+        alarms.forEach { alarm ->
+            scheduler.cancel(alarm.id)
+            if (alarm.state == AlarmState.Ringing || alarm.state == AlarmState.Snoozed) {
+                context.sendBroadcast(
+                    Intent(context, AlarmActionReceiver::class.java)
+                        .setAction(AlarmActionReceiver.ACTION_DISMISS)
+                        .setData(alarmUri(alarm.id)),
+                )
+                awaitState(alarm.id, AlarmState.Done)
+            }
+            runBlocking { data.alarms.delete(alarm.id) }
+        }
+        val left = runBlocking { data.alarms.all() }.filter { it.snapshot.reason.orEmpty().startsWith(DEVICE_TEST_PREFIX) }
+        assertTrue("Left behind: $left", left.isEmpty())
+    }
+
     /** Includes the phone's own default sound, if it is reachable: the alarm has to fall back if not. */
     @Test
     fun everySoundSourceCanBeOpenedAtVolumeZero() {
@@ -204,6 +255,11 @@ class SilentDeviceTest {
     }
 
     private companion object {
+        const val ARGUMENT_ALARM_IN = "silentAlarmIn"
+        const val ARGUMENT_END = "endSilentAlarms"
+
+        /** What the titles of the alarms of these tests start with, which is how they are found again. */
+        const val DEVICE_TEST_PREFIX = "Device test"
         const val WAIT_STEPS = 500
         const val POLL_MILLIS = 20L
         const val MILLIS_PER_SECOND = 1_000L
