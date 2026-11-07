@@ -53,7 +53,13 @@ private val NOW: Instant = Instant.parse("2026-11-06T19:00:00Z")
 private val CALENDAR = DeviceCalendar(CalendarId(1), "NextAlarm", "me", "bitfire.at.davdroid", null)
 
 private class FakeCalendars(var result: () -> List<DeviceCalendar> = { listOf(CALENDAR) }) : CalendarRepository {
-    override suspend fun calendars() = result()
+    var reads = 0
+
+    override suspend fun calendars(): List<DeviceCalendar> {
+        reads++
+        return result()
+    }
+
     override suspend fun events(calendar: CalendarId, from: Instant, to: Instant) = emptyList<CalendarEvent>()
 }
 
@@ -152,8 +158,14 @@ class AppViewModelTest {
     fun `a cancelled read does not count as an empty list`() {
         calendars.result = { throw CancellationException("gone") }
         viewModel.startWatching()
-        settle()
-        Thread.sleep(SETTLE_MILLIS)
+        runBlocking {
+            withTimeout(WAIT_MILLIS) {
+                while (calendars.reads == 0) {
+                    settle()
+                    Thread.sleep(POLL_MILLIS)
+                }
+            }
+        }
         settle()
         viewModel.stopWatching()
         assertFalse(viewModel.state.value.loaded)
@@ -213,7 +225,6 @@ class AppViewModelTest {
     private companion object {
         const val WAIT_MILLIS = 10_000L
         const val POLL_MILLIS = 10L
-        const val SETTLE_MILLIS = 200L
 
         val NO_INTENTS = object : AlarmIntents {
             override fun fire(instanceId: Long) = throw UnsupportedOperationException()
