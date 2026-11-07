@@ -19,6 +19,7 @@ import de.drehtuer.nextalarm.domain.AlarmVibration
 import de.drehtuer.nextalarm.domain.RingTimers
 import de.drehtuer.nextalarm.domain.RingWakeLock
 import de.drehtuer.nextalarm.domain.Settings
+import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.snapshotFor
 import java.time.Duration
@@ -83,9 +84,13 @@ class FakeScheduler : AlarmScheduler {
 class FakeSound : AlarmSound {
     var playing: SoundRef? = null
     var lastResort = false
+    var plays = 0
+    var gain: Float? = null
 
     override fun play(sound: SoundRef, gain: Float) {
         playing = sound
+        plays++
+        this.gain = gain
     }
 
     override fun playLastResort(gain: Float) {
@@ -142,6 +147,37 @@ fun fakeRingAudio(stream: AlarmStream = FakeAlarmStream(), saved: SavedAlarmVolu
     CallWatch(NoCalls) { _, _ -> },
     { _, _ -> },
 )
+
+/** Calls that a test can start and end. */
+class SwitchableCalls(var isActive: Boolean = false) : PhoneCalls {
+    private val watching = mutableListOf<(Boolean) -> Unit>()
+
+    override fun active() = isActive
+
+    override fun watch(onChange: (Boolean) -> Unit): () -> Unit {
+        watching += onChange
+        return { watching -= onChange }
+    }
+
+    fun change(active: Boolean) {
+        isActive = active
+        watching.toList().forEach { it(active) }
+    }
+}
+
+/** The preview of screen 5, with nothing of the phone. [sound] says what it plays. */
+class PreviewParts(alarmRinging: () -> Boolean = { false }) {
+    val sound = FakeSound()
+    val calls = SwitchableCalls()
+    val preview = SoundPreview(
+        newSound = { sound },
+        focus = AudioFocusHold(FakeNoFocus) { _, _ -> },
+        calls = CallWatch(calls) { _, _ -> },
+        timers = FakeTimers(),
+        alarmRinging = alarmRinging,
+        onProblem = { _, _ -> },
+    )
+}
 
 class FakeVibration : AlarmVibration {
     override fun start() = Unit

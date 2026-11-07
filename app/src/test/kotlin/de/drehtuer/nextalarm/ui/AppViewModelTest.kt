@@ -23,10 +23,13 @@ import de.drehtuer.nextalarm.domain.PhoneSoundPick
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.PlanningRun
 import de.drehtuer.nextalarm.domain.SettingsRepository
+import de.drehtuer.nextalarm.domain.SoundPreviewStatus
 import de.drehtuer.nextalarm.domain.SoundRef
+import de.drehtuer.nextalarm.domain.soundPreviewLine
 import de.drehtuer.nextalarm.domain.SoundRejection
 import de.drehtuer.nextalarm.domain.TEST_ALARM_DELAY
 import de.drehtuer.nextalarm.ringing.FakeScheduler
+import de.drehtuer.nextalarm.ringing.PreviewParts
 import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmInstance
@@ -104,6 +107,13 @@ private object NoAlarmEffects : AlarmEffects {
     override fun showNextAlarm(alarm: AlarmInstance?) = Unit
 }
 
+/** Holds back what is read while [gate] is set, until the test completes it. */
+private class GatedSettings(private val real: SettingsRepository) : SettingsRepository by real {
+    var gate: kotlinx.coroutines.CompletableDeferred<Settings>? = null
+
+    override suspend fun load(): Settings = gate?.await() ?: real.load()
+}
+
 private object OpenLock : EngineLock {
     override suspend fun <T> withLock(block: suspend () -> T): T = block()
 }
@@ -127,9 +137,12 @@ class AppViewModelTest {
     private var fullScreen = true
     private var notificationsOn = true
     private val news = NewsParts { NOW }
+    private var alarmRinging = false
+    private val preview = PreviewParts { alarmRinging }
+    private val settings = GatedSettings(data.settings)
     private val viewModel = AppViewModel(
         AppPorts(
-            settings = data.settings,
+            settings = settings,
             planner = data.planner,
             alarms = data.alarms,
             calendars = calendars,
@@ -138,6 +151,7 @@ class AppViewModelTest {
             planningChanges = changes,
             phone = PhonePorts(audio, sounds, logs, { notificationsOn }) { fullScreen },
             news = news.ports,
+            preview = preview.preview,
             io = Dispatchers.Unconfined,
             now = { NOW },
             zone = { ZoneId.of("Europe/Berlin") },
@@ -551,6 +565,88 @@ class AppViewModelTest {
     }
 
     @Test
+    fun `the preview plays the stored sound at full gain, and stops at a second tap`() = runBlocking {
+        val file = SoundRef.File("sound-1-morning.mp3")
+        data.settings.save(Settings.DEFAULT.copy(sound = file, volumeRampSeconds = 60, maxVolume = 0.3f))
+        viewModel.toggleSoundPreview()
+        val playing = awaitState { it.alarmSettings.previewing && preview.sound.playing != null }
+        assertEquals(file, preview.sound.playing)
+        assertEquals(1f, preview.sound.gain)
+        assertEquals(soundPreviewLine(SoundPreviewStatus.PLAYING), playing.alarmSettings.previewLine)
+        viewModel.toggleSoundPreview()
+        val stopped = awaitState { !it.alarmSettings.previewing }
+        assertNull(stopped.alarmSettings.previewLine)
+        assertNull(preview.sound.playing)
+    }
+
+    @Test
+    fun `the preview keeps its state through a refresh`() {
+        viewModel.toggleSoundPreview()
+        awaitState { preview.sound.playing != null }
+        assertTrue(load().alarmSettings.previewing)
+    }
+
+    @Test
+    fun `a preview that ends on its own shows that it ended`() {
+        viewModel.toggleSoundPreview()
+        awaitState { preview.sound.playing != null }
+        preview.calls.change(true)
+        awaitState { !it.alarmSettings.previewing }
+        assertNull(preview.sound.playing)
+    }
+
+    @Test
+    fun `a preview that can't start says why`() {
+        preview.calls.isActive = true
+        viewModel.toggleSoundPreview()
+        val inCall = awaitState { it.alarmSettings.previewLine == soundPreviewLine(SoundPreviewStatus.IN_CALL) }
+        assertFalse(inCall.alarmSettings.previewing)
+        preview.calls.isActive = false
+        alarmRinging = true
+        viewModel.toggleSoundPreview()
+        awaitState { it.alarmSettings.previewLine == soundPreviewLine(SoundPreviewStatus.ALARM_RINGING) }
+        assertEquals(0, preview.sound.plays)
+        viewModel.stopSoundPreview()
+        awaitState { it.alarmSettings.previewLine == null }
+    }
+
+    @Test
+    fun `a preview stopped before its sound is read never plays`() {
+        val gate = kotlinx.coroutines.CompletableDeferred<Settings>()
+        settings.gate = gate
+        viewModel.toggleSoundPreview()
+        assertTrue(viewModel.state.value.alarmSettings.previewing)
+        viewModel.stopSoundPreview()
+        assertFalse(viewModel.state.value.alarmSettings.previewing)
+        gate.complete(Settings.DEFAULT)
+        settle()
+        assertEquals(0, preview.sound.plays)
+        assertFalse(viewModel.state.value.alarmSettings.previewing)
+    }
+
+    @Test
+    fun `the end of an earlier preview doesn't end the next one`() {
+        viewModel.toggleSoundPreview()
+        awaitState { preview.sound.plays == 1 }
+        // Stopped from outside, as an alarm does, and played again before the end is told.
+        viewModel.stopSoundPreview()
+        viewModel.toggleSoundPreview()
+        awaitState { preview.sound.plays == 2 && it.alarmSettings.previewing }
+        preview.preview.stop()
+        awaitState { !it.alarmSettings.previewing }
+    }
+
+    @Test
+    fun `choosing another sound stops the preview`() = runBlocking {
+        data.settings.save(Settings.DEFAULT.copy(sound = SoundRef.File("old")))
+        viewModel.toggleSoundPreview()
+        awaitState { preview.sound.playing != null }
+        viewModel.useDefaultSound()
+        awaitState { !it.alarmSettings.previewing && !it.alarmSettings.usesFile }
+        assertNull(preview.sound.playing)
+    }
+
+    @Test
     fun `a test plays, and stops at stop`() {
         viewModel.setNewsAddress(FEED_ADDRESS)
         viewModel.toggleNewsTest()
@@ -849,7 +945,9 @@ class AppPlannerEffectsTest {
         val data = PlanningModule.dataComponents(context)
         val engine = PlanningModule.plannerEngine(context, data, PlanningModule.planningWork(context), AlarmEngine(data.alarms, data.scheduler(de.drehtuer.nextalarm.planning.AppAlarmIntents(context)), NoAlarmEffects, { NOW }, OpenLock))
         val alarmEngine = AlarmEngine(data.alarms, FakeScheduler(), NoAlarmEffects, { NOW }, OpenLock)
-        val ports = PlanningModule.appPorts(context, data, engine, alarmEngine)
+        val preview = PreviewParts().preview
+        val ports = PlanningModule.appPorts(context, data, engine, alarmEngine, preview)
+        assertEquals(preview, ports.preview)
         assertEquals(alarmEngine, ports.alarmEngine)
         assertEquals(data.sounds, ports.phone.sounds)
         assertEquals(data.feeds, ports.news.feeds)

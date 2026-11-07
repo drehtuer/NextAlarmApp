@@ -29,6 +29,8 @@ import de.drehtuer.nextalarm.domain.NewsSource
 import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.domain.PlanEntry
 import de.drehtuer.nextalarm.domain.Settings
+import de.drehtuer.nextalarm.domain.SoundPreviewStatus
+import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.WakeUpStatus
 import de.drehtuer.nextalarm.domain.snapshotFor
 import de.drehtuer.nextalarm.planning.AlarmReceiver
@@ -155,7 +157,7 @@ class AlarmPathTest {
         }
         parts.foreground.attach(host)
         assertEquals(AlarmNotifications.PLACEHOLDER_ID, host.shown)
-        AlarmModule.broadcasts(alarmScope(Dispatchers.Unconfined), engine, parts.foreground, parts.ringer).sweep()
+        AlarmModule.broadcasts(alarmScope(Dispatchers.Unconfined), engine, parts.foreground, parts.ringer, parts.preview).sweep()
         awaitUntil { host.shown == AlarmNotifications.ringingId(alarm.id) }
         assertEquals(false, host.finished)
         assertNull(shadowOf(real as Application).nextStartedService)
@@ -330,6 +332,26 @@ class AlarmPathTest {
     }
 
     @Test
+    fun `the sound of screen 5 goes the way of an alarm's, and ends when none of its sources plays`() {
+        // Robolectric's player can play none of them.
+        var stopped = 0
+        assertEquals(SoundPreviewStatus.PLAYING, parts.preview.play(SoundRef.SystemDefault) { stopped++ })
+        awaitUntil { stopped == 1 }
+        assertTrue(ShadowLog.getLogsForTag("NextAlarm").any { it.msg == "None of the alarm sounds could be played for the preview" })
+    }
+
+    @Test
+    fun `an alarm that rings stops the sound of screen 5, which can't start again while it rings`(): Unit = runBlocking {
+        var stopped = 0
+        assertEquals(SoundPreviewStatus.PLAYING, parts.preview.play(SoundRef.SystemDefault) { stopped++ })
+        engine.fire(created(Instant.now()).id)
+        awaitUntil { stopped == 1 }
+        assertEquals(SoundPreviewStatus.ALARM_RINGING, parts.preview.play(SoundRef.SystemDefault) {})
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        assertTrue(parts.ringer.ringing().isEmpty())
+    }
+
+    @Test
     fun `the module uses a background thread`() {
         assertEquals(Dispatchers.Default, AlarmModule.dispatcher())
     }
@@ -351,7 +373,8 @@ private class AlarmPathParts(private val context: Context, private val data: Dat
     val wakeUpForeground = AlarmModule.wakeUpForeground(context, wakeUpNotifications, wakeUpMedia, wakeUpGate)
     val wakeUpChanges = AlarmModule.wakeUpChanges()
     val director = AlarmModule.wakeUpDirector(context, data, wakeUpForeground, wakeUpGate, wakeUpFocus, wakeUpChanges, scope, lazyEngine)
-    private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(director))
+    val preview = AlarmModule.soundPreview(context, data, AlarmModule.soundWorker(scope), Lazy { ringer })
+    private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(director), preview)
     val engine: AlarmEngine = AlarmModule.engine(context, data, effects)
     private val controllerData = data
 

@@ -14,6 +14,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import de.drehtuer.nextalarm.domain.SoundPreviewStatus
+import de.drehtuer.nextalarm.domain.withPreview
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -466,6 +468,32 @@ class NextAlarmAppTest {
     }
 
     @Test
+    fun `leaving screen 5, back or forward, stops its sound`() {
+        show(ready)
+        openFromSettings("Alarm settings")
+        rule.waitForIdle()
+        actions.previewLifecycle.clear()
+        rule.onNodeWithText("News").performScrollTo().performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("stopPreview"), actions.previewLifecycle)
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.waitForIdle()
+        actions.previewLifecycle.clear()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Alarm calendars").assertIsDisplayed()
+        assertEquals(listOf("stopPreview"), actions.previewLifecycle)
+    }
+
+    @Test
+    fun `screen 5 reaches the preview of its sound`() {
+        show(ready)
+        openFromSettings("Alarm settings")
+        rule.onNodeWithContentDescription("Play the alarm sound").performClick()
+        assertEquals(listOf("preview"), actions.calls)
+    }
+
+    @Test
     fun `a notification that opens another screen closes screen 6 too`() {
         show(ready)
         openNews()
@@ -789,11 +817,41 @@ class NewsLifecycleTest {
     }
 
     @Test
+    fun `hiding screen 5 stops its sound, also after the screen has changed`() {
+        var state by mutableStateOf(AppState(loaded = true, setupDone = true))
+        rule.setContent { NextAlarmTheme(dark = false) { NextAlarmApp(state, 0, { _, _ -> }, {}, actions) } }
+        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithText("Alarm settings").performClick()
+        rule.waitForIdle()
+        state = state.copy(alarmSettings = state.alarmSettings.withPreview(SoundPreviewStatus.PLAYING))
+        rule.onNodeWithContentDescription("Stop the alarm sound").assertIsDisplayed()
+        actions.previewLifecycle.clear()
+        hide()
+        assertEquals(listOf("stopPreview"), actions.previewLifecycle)
+    }
+
+    @Test
+    fun `hiding screen 6 stops a test, also after the screen has changed`() {
+        var state by mutableStateOf(AppState(loaded = true, setupDone = true))
+        rule.setContent { NextAlarmTheme(dark = false) { NextAlarmApp(state, 0, { _, _ -> }, {}, actions) } }
+        rule.onNodeWithContentDescription("Settings").performClick()
+        rule.onNodeWithText("Alarm settings").performClick()
+        rule.onNodeWithText("News").performScrollTo().performClick()
+        rule.waitForIdle()
+        state = state.copy(diagnosticsSummary = "changed")
+        rule.waitForIdle()
+        hide()
+        assertTrue("stopTest" in actions.newsLifecycle)
+    }
+
+    @Test
     fun `hiding another screen has no test to stop`() {
         show(AppState(loaded = true, setupDone = true))
         rule.waitForIdle()
+        actions.previewLifecycle.clear()
         hide()
         assertTrue("stopTest" !in actions.newsLifecycle)
+        assertTrue(actions.previewLifecycle.isEmpty())
     }
 }
 

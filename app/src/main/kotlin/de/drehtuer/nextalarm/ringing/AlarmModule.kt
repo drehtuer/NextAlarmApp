@@ -21,6 +21,7 @@ import de.drehtuer.nextalarm.domain.ForegroundGate
 import de.drehtuer.nextalarm.domain.GatedPodcast
 import de.drehtuer.nextalarm.domain.GatedSpeech
 import de.drehtuer.nextalarm.domain.RingAudio
+import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.SoundWorker
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
 import de.drehtuer.nextalarm.domain.WakeUpDirector
@@ -134,6 +135,34 @@ object AlarmModule {
         onForegroundLate = { Log.w(TAG, "The alarm service did not come up in time: the sound starts without it") },
     )
 
+    /**
+     * The sound on screen 5: the alarm's sources and player, with focus of its own. Only ever plays while that screen is
+     * visible, which lets Android play it without a service. An alarm that rings stops it: see `AppAlarmEffects`.
+     */
+    @Provides
+    @Singleton
+    fun soundPreview(@ApplicationContext context: Context, data: DataComponents, worker: SoundWorker, ringer: Lazy<AlarmRinger>) =
+        SoundPreview(
+            newSound = { onExhausted ->
+                FallbackSound(
+                    data.sounds::sources,
+                    data.sounds.bundled,
+                    MediaPlayerOutput(context),
+                    worker,
+                    HandlerRingTimers(),
+                    onExhausted = {
+                        Log.e(TAG, "None of the alarm sounds could be played for the preview")
+                        onExhausted()
+                    },
+                )
+            },
+            focus = AudioFocusHold(alarmAudioFocus(context), ::logAudioProblem),
+            calls = CallWatch(AndroidPhoneCalls(context), ::logAudioProblem),
+            timers = HandlerRingTimers(),
+            alarmRinging = { ringer.get().ringing().isNotEmpty() },
+            onProblem = ::logAudioProblem,
+        )
+
     @Provides
     @Singleton
     fun wakeUpNotifications(@ApplicationContext context: Context) = WakeUpNotifications(context)
@@ -206,7 +235,8 @@ object AlarmModule {
         ringer: AlarmRinger,
         notifications: AlarmNotifications,
         wakeUp: WakeUpAutomation,
-    ): AlarmEffects = AppAlarmEffects(ringer, notifications, AppNotifications(context), wakeUp)
+        preview: SoundPreview,
+    ): AlarmEffects = AppAlarmEffects(ringer, notifications, AppNotifications(context), wakeUp, preview)
 
     @Provides
     @Singleton
@@ -220,8 +250,13 @@ object AlarmModule {
 
     @Provides
     @Singleton
-    fun broadcasts(scope: CoroutineScope, engine: AlarmEngine, foreground: AlarmForeground, ringer: AlarmRinger) =
-        AlarmBroadcasts(scope, engine, foreground, ringer)
+    fun broadcasts(
+        scope: CoroutineScope,
+        engine: AlarmEngine,
+        foreground: AlarmForeground,
+        ringer: AlarmRinger,
+        preview: SoundPreview,
+    ) = AlarmBroadcasts(scope, engine, foreground, ringer, preview)
 
     /** A new one per screen. */
     @Provides

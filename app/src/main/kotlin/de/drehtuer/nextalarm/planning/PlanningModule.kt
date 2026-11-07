@@ -19,6 +19,7 @@ import de.drehtuer.nextalarm.domain.AudioFocusHold
 import de.drehtuer.nextalarm.domain.CallWatch
 import de.drehtuer.nextalarm.domain.NewsTestPlayer
 import de.drehtuer.nextalarm.domain.PlannerEngine
+import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.ringing.AndroidPhoneCalls
 import de.drehtuer.nextalarm.ringing.AndroidRingWakeLock
 import de.drehtuer.nextalarm.ringing.HandlerRingTimers
@@ -107,6 +108,7 @@ object PlanningModule {
         data: DataComponents,
         engine: PlannerEngine,
         alarmEngine: AlarmEngine,
+        preview: SoundPreview,
     ) = AppPorts(
         settings = data.settings,
         planner = data.planner,
@@ -134,6 +136,7 @@ object PlanningModule {
                 now = Instant::now,
             ),
         ),
+        preview = preview,
         io = Dispatchers.IO,
     )
 }

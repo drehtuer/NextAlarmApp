@@ -8,6 +8,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmEvent
 import de.drehtuer.nextalarm.domain.AlarmRinger
+import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.emergencyAlarm
 import de.drehtuer.nextalarm.planning.alarmInstanceId
 import java.time.Duration
@@ -27,6 +28,8 @@ class AlarmBroadcasts(
     private val engine: AlarmEngine,
     private val foreground: AlarmForeground,
     private val ringer: AlarmRinger,
+    /** An emergency alarm stops it, as `AppAlarmEffects` does for any other. */
+    private val preview: SoundPreview,
     private val now: () -> Instant = Instant::now,
     private val fireLimit: Duration = Duration.ofSeconds(10),
 ) {
@@ -50,7 +53,10 @@ class AlarmBroadcasts(
     /** If the failure came after the alarm joined the ringing, as it can, then nothing more is needed. */
     private fun ringAnyway(id: Long, failure: Exception) {
         Log.e(TAG, "Alarm $id could not be fired the normal way", failure)
-        if (ringer.ringing().none { it.id == id }) ringer.join(emergencyAlarm(id, now()))
+        if (ringer.ringing().none { it.id == id }) {
+            ringer.join(emergencyAlarm(id, now()))
+            preview.stop()
+        }
     }
 
     /** The user tapped an action of an alarm notification. */

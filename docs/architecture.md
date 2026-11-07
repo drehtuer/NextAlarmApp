@@ -435,6 +435,35 @@ An internet call can take the focus for good. If a call is active when that happ
 just before the mode changes, the automation ends. A test on the news screen ended by a call or by other audio before anything
 was heard is no failure of the feed, so it ends without a banner.
 
+### Hearing the sound on screen 5
+
+The play button of the "Alarm sound" row plays the selected sound, so that what is heard is what will ring.
+`SoundPreview` (`domain`) does this with parts of its own, built in `AlarmModule`:
+
+- **The same way as an alarm:** a `FallbackSound` of its own, with `SoundStore.sources`, the bundled sound as the last
+  resort, `MediaPlayerOutput` (`USAGE_ALARM`) and the `SoundWorker`. So it tries the same sources in the same order, with
+  the same 5 second limit per source, and moves on to the next one in the same way: a copy that can't be played is heard
+  as the phone's default, and that as the bundled sound. The sound that is played is read from the stored settings when
+  the button is tapped. If none of them plays, this is logged and the preview ends.
+- **Volume:** the player's gain is 1 and there is no ramp. The preview never changes `STREAM_ALARM` (no
+  `AlarmVolumeKeeper`), so it plays at the phone's alarm volume as it is, and the maximum volume doesn't apply. The screen
+  says so while it plays.
+- **Audio focus:** it takes the focus for a moment, like an alarm (`USAGE_ALARM`, `AUDIOFOCUS_GAIN_TRANSIENT`, a request of
+  its own), and gives it up when it stops. Other audio that takes the focus for good stops it.
+- **Calls:** `CallWatch`, as for an alarm. During a call it doesn't start, and the screen says why. A call that starts
+  stops it.
+- **It stops** at Stop, after 10 seconds (`SOUND_PREVIEW_LIMIT`), when another sound is chosen or the file is given up
+  (`AppViewModel.replaceSound`), when the screen is left (`NextAlarmApp`, whichever way), and at `ON_STOP`, which comes when
+  the app is hidden, when the screen is covered by the alarm screen and while the activity is rebuilt after a rotation, as
+  for the test on the news screen. A preview that is stopped before the stored sound has been read doesn't start.
+- **It never plays with an alarm.** It doesn't start while `AlarmRinger` has any alarm, and an alarm that joins the ringing
+  stops it, from `AppAlarmEffects` (`JoinAlarmService`) or `AlarmBroadcasts` (an emergency alarm), right after `join`. With
+  that order there is no moment in which both can sound: a preview that starts before the join is stopped by it, one that
+  starts after it sees the ringing alarm. The stop is called outside `AlarmRinger`'s lock, as the preview asks the ringer
+  for its alarms while it holds its own. The alarm's sound only starts when its service is up, which is later still.
+- **Background audio:** it only plays while screen 5 can be seen, so the visible activity lets Android play it without a
+  service.
+
 ### Wake-up automation and the lock screen
 
 The wake-up automation (speak the title, then the news) starts when the alarm is dismissed, not when the phone is

@@ -25,6 +25,8 @@ import de.drehtuer.nextalarm.domain.PlannerRepository
 import de.drehtuer.nextalarm.domain.PlannerState
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.SettingsRepository
+import de.drehtuer.nextalarm.domain.SoundPreview
+import de.drehtuer.nextalarm.domain.SoundPreviewStatus
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.TEST_ALARM_DELAY
 import de.drehtuer.nextalarm.domain.buildAlarmSettings
@@ -39,9 +41,11 @@ import de.drehtuer.nextalarm.domain.diagnosticsSummary
 import de.drehtuer.nextalarm.domain.soundRejectionText
 import de.drehtuer.nextalarm.domain.testAlarmEntry
 import de.drehtuer.nextalarm.domain.withAlarmCalendar
+import de.drehtuer.nextalarm.domain.withPreview
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -70,6 +74,8 @@ class AppPorts(
     val planningChanges: Flow<*>,
     val phone: PhonePorts,
     val news: NewsPorts,
+    /** Plays the alarm sound on screen 5. */
+    val preview: SoundPreview,
     /** For the calls below that would block the screen. */
     val io: CoroutineDispatcher,
     val now: () -> Instant = Instant::now,
@@ -120,6 +126,12 @@ interface AlarmSettingsActions {
     fun setRingFor(minutes: Int)
     fun setSnoozeLength(minutes: Int)
     fun setSpeakTitle(speak: Boolean)
+
+    /** Plays the selected sound, or stops it if it plays. */
+    fun toggleSoundPreview()
+
+    /** Also when the screen is left or hidden. Does nothing if nothing plays. */
+    fun stopSoundPreview()
 }
 
 /** What screen 7 can ask for. */
@@ -157,6 +169,13 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
 
     /** Why the last picked file was not taken. It stays until the user picks again or gives up on the file. */
     private var soundRejection: String? = null
+
+    /** What the preview of the sound does, which a refresh keeps. Its end can be told on any thread. */
+    @Volatile
+    private var preview = SoundPreviewStatus.IDLE
+
+    /** Told apart from each other, because the end of an earlier preview, or the sound it waits for, can still arrive. */
+    private val previewRun = AtomicInteger()
 
     private val news = NewsController(
         viewModelScope,
@@ -207,7 +226,7 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
                 home = buildHome(now, zone, alarms, record, chosen, notificationsAllowed),
                 calendars = calendars,
                 selectedCalendars = selected,
-                alarmSettings = buildAlarmSettings(settings, soundName, volume, soundRejection),
+                alarmSettings = buildAlarmSettings(settings, soundName, volume, soundRejection, preview),
                 diagnosticsSummary = diagnosticsSummary(record, zone),
                 diagnostics = buildDiagnostics(
                     record,
@@ -270,6 +289,37 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
 
     override fun setSpeakTitle(speak: Boolean) = changeSettings { it.copy(speakReason = speak) }
 
+    /** The sound is read from what is stored, as a sound that was just picked may not be on the screen yet. */
+    override fun toggleSoundPreview() {
+        if (preview == SoundPreviewStatus.PLAYING) {
+            stopSoundPreview()
+            return
+        }
+        val run = previewRun.incrementAndGet()
+        showPreview(SoundPreviewStatus.PLAYING)
+        viewModelScope.launch {
+            val sound = ports.settings.load().sound
+            if (run != previewRun.get()) return@launch
+            val status = ports.preview.play(sound) { previewEnded(run) }
+            if (status != SoundPreviewStatus.PLAYING) showPreview(status)
+        }
+    }
+
+    override fun stopSoundPreview() {
+        previewRun.incrementAndGet()
+        ports.preview.stop()
+        showPreview(SoundPreviewStatus.IDLE)
+    }
+
+    private fun previewEnded(run: Int) {
+        if (run == previewRun.get()) showPreview(SoundPreviewStatus.IDLE)
+    }
+
+    private fun showPreview(status: SoundPreviewStatus) {
+        preview = status
+        mutableState.update { it.copy(alarmSettings = it.alarmSettings.withPreview(status)) }
+    }
+
     override fun openNews() = news.open()
 
     override fun closeNews() = news.close()
@@ -317,6 +367,8 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
 
     /** The settings are saved first, so that they never name a copy that has been deleted. */
     private suspend fun replaceSound(sound: SoundRef) {
+        // What plays would no longer be the sound that is selected.
+        stopSoundPreview()
         soundRejection = null
         val old = settingsLock.withLock {
             val current = ports.settings.load()

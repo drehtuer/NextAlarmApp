@@ -256,9 +256,15 @@ Below the rows come a divider and a section headed "About". It is always present
   sound settings, or set a maximum volume below." A maximum volume sets the phone's alarm volume while an alarm rings,
   so it can make an alarm louder.
 - **Section "Sound":**
-  - "Alarm sound": "Phone default (<sound name>)", the phone sound's name or the file name. Below it, two outlined
+  - "Alarm sound": "Phone default (<sound name>)", the phone sound's name or the file name, with a play icon button at
+    the end of the row (content description "Play the alarm sound", `primary` tint), which becomes a stop icon button
+    ("Stop the alarm sound") while the sound plays. Below it, two outlined
     buttons: "Phone sounds" opens Android's own picker of alarm sounds (titled "Alarm sound"), and "Choose file" opens
     the file picker. When a file or a phone sound is set, a text button "Use the phone's default sound" appears below.
+  - While the sound plays, a line in `onSurfaceVariant` (`bodyMedium`) below the two buttons says: "Playing at the
+    phone's alarm volume, without the ramp or the maximum volume. Stops after 10 s." If it can't start, the line says
+    why instead: "The sound can't play during a call." or "The sound can't play while an alarm rings." The button then
+    still plays, and the line goes when the sound is played again or the screen is left.
   - When a file or a phone sound is rejected, a line in `error` with an error icon appears below the sound row. Phone
     sounds use the same messages, with the sound's name in place of the file name:
     - Unsupported type: "“Notes.pdf” isn't a sound file. Choose an MP3, WAV, OGG or M4A file."
@@ -295,6 +301,15 @@ Details decided while building this screen:
   sounds and a "Default" entry, and no "None", as an alarm must not be silent. While the phone's default is the sound,
   "Default" is marked. Choosing "Default" is the same as "Use the phone's default sound". Leaving the picker changes
   nothing, and a rejection that is shown stays.
+- The play button is an icon button, not a labelled one: a third labelled button beside "Phone sounds" and "Choose file"
+  would not fit 411 dp at a larger font size, and the end of the name's row is where the other rows have their value.
+  The name keeps the rest of the row and wraps beside the 48 dp button.
+- The sound plays the way an alarm plays it: the same sources in the same order, with the same fallback to the next one
+  (see [Hearing the sound on screen 5](architecture.md#hearing-the-sound-on-screen-5)). It plays at the phone's alarm
+  volume as it is, never changes that volume, and leaves out the ramp and the maximum volume, which the line says, as
+  the maximum volume can make an alarm louder than what is heard here. It stops at Stop, after 10 seconds, when a call
+  starts, when another sound is chosen or the file is given up, when the screen is left or hidden (also by a ringing
+  alarm, or while it is rebuilt after a rotation), and when an alarm starts to ring.
 - A phone sound is named by its title in the media store ("Oxygen"), or else the way a file is. It is kept like a
   picked file, and from then on shown like one: the row doesn't say that it came with the phone.
 - The "News" row names the feed's host name, without "www.", for both kinds. A feed's own title ("Der Tag") isn't stored.

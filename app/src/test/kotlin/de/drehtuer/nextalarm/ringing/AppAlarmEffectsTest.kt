@@ -9,6 +9,8 @@ import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.domain.AlarmState
 import de.drehtuer.nextalarm.domain.Settings
+import de.drehtuer.nextalarm.domain.SoundPreviewStatus
+import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
 import de.drehtuer.nextalarm.domain.snapshotFor
 import de.drehtuer.nextalarm.planning.AppNotifications
@@ -44,7 +46,8 @@ class AppAlarmEffectsTest {
             started += "leave:$instanceId"
         }
     }
-    private val effects = AppAlarmEffects(ringer, notifications, AppNotifications(context), wakeUp)
+    private val preview = PreviewParts { ringer.ringing().isNotEmpty() }
+    private val effects = AppAlarmEffects(ringer, notifications, AppNotifications(context), wakeUp, preview.preview)
 
     private fun posted(id: Int) = shadowOf(manager).getNotification(id)
 
@@ -54,6 +57,15 @@ class AppAlarmEffectsTest {
         effects.perform(alarm(id = 1), AlarmAction.JoinAlarmService)
         assertEquals(listOf(1L), ringer.ringing().map { it.id })
         assertNull(posted(AlarmNotifications.snoozedId(1)))
+    }
+
+    @Test
+    fun `an alarm that starts to ring stops the sound of screen 5`() {
+        preview.preview.play(SoundRef.SystemDefault) {}
+        assertEquals(SoundRef.SystemDefault, preview.sound.playing)
+        effects.perform(alarm(id = 1), AlarmAction.JoinAlarmService)
+        assertNull(preview.sound.playing)
+        assertEquals(SoundPreviewStatus.ALARM_RINGING, preview.preview.play(SoundRef.SystemDefault) {})
     }
 
     @Test

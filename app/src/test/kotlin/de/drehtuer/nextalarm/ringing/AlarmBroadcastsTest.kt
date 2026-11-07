@@ -57,7 +57,8 @@ class AlarmBroadcastsTest {
     private val savedVolume = FakeSavedVolume()
     private val ringer =
         AlarmRinger(sound, FakeVibration(), FakeTimers(), FakeWakeLock(), fakeRingAudio(stream, savedVolume), {}, { foreground.ringingChanged(it) })
-    private val broadcasts = AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), engine, foreground, ringer, { AT })
+    private val preview = PreviewParts()
+    private val broadcasts = AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), engine, foreground, ringer, preview.preview, { AT })
 
     /** The real effects where they matter here. */
     private val ringingEffects = object : AlarmEffects {
@@ -74,7 +75,7 @@ class AlarmBroadcastsTest {
     }
     private val ringingEngine = AlarmEngine(alarms, scheduler, ringingEffects, { AT }, MutexEngineLock())
     private val ringingBroadcasts =
-        AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), ringingEngine, foreground, ringer, { AT })
+        AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), ringingEngine, foreground, ringer, preview.preview, { AT })
     private var finished = 0
 
     private fun state(id: Long) = alarms.stored[id]?.state
@@ -217,6 +218,14 @@ class AlarmBroadcastsTest {
     }
 
     @Test
+    fun `an alarm that cannot be read stops the sound of screen 5`() {
+        preview.preview.play(de.drehtuer.nextalarm.domain.SoundRef.SystemDefault) {}
+        alarms.failure = IllegalStateException("storage failed")
+        ringingBroadcasts.fired(Intent().setData(alarmUri(1))) {}
+        assertEquals(null, preview.sound.playing)
+    }
+
+    @Test
     fun `an alarm that cannot be read joins another that rings`() {
         alarms.failure = IllegalStateException("storage failed")
         ringer.join(alarm(id = 9))
@@ -275,6 +284,7 @@ class AlarmBroadcastsTest {
             engine,
             foreground,
             ringer,
+            preview.preview,
             { AT },
             Duration.ofMillis(50),
         )
@@ -289,7 +299,7 @@ class AlarmBroadcastsTest {
             override suspend fun find(id: Long): AlarmInstance? = throw kotlin.coroutines.cancellation.CancellationException("cancelled")
         }
         val engine = AlarmEngine(cancelling, scheduler, ringingEffects, { AT }, MutexEngineLock())
-        val plain = AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), engine, foreground, ringer, { AT })
+        val plain = AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), engine, foreground, ringer, preview.preview, { AT })
         plain.fired(Intent().setData(alarmUri(1))) { finished++ }
         assertEquals(1, finished)
         assertEquals(true, ringer.ringing().isEmpty())

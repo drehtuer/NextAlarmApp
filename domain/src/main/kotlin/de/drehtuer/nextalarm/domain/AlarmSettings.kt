@@ -46,6 +46,10 @@ data class AlarmSettingsModel(
     val snoozeLength: ValuePicker<Int>,
     val speakTitle: Boolean,
     val news: String,
+    /** True while the sound plays on the screen, which turns its Play button into Stop. */
+    val previewing: Boolean,
+    /** The line below the sound's buttons: how the sound plays, or why it didn't. */
+    val previewLine: String?,
 )
 
 private const val LOW_ALARM_VOLUME_STEPS = 2
@@ -82,6 +86,23 @@ fun soundRejectionText(reason: SoundRejection, fileName: String): String = when 
 
 /** The button of the "Alarm sound" row that opens the phone's own picker of alarm sounds. */
 const val PHONE_SOUNDS_BUTTON = "Phone sounds"
+
+/** The content descriptions of the "Alarm sound" row's button. */
+const val PLAY_SOUND_DESCRIPTION = "Play the alarm sound"
+const val STOP_SOUND_DESCRIPTION = "Stop the alarm sound"
+
+/** What screen 5 says about the preview of the sound. The maximum volume is named, as it can make an alarm louder. */
+fun soundPreviewLine(status: SoundPreviewStatus): String? = when (status) {
+    SoundPreviewStatus.IDLE -> null
+    SoundPreviewStatus.PLAYING ->
+        "Playing at the phone's alarm volume, without the ramp or the maximum volume. Stops after ${SOUND_PREVIEW_LIMIT.seconds} s."
+    SoundPreviewStatus.IN_CALL -> "The sound can't play during a call."
+    SoundPreviewStatus.ALARM_RINGING -> "The sound can't play while an alarm rings."
+}
+
+/** Screen 5 with the preview of the sound at [status]. */
+fun AlarmSettingsModel.withPreview(status: SoundPreviewStatus): AlarmSettingsModel =
+    copy(previewing = status == SoundPreviewStatus.PLAYING, previewLine = soundPreviewLine(status))
 
 /** The title of the phone's picker of alarm sounds. */
 const val PHONE_SOUNDS_TITLE = "Alarm sound"
@@ -154,6 +175,7 @@ fun buildAlarmSettings(
     defaultSoundName: String?,
     volume: AlarmVolume?,
     soundRejection: String?,
+    preview: SoundPreviewStatus = SoundPreviewStatus.IDLE,
 ): AlarmSettingsModel = AlarmSettingsModel(
     lowVolume = volume?.let(::lowVolumeBanner),
     soundName = soundName(settings.sound, defaultSoundName),
@@ -166,4 +188,6 @@ fun buildAlarmSettings(
     snoozeLength = picker(settings.snoozeMinutes, SNOOZE_MINUTES, ::minutesLabel),
     speakTitle = settings.speakReason,
     news = newsLabel(settings.news),
+    previewing = preview == SoundPreviewStatus.PLAYING,
+    previewLine = soundPreviewLine(preview),
 )

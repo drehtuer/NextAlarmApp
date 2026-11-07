@@ -168,4 +168,44 @@ class AlarmSettingsTest {
         assertEquals("RSS · not a url", newsLabel(NewsSource(NewsType.RSS, "not a url")))
         assertEquals("RSS · feed.xml", newsLabel(NewsSource(NewsType.RSS, "feed.xml")))
     }
+
+    @Test
+    fun `without a preview the button plays and there is no line`() {
+        val model = model()
+        assertFalse(model.previewing)
+        assertNull(model.previewLine)
+        assertNull(soundPreviewLine(SoundPreviewStatus.IDLE))
+    }
+
+    @Test
+    fun `a playing preview turns the button into stop, and says how it plays`() {
+        val model = buildAlarmSettings(Settings.DEFAULT, null, null, null, SoundPreviewStatus.PLAYING)
+        assertTrue(model.previewing)
+        assertEquals(
+            "Playing at the phone's alarm volume, without the ramp or the maximum volume. Stops after 10 s.",
+            model.previewLine,
+        )
+    }
+
+    @Test
+    fun `a preview that didn't start says why, and the button still plays`() {
+        val inCall = model().withPreview(SoundPreviewStatus.IN_CALL)
+        assertFalse(inCall.previewing)
+        assertEquals("The sound can't play during a call.", inCall.previewLine)
+        val ringing = model().withPreview(SoundPreviewStatus.ALARM_RINGING)
+        assertFalse(ringing.previewing)
+        assertEquals("The sound can't play while an alarm rings.", ringing.previewLine)
+    }
+
+    @Test
+    fun `the preview can be taken back, and leaves the rest of the screen as it is`() {
+        val before = model()
+        assertEquals(before, before.withPreview(SoundPreviewStatus.PLAYING).withPreview(SoundPreviewStatus.IDLE))
+    }
+
+    @Test
+    fun `the button is described for what it does`() {
+        assertEquals("Play the alarm sound", PLAY_SOUND_DESCRIPTION)
+        assertEquals("Stop the alarm sound", STOP_SOUND_DESCRIPTION)
+    }
 }
