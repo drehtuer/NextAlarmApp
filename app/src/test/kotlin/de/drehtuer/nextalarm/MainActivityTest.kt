@@ -1,13 +1,102 @@
 package de.drehtuer.nextalarm
 
+import android.content.Context
+import android.content.Intent
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import androidx.work.impl.WorkManagerImpl
+import de.drehtuer.nextalarm.data.DataComponents
+import de.drehtuer.nextalarm.domain.PlannerRecord
+import de.drehtuer.nextalarm.domain.PlannerState
+import kotlinx.coroutines.runBlocking
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.util.ReflectionHelpers
+
+/** How the app that has been set up reacts to a notification that opens screen 7. */
+@RunWith(RobolectricTestRunner::class)
+@Config(qualifiers = "w411dp-h923dp")
+class MainActivityRequestsTest {
+    @get:Rule
+    val rule = createEmptyComposeRule()
+
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+
+    @Before
+    fun setUp() {
+        // WorkManager keeps itself in static fields, which outlive the tests that set it up.
+        listOf("sDelegatedInstance", "sDefaultInstance").forEach { name ->
+            WorkManagerImpl::class.java.getDeclaredField(name).apply { isAccessible = true }.set(null, null)
+        }
+        runBlocking { DataComponents(context).planner.save(PlannerRecord(PlannerState.Planned, 1)) }
+    }
+
+    private fun intent(action: String?) = Intent(context, MainActivity::class.java).setAction(action)
+
+    private fun waitFor(text: String) {
+        rule.waitUntil(WAIT_MILLIS) { rule.onAllNodes(hasText(text)).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    private fun waitForHome() {
+        rule.waitUntil(WAIT_MILLIS) {
+            rule.onAllNodes(hasContentDescription("Settings")).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    @Test
+    fun `an ordinary start opens home`() {
+        ActivityScenario.launch<MainActivity>(intent(Intent.ACTION_MAIN)).use { waitForHome() }
+    }
+
+    @Test
+    fun `a start from a notification opens diagnostics, and being recreated does not open them again`() {
+        ActivityScenario.launch<MainActivity>(intent(MainActivity.ACTION_OPEN_DIAGNOSTICS)).use { scenario ->
+            waitFor("Diagnostics & history")
+            rule.onNodeWithContentDescription("Back").performClick()
+            waitForHome()
+            scenario.recreate()
+            waitForHome()
+            rule.onAllNodes(hasText("Diagnostics & history")).assertCountEquals(0)
+        }
+    }
+
+    @Test
+    fun `a running app opens diagnostics when a notification asks, and only then`() {
+        ActivityScenario.launch<MainActivity>(intent(Intent.ACTION_MAIN)).use { scenario ->
+            waitForHome()
+            scenario.onActivity { deliver(it, intent(Intent.ACTION_VIEW)) }
+            rule.waitForIdle()
+            rule.onAllNodes(hasText("Diagnostics & history")).assertCountEquals(0)
+            scenario.onActivity { deliver(it, intent(MainActivity.ACTION_OPEN_DIAGNOSTICS)) }
+            waitFor("Diagnostics & history")
+        }
+    }
+
+    private fun deliver(activity: MainActivity, intent: Intent) {
+        ReflectionHelpers.callInstanceMethod<Unit>(
+            activity,
+            "onNewIntent",
+            ReflectionHelpers.ClassParameter.from(Intent::class.java, intent),
+        )
+    }
+
+    private companion object {
+        const val WAIT_MILLIS = 10_000L
+    }
+}
 
 /** The whole app on its real parts. There is no real calendar, and setup has not been done. */
 @RunWith(RobolectricTestRunner::class)

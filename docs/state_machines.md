@@ -92,7 +92,8 @@ Notes:
 | `Cancelled`   | Removed by re-planning (event deleted in the calendar). Terminal. | Cancel `AlarmManager` alarm, remove notifications.                               |
 | `Missed`      | Trigger time passed more than 60 min ago (device was off). Terminal. | Leave `AlarmService`, remove notifications, post a "missed alarm" notification. |
 
-Terminal instances are kept for a few days for the history view and then deleted.
+Terminal instances are kept for 7 days after their trigger time for the history view. The end of each successful
+planning run deletes the older ones. A non-terminal instance is never deleted, however old it is.
 
 "Remove notifications" means the alarm's "Alarm" and "Snoozed" notifications: those reporting what happened stay.
 Leaving `AlarmService` removes the same two, and joining it removes "Snoozed", so an alarm that rings again or is

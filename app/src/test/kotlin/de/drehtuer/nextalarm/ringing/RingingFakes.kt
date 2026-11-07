@@ -47,6 +47,10 @@ class FakeAlarms(vararg alarms: AlarmInstance) : AlarmRepository {
     override suspend fun update(instance: AlarmInstance) {
         stored[instance.id] = instance
     }
+
+    override suspend fun delete(id: Long) {
+        stored.remove(id)
+    }
 }
 
 class FakeScheduler : AlarmScheduler {

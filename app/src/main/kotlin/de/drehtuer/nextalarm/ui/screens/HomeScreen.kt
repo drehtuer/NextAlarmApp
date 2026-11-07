@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,7 +34,7 @@ import de.drehtuer.nextalarm.ui.theme.ListTimeStyle
 
 /** Screen 2. Read-only, because alarms are changed in the calendar app. */
 @Composable
-fun HomeScreen(model: HomeModel, onSettings: () -> Unit) {
+fun HomeScreen(model: HomeModel, onSettings: () -> Unit, onDiagnostics: () -> Unit) {
     Scaffold(
         topBar = {
             NextAlarmTopBar("NextAlarm", actions = {
@@ -55,7 +56,11 @@ fun HomeScreen(model: HomeModel, onSettings: () -> Unit) {
                         container = MaterialTheme.colorScheme.errorContainer,
                         content = MaterialTheme.colorScheme.onErrorContainer,
                         icon = R.drawable.ic_warning,
-                    )
+                    ) {
+                        OutlinedButton(onClick = onDiagnostics) {
+                            Text("See what went wrong", color = MaterialTheme.colorScheme.onErrorContainer)
+                        }
+                    }
                 }
             }
             model.hero?.let { hero -> item { Hero(hero) } }

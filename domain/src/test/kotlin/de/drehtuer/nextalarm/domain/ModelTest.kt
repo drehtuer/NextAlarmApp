@@ -111,6 +111,28 @@ class ModelTest {
     }
 
     @Test
+    fun `a sound copy keeps the file's own name after its unique part`() {
+        val id = "123e4567-e89b-12d3-a456-426614174000"
+        val sound = SoundRef.File.forCopy(id, "morning.mp3")
+        assertEquals("sound-$id-morning.mp3", sound.name)
+        assertEquals("morning.mp3", sound.displayName)
+    }
+
+    @Test
+    fun `a sound copy's name cannot leave its directory or get too long for a file name`() {
+        val id = "123e4567-e89b-12d3-a456-426614174000"
+        assertEquals("sound-$id-.._.._a_b_c", SoundRef.File.forCopy(id, "../../a\\b\nc").name)
+        val long = SoundRef.File.forCopy(id, "é".repeat(1000))
+        assertEquals(64, long.displayName.length)
+        assertTrue(long.name.toByteArray().size <= 255)
+    }
+
+    @Test
+    fun `a sound with any other name shows that name`() {
+        assertEquals("sound-1", SoundRef.File("sound-1").displayName)
+    }
+
+    @Test
     fun `test alarm key is not from the calendar`() {
         val key = AlarmKey.forTestAlarm(5)
         assertEquals("test:5", key.value)

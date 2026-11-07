@@ -1,7 +1,6 @@
 package de.drehtuer.nextalarm.ui
 
 import android.Manifest
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -13,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,28 +22,40 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import de.drehtuer.nextalarm.BuildConfig
+import de.drehtuer.nextalarm.data.SUPPORTED_SOUND_MIME_TYPES
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.calendarSummary
+import de.drehtuer.nextalarm.ui.screens.AlarmSettingsScreen
 import de.drehtuer.nextalarm.ui.screens.CalendarScreen
+import de.drehtuer.nextalarm.ui.screens.DiagnosticsScreen
 import de.drehtuer.nextalarm.ui.screens.HomeScreen
 import de.drehtuer.nextalarm.ui.screens.OnboardingScreen
 import de.drehtuer.nextalarm.ui.screens.PermissionCard
 import de.drehtuer.nextalarm.ui.screens.SettingsScreen
+import de.drehtuer.nextalarm.ui.screens.SettingsTargets
 
 private const val SOURCE_CODE_URL = "https://github.com/drehtuer/NextAlarmApp"
 
 const val VERSION_TEXT_FORMAT = "%s (build %d)"
 
-enum class Route { HOME, SETTINGS, CALENDAR, SETUP }
+const val LOG_MIME_TYPE = "text/plain"
 
-/** The screens and how they connect. See the navigation diagram in docs/screens.md. */
+enum class Route { HOME, SETTINGS, CALENDAR, ALARM_SETTINGS, DIAGNOSTICS, SETUP }
+
+/**
+ * The screens and how they connect. See the navigation diagram in docs/screens.md.
+ *
+ * [diagnosticsRequests] counts the requests to open screen 7 from outside, from a notification: each new value opens it.
+ */
 @Composable
 fun NextAlarmApp(
     state: AppState,
     resumeCount: Int,
     onSelectCalendar: (CalendarId) -> Unit,
     onCompleteSetup: () -> Unit,
-    canUseFullScreen: (Context) -> Boolean = { it.getSystemService(NotificationManager::class.java).canUseFullScreenIntent() },
+    actions: AppActions,
+    diagnosticsRequests: Int = 0,
+    canUseFullScreen: (Context) -> Boolean = ::canUseFullScreenIntent,
 ) {
     val context = LocalContext.current
     var stack by rememberSaveable { mutableStateOf(listOf(Route.HOME.name)) }
@@ -51,6 +63,10 @@ fun NextAlarmApp(
     val inSetup = !state.setupDone || route == Route.SETUP
 
     BackHandler(enabled = state.setupDone && stack.size > 1) { stack = stack.dropLast(1) }
+
+    LaunchedEffect(diagnosticsRequests) {
+        if (diagnosticsRequests > 0) stack = listOf(Route.HOME.name, Route.DIAGNOSTICS.name)
+    }
 
     when {
         !state.loaded -> Surface(Modifier.fillMaxSize()) {}
@@ -72,19 +88,54 @@ fun NextAlarmApp(
         }
         route == Route.SETTINGS -> SettingsScreen(
             calendarSummary = calendarSummary(state.calendars.find { it.id == state.selectedCalendar }),
+            diagnosticsSummary = state.diagnosticsSummary,
             version = VERSION_TEXT_FORMAT.format(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
-            onBack = { stack = stack.dropLast(1) },
-            onAlarmCalendar = { stack = stack + Route.CALENDAR.name },
-            onRunSetup = { stack = stack + Route.SETUP.name },
-            onSourceCode = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_CODE_URL))) },
+            targets = SettingsTargets(
+                onBack = { stack = stack.dropLast(1) },
+                onAlarmCalendar = { stack = stack + Route.CALENDAR.name },
+                onAlarmSettings = { stack = stack + Route.ALARM_SETTINGS.name },
+                onDiagnostics = { stack = stack + Route.DIAGNOSTICS.name },
+                onRunSetup = { stack = stack + Route.SETUP.name },
+                onSourceCode = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_CODE_URL))) },
+            ),
         )
+        route == Route.ALARM_SETTINGS -> {
+            val soundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                if (uri != null) actions.importSound(uri)
+            }
+            AlarmSettingsScreen(
+                model = state.alarmSettings,
+                actions = actions,
+                onBack = { stack = stack.dropLast(1) },
+                onChooseFile = { soundPicker.launch(SUPPORTED_SOUND_MIME_TYPES.toTypedArray()) },
+                // Screen 6 does not exist yet. This is where it gets connected.
+                onNews = {},
+            )
+        }
+        route == Route.DIAGNOSTICS -> {
+            val logDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(LOG_MIME_TYPE)) { uri ->
+                if (uri != null) actions.exportLog(uri)
+            }
+            DiagnosticsScreen(
+                model = state.diagnostics,
+                testAlarmPending = state.testAlarmPending,
+                logNote = state.logNote,
+                onBack = { stack = stack.dropLast(1) },
+                onRingTestAlarm = actions::ringTestAlarm,
+                onExportLog = { logDocument.launch(state.diagnostics.logFileName) },
+            )
+        }
         route == Route.CALENDAR -> CalendarScreen(
             calendars = state.calendars,
             selected = state.selectedCalendar,
             onSelect = onSelectCalendar,
             onBack = { stack = stack.dropLast(1) },
         )
-        else -> HomeScreen(state.home, onSettings = { stack = stack + Route.SETTINGS.name })
+        else -> HomeScreen(
+            state.home,
+            onSettings = { stack = stack + Route.SETTINGS.name },
+            onDiagnostics = { stack = stack + Route.DIAGNOSTICS.name },
+        )
     }
 }
 

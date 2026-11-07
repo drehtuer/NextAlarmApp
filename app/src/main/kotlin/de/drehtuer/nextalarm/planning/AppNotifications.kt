@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import de.drehtuer.nextalarm.MainActivity
 import de.drehtuer.nextalarm.R
 import de.drehtuer.nextalarm.domain.AlarmInstance
@@ -42,7 +43,7 @@ class AppNotifications(
             WARNING_CHANNEL,
             "New alarms aren't being added",
             "NextAlarm can't read your calendar. Alarms already planned will still ring.",
-        ).setOngoing(true).build()
+        ).setOngoing(true).addAction(notificationAction(context, "Open diagnostics", openDiagnosticsIntent(context))).build()
         manager.notify(FAIL_SAFE_ID, notification)
     }
 
@@ -68,6 +69,7 @@ class AppNotifications(
 }
 
 private const val ACCENT = 0xFF00639B.toInt()
+private const val REQUEST_DIAGNOSTICS = 1
 
 /** The look that all notifications share. Tapping one opens the app, unless the caller sets something else. */
 fun notificationBuilder(context: Context, channel: String, title: String, text: String): Notification.Builder =
@@ -84,6 +86,22 @@ fun notificationBuilder(context: Context, channel: String, title: String, text: 
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             ),
         )
+
+fun notificationAction(context: Context, title: String, intent: PendingIntent): Notification.Action =
+    Notification.Action.Builder(Icon.createWithResource(context, R.drawable.ic_stat_alarm), title, intent).build()
+
+/**
+ * Opens screen 7, for "Open diagnostics" and "Open history". The action keeps this apart from the intent that only
+ * opens the app. The flags make a running app get it in `onNewIntent`: otherwise Android only brings it to the front.
+ */
+fun openDiagnosticsIntent(context: Context): PendingIntent = PendingIntent.getActivity(
+    context,
+    REQUEST_DIAGNOSTICS,
+    Intent(context, MainActivity::class.java)
+        .setAction(MainActivity.ACTION_OPEN_DIAGNOSTICS)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+)
 
 /** What planning asks of Android: its jobs from [PlanningWork], its notifications from [AppNotifications]. */
 class AppPlannerEffects(

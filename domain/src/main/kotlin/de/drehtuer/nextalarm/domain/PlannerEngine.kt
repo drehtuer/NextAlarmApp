@@ -107,6 +107,18 @@ class PlannerEngine(
         planner.save(updated)
         perform(result, updated)
         effects.showNextAlarm(nextAlarm(alarms.all(), now()))
+        removeExpiredAlarms()
+    }
+
+    /** Only tidies the history, so it cannot make a run fail. What is left behind goes in the next run. */
+    private suspend fun removeExpiredAlarms() {
+        try {
+            alarmEngine.removeExpired()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // The plan has been applied by now, and nothing depends on old alarms being gone.
+        }
     }
 
     private suspend fun finishFailed(generation: Long, failure: PlanningFailure, startedAt: Instant) {

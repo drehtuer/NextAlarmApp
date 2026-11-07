@@ -206,6 +206,68 @@ class PlannerEngineTest {
         assertEquals(0, planner.record.consecutiveFailures)
     }
 
+    private fun ended(id: Long, state: AlarmState = AlarmState.Done, days: Long = 30) = alarms.add(
+        AlarmInstance(id, AlarmKey.forTestAlarm(id), NOW.minus(Duration.ofDays(days)), state, 0, false, snapshot()),
+    )
+
+    @Test
+    fun `a successful run deletes old ended alarms and keeps the rest`() = runBlocking {
+        ended(101)
+        ended(102, days = 1)
+        ended(103, AlarmState.Ringing)
+        planning()
+        engine.runPlanning(1)
+        assertEquals(PlannerState.Planned, planner.record.state)
+        assertEquals(listOf(102L, 103L), alarms.all().map { it.id })
+    }
+
+    @Test
+    fun `a failed run deletes nothing`() = runBlocking {
+        ended(101)
+        failFrom(IllegalStateException("broken"))
+        planning()
+        engine.runPlanning(1)
+        assertEquals(PlannerState.FailSafe, planner.record.state)
+        assertEquals(listOf(101L), alarms.all().map { it.id })
+    }
+
+    @Test
+    fun `a stale run deletes nothing`() = runBlocking {
+        ended(101)
+        planning(generation = 2)
+        engine.runPlanning(1)
+        assertEquals(listOf(101L), alarms.all().map { it.id })
+    }
+
+    @Test
+    fun `a failure to delete does not make a successful run fail`() = runBlocking {
+        ended(101)
+        alarms.failOnDelete = true
+        planning()
+        engine.runPlanning(1)
+        assertEquals(PlannerState.Planned, planner.record.state)
+        assertEquals(0, planner.record.consecutiveFailures)
+        assertEquals(listOf(101L), alarms.all().map { it.id })
+
+        alarms.failOnDelete = false
+        engine.replanRequested()
+        engine.runPlanning(2)
+        assertTrue(alarms.all().isEmpty())
+    }
+
+    @Test
+    fun `a cancelled deletion stays cancelled`() = runBlocking {
+        val cancelling = object : AlarmRepository by alarms {
+            override suspend fun delete(id: Long): Unit = throw CancellationException("replaced")
+        }
+        val alarmEngine = AlarmEngine(cancelling, scheduler, NoAlarmEffects, clock::now, FakeLock())
+        val engine = PlannerEngine(planner, settingsRepo, calendars, cancelling, alarmEngine, effects, lock, clock::now)
+        ended(101)
+        planning()
+        assertFailsWith<CancellationException> { engine.runPlanning(1) }
+        assertEquals(PlannerState.Planned, planner.record.state)
+    }
+
     @Test
     fun `a cancelled run while applying is not a failure`() = runBlocking {
         val cancelling = object : AlarmRepository by alarms {

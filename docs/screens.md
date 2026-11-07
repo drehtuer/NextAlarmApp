@@ -17,6 +17,8 @@ flowchart TD
     AlarmSet --> News[6 News source]
     Settings --> Diag[7 Diagnostics & history]
     Settings --> Onb
+    Home -- fail-safe banner --> Diag
+    Warn([Fail-safe, late, missed or not answered notification]) --> Diag
 
     Notif([Alarm fires]) --> Alarm[8 Alarm screen]
     Alarm --> Wake[9 Wake-up screen]

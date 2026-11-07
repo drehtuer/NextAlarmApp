@@ -4,12 +4,14 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
+import android.database.MatrixCursor
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.provider.OpenableColumns
 import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
-import de.drehtuer.nextalarm.data.SoundImportResult.Reason
+import de.drehtuer.nextalarm.domain.SoundRejection
 import de.drehtuer.nextalarm.domain.SoundRef
 import java.io.File
 import java.io.FileNotFoundException
@@ -32,6 +34,8 @@ class SoundStoreTest {
         var type: String? = "audio/mpeg"
         var file: File? = null
         var denied = false
+        var names: List<String?> = emptyList()
+        var nameFailure: RuntimeException? = null
 
         override fun onCreate() = true
         override fun getType(uri: Uri): String? = type
@@ -42,7 +46,14 @@ class SoundStoreTest {
             return ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY)
         }
 
-        override fun query(uri: Uri, p: Array<out String>?, s: String?, a: Array<out String>?, o: String?): Cursor? = null
+        override fun query(uri: Uri, p: Array<out String>?, s: String?, a: Array<out String>?, o: String?): Cursor? {
+            nameFailure?.let { throw it }
+            if (names.isEmpty() && !answersEmpty) return null
+            return MatrixCursor(arrayOf(OpenableColumns.DISPLAY_NAME)).apply { names.forEach { addRow(arrayOf(it)) } }
+        }
+
+        var answersEmpty = false
+
         override fun insert(uri: Uri, values: ContentValues?): Uri? = null
         override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?) = 0
         override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?) = 0
@@ -67,6 +78,54 @@ class SoundStoreTest {
     private fun storedFiles() = sounds.listFiles().orEmpty().toList()
 
     @Test
+    fun `an imported sound knows the name the picker gave its file`() = runBlocking {
+        provider.names = listOf("morning.mp3")
+        provider.file = picked()
+        val sound = assertIs<SoundImportResult.Imported>(store().import(uri)).sound
+        assertEquals("morning.mp3", sound.displayName)
+        assertTrue(File(sounds, sound.name).isFile)
+    }
+
+    @Test
+    fun `a rejection names the file the way the picker does`() = runBlocking {
+        provider.names = listOf("Notes.pdf")
+        provider.type = "application/pdf"
+        assertEquals(SoundImportResult.Rejected(SoundRejection.UNSUPPORTED_TYPE, "Notes.pdf"), store().import(uri))
+    }
+
+    @Test
+    fun `a name the provider does not give comes from the address`() = runBlocking {
+        provider.type = null
+        provider.answersEmpty = true
+        val documents = Uri.parse("content://docs/document/primary%3AMusic%2Fmorning.mp3")
+        assertEquals("morning.mp3", assertIs<SoundImportResult.Rejected>(store().import(documents)).fileName)
+        provider.names = listOf(null)
+        assertEquals("song", assertIs<SoundImportResult.Rejected>(store().import(uri)).fileName)
+    }
+
+    @Test
+    fun `a provider that fails to give a name does not stop the import`() = runBlocking {
+        provider.nameFailure = SecurityException("no")
+        provider.file = picked()
+        val sound = assertIs<SoundImportResult.Imported>(store().import(uri)).sound
+        assertEquals("song", sound.displayName)
+    }
+
+    @Test
+    fun `an address without a path still gives a name`() = runBlocking {
+        provider.type = null
+        assertEquals("file", assertIs<SoundImportResult.Rejected>(store().import(Uri.parse("content://docs"))).fileName)
+    }
+
+    @Test
+    fun `a name cannot lead the copy out of its directory`() = runBlocking {
+        provider.names = listOf("../../evil.mp3")
+        provider.file = picked()
+        val sound = assertIs<SoundImportResult.Imported>(store().import(uri)).sound
+        assertEquals(sounds.canonicalFile, File(sounds, sound.name).canonicalFile.parentFile)
+    }
+
+    @Test
     fun `a playable file is copied into device-protected storage`() = runBlocking {
         provider.file = picked("audio data")
         val result = assertIs<SoundImportResult.Imported>(store().import(uri))
@@ -86,33 +145,33 @@ class SoundStoreTest {
     fun `an unsupported type is rejected without copying`() = runBlocking {
         provider.type = "audio/flac"
         provider.file = picked()
-        assertEquals(SoundImportResult.Rejected(Reason.UNSUPPORTED_TYPE), store().import(uri))
+        assertEquals(SoundImportResult.Rejected(SoundRejection.UNSUPPORTED_TYPE, "song"), store().import(uri))
         assertTrue(storedFiles().isEmpty())
     }
 
     @Test
     fun `an unknown type is rejected`() = runBlocking {
         provider.type = null
-        assertEquals(SoundImportResult.Rejected(Reason.UNSUPPORTED_TYPE), store().import(uri))
+        assertEquals(SoundImportResult.Rejected(SoundRejection.UNSUPPORTED_TYPE, "song"), store().import(uri))
     }
 
     @Test
     fun `a file that cannot be opened is rejected and leaves nothing behind`() = runBlocking {
         provider.file = null
-        assertEquals(SoundImportResult.Rejected(Reason.UNREADABLE), store().import(uri))
+        assertEquals(SoundImportResult.Rejected(SoundRejection.UNREADABLE, "song"), store().import(uri))
         assertTrue(storedFiles().isEmpty())
     }
 
     @Test
     fun `a file without read permission is rejected`() = runBlocking {
         provider.denied = true
-        assertEquals(SoundImportResult.Rejected(Reason.UNREADABLE), store().import(uri))
+        assertEquals(SoundImportResult.Rejected(SoundRejection.UNREADABLE, "song"), store().import(uri))
     }
 
     @Test
     fun `a file that is not playable is rejected and leaves nothing behind`() = runBlocking {
         provider.file = picked()
-        assertEquals(SoundImportResult.Rejected(Reason.NOT_PLAYABLE), store(playable = false).import(uri))
+        assertEquals(SoundImportResult.Rejected(SoundRejection.NOT_PLAYABLE, "song"), store(playable = false).import(uri))
         assertTrue(storedFiles().isEmpty())
     }
 
@@ -186,13 +245,13 @@ class SoundStoreTest {
         // A file in place of the directory makes writing fail, as a full or broken storage would.
         sounds.parentFile?.mkdirs()
         sounds.writeText("in the way")
-        assertEquals(Reason.UNREADABLE, assertIs<SoundImportResult.Rejected>(store().import(uri)).reason)
+        assertEquals(SoundRejection.UNREADABLE, assertIs<SoundImportResult.Rejected>(store().import(uri)).reason)
     }
 
     @Test
     fun `the store uses the real probe by default`() = runBlocking {
         provider.file = picked()
-        assertEquals(SoundImportResult.Rejected(Reason.NOT_PLAYABLE), SoundStore(context).import(uri))
+        assertEquals(SoundImportResult.Rejected(SoundRejection.NOT_PLAYABLE, "song"), SoundStore(context).import(uri))
     }
 
     @Test
