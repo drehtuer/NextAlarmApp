@@ -25,17 +25,25 @@ interface PodcastOutput {
 
     /** Empty while the player does not know it. */
     fun duration(): Duration?
+
+    /** For audio that has started, and only for a moment. */
+    fun pause()
+
+    /** Goes on after [pause]. `onEnded` is called if it can't. */
+    fun resume()
     fun stop()
 }
 
 /**
  * Holds audio back until the wake-up service is in the foreground, as Android 17 silences it otherwise, with no error. Only
  * one thing plays at a time, so only the latest action waits. After [limit] it goes ahead anyway, as a chance of sound beats
- * none. See docs/architecture.md#background-audio-on-android-17.
+ * none. [beforeAudio] comes just before the audio starts, for what Android also only allows with the service up. See
+ * docs/architecture.md#background-audio-on-android-17.
  */
 class ForegroundGate(
     private val timers: RingTimers,
     private val limit: Duration = Duration.ofSeconds(3),
+    private val beforeAudio: () -> Unit = {},
 ) {
     private var isOpen = false
     private var waiting: (() -> Unit)? = null
@@ -51,7 +59,7 @@ class ForegroundGate(
             }
             isOpen
         }
-        if (now) action()
+        if (now) begin(action)
     }
 
     fun open() {
@@ -60,7 +68,12 @@ class ForegroundGate(
             cancelLimit()
             waiting.also { waiting = null }
         }
-        action?.invoke()
+        action?.let(::begin)
+    }
+
+    private fun begin(action: () -> Unit) {
+        beforeAudio()
+        action()
     }
 
     /** The service has gone, or what waited is no longer wanted. */
@@ -160,6 +173,8 @@ data class WakeUpStatus(
  *   All of them get their `NewsDone` when it ends. If their news sources differ, the first alarm's is played.
  * - A title to say while news plays stops the news, which starts again after it, so that no two voices talk at once.
  *
+ * No audio plays during a call, and other audio pauses while this plays. See docs/architecture.md#calls-and-audio-focus.
+ *
  * All of this runs under a lock of its own, and the engine's is held when [startAnnouncement], [startNews] and [leave]
  * are called: [report] must therefore not call the engine directly.
  */
@@ -169,6 +184,8 @@ class WakeUpDirector(
     private val feeds: NewsFetcher,
     private val timers: RingTimers,
     private val wakeLock: RingWakeLock,
+    private val focus: AudioFocusHold,
+    private val calls: CallWatch,
     private val now: () -> Instant,
     private val report: (Long, AlarmEvent) -> Unit,
     private val onChanged: (WakeUpStatus) -> Unit,
@@ -181,6 +198,9 @@ class WakeUpDirector(
 
     private class News(val source: NewsSource, val startedAt: Instant) {
         var phase: Phase = Phase.Fetching
+
+        /** A call paused the podcast. */
+        var paused = false
     }
 
     private class Title(val alarmId: Long, val text: String)
@@ -207,12 +227,13 @@ class WakeUpDirector(
     private var cancelNewsLimit: () -> Unit = {}
     private var cancelFetch: () -> Unit = {}
     private var cancelStartLimit: () -> Unit = {}
+    private var stopWatchingCalls: () -> Unit = {}
 
     @Synchronized
     override fun startAnnouncement(alarm: AlarmInstance) {
         join(alarm)
         val title = alarm.snapshot.reason
-        if (title == null) {
+        if (title == null || calls.active()) {
             report(alarm.id, AlarmEvent.AnnouncementDone)
             publish()
             return
@@ -265,7 +286,10 @@ class WakeUpDirector(
     )
 
     private fun join(alarm: AlarmInstance) {
-        if (members.isEmpty()) wakeLock.hold(SPEECH_WAKE_LOCK)
+        if (members.isEmpty()) {
+            wakeLock.hold(SPEECH_WAKE_LOCK)
+            stopWatchingCalls = calls.watch(::callChanged)
+        }
         members += alarm.id
         titles[alarm.id] = alarm.snapshot.reason
     }
@@ -276,6 +300,11 @@ class WakeUpDirector(
             titleIndex = 0
             titleCount = 0
             if (newsAlarms.isNotEmpty()) startNewsPlayback() else publish()
+            return
+        }
+        if (calls.active()) {
+            report(title.alarmId, AlarmEvent.AnnouncementDone)
+            speakNextTitle()
             return
         }
         speaking = title
@@ -294,6 +323,7 @@ class WakeUpDirector(
      * The limit is for an engine that never answers, which would otherwise keep the automation waiting.
      */
     private fun say(text: String, onDone: (Boolean) -> Unit) {
+        focus.take(::focusLost)
         val run = ++speechRun
         onSpoken = onDone
         cancelSpeechLimit()
@@ -324,6 +354,11 @@ class WakeUpDirector(
     }
 
     private fun startNewsPlayback() {
+        if (calls.active()) {
+            reportNewsDone()
+            publish()
+            return
+        }
         val source = newsAlarms.values.first()
         val current = News(source, now())
         news = current
@@ -339,7 +374,7 @@ class WakeUpDirector(
         val feed = (result as? FeedResult.Found)?.feed
         val episode = feed?.latestEpisode
         when {
-            feed == null -> newsEnded(current)
+            feed == null || calls.active() -> newsEnded(current)
             current.source.type == NewsType.PODCAST ->
                 if (episode != null) playEpisode(current, feed, episode) else newsEnded(current)
             feed.entries.isEmpty() -> newsEnded(current)
@@ -358,6 +393,7 @@ class WakeUpDirector(
     private fun playEpisode(current: News, feed: Feed, episode: PodcastEpisode) {
         current.phase = Phase.Playing(feed, episode, started = false)
         publish()
+        focus.take(::focusLost)
         cancelStartLimit = timers.after(PODCAST_START_LIMIT) { newsEnded(current) }
         podcast.play(
             episode.audioUrl,
@@ -379,9 +415,69 @@ class WakeUpDirector(
     private fun newsEnded(current: News) {
         if (news !== current) return
         stopNewsPlayback()
+        reportNewsDone()
+        publish()
+    }
+
+    private fun reportNewsDone() {
         val finished = newsAlarms.keys.toList()
         newsAlarms.clear()
         finished.forEach { report(it, AlarmEvent.NewsDone) }
+    }
+
+    /** Reporting the same state twice does nothing, so a mode that changes from one kind of call to another is no event here. */
+    @Synchronized
+    private fun callChanged(active: Boolean) {
+        if (members.isEmpty()) return
+        if (active) callStarted() else callEnded()
+    }
+
+    /**
+     * Speech stops, and what is left to say is skipped. A podcast that plays waits for the call to end, and the limit keeps
+     * running meanwhile. One that has not started yet counts as not having been played, as a call was there when it would.
+     */
+    private fun callStarted() {
+        focus.release()
+        val talking = speaking
+        val current = news
+        val phase = current?.phase
+        when {
+            talking != null -> {
+                abandonSpeech()
+                report(talking.alarmId, AlarmEvent.AnnouncementDone)
+                speakNextTitle()
+            }
+            current == null || phase == Phase.Fetching -> Unit
+            phase is Phase.Playing && phase.started -> {
+                current.paused = true
+                podcast.pause()
+                publish()
+            }
+            else -> newsEnded(current)
+        }
+    }
+
+    private fun callEnded() {
+        val current = news
+        if (current == null || !current.paused) return
+        current.paused = false
+        focus.take(::focusLost)
+        podcast.resume()
+        publish()
+    }
+
+    /**
+     * The user started other audio, which ends the automation. A call that takes the focus is not that: it is handled above,
+     * also for an internet call that takes it for good.
+     */
+    @Synchronized
+    private fun focusLost() {
+        if (calls.active()) return
+        if (speaking != null) abandonSpeech()
+        stopNewsPlayback()
+        waitingTitles.clear()
+        newsAlarms.clear()
+        members.toList().forEach { report(it, AlarmEvent.StopWakeUp) }
         publish()
     }
 
@@ -408,6 +504,8 @@ class WakeUpDirector(
         titles.clear()
         titleIndex = 0
         titleCount = 0
+        focus.release()
+        stopWatchingCalls()
         wakeLock.release()
         publish()
     }

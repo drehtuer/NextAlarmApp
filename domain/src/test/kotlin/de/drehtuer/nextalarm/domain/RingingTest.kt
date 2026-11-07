@@ -435,6 +435,159 @@ private class FakeWakeLock : RingWakeLock {
     }
 }
 
+class CallWatchTest {
+    private val calls = FakeCalls()
+    private val problems = mutableListOf<String>()
+    private val watch = CallWatch(calls) { message, _ -> problems += message }
+
+    @Test
+    fun `it says what the phone says`() {
+        assertFalse(watch.active())
+        calls.isActive = true
+        assertTrue(watch.active())
+        assertTrue(problems.isEmpty())
+    }
+
+    @Test
+    fun `if there is no telling, there is no call, so that an alarm is heard`() {
+        calls.isActive = true
+        calls.failure = SecurityException("Not allowed")
+        assertFalse(watch.active())
+        assertEquals(listOf("Could not find out whether a call is active"), problems)
+    }
+
+    @Test
+    fun `it tells about changes, until it is stopped`() {
+        val heard = mutableListOf<Boolean>()
+        val stop = watch.watch { heard += it }
+        calls.change(true)
+        stop()
+        calls.change(false)
+        assertEquals(listOf(true), heard)
+    }
+
+    @Test
+    fun `not being able to watch is reported, and the result can still be called`() {
+        calls.failToWatch = IllegalStateException("No service")
+        watch.watch {}()
+        assertEquals(listOf("Could not watch for calls"), problems)
+    }
+}
+
+class AudioFocusHoldTest {
+    private val focus = FakeFocus()
+    private val problems = mutableListOf<String>()
+    private val hold = AudioFocusHold(focus) { message, _ -> problems += message }
+    private var lost = 0
+
+    @Test
+    fun `it asks once for as long as it has it`() {
+        hold.take { lost++ }
+        hold.take { lost++ }
+        hold.retry()
+        assertEquals(1, focus.requests)
+        assertTrue(problems.isEmpty())
+    }
+
+    @Test
+    fun `releasing gives it up, only once, and only if it was taken`() {
+        hold.release()
+        assertEquals(0, focus.abandons)
+        hold.take {}
+        hold.release()
+        hold.release()
+        assertEquals(1, focus.abandons)
+    }
+
+    @Test
+    fun `it can be taken again after releasing`() {
+        hold.take {}
+        hold.release()
+        hold.take {}
+        assertEquals(2, focus.requests)
+    }
+
+    @Test
+    fun `if it is denied that is reported, and the next take or retry asks again`() {
+        focus.answer = false
+        hold.take {}
+        assertEquals(listOf("The audio focus was denied: other audio goes on"), problems)
+        hold.take {}
+        assertEquals(2, focus.requests)
+        focus.answer = true
+        hold.retry()
+        assertEquals(3, focus.requests)
+        hold.retry()
+        assertEquals(3, focus.requests)
+    }
+
+    @Test
+    fun `a retry with nothing wanted does not ask`() {
+        hold.retry()
+        assertEquals(0, focus.requests)
+    }
+
+    @Test
+    fun `a request that throws counts as denied`() {
+        focus.failure = SecurityException("Not allowed")
+        hold.take {}
+        assertTrue("Could not ask for the audio focus" in problems)
+    }
+
+    @Test
+    fun `giving it up can fail without any consequence`() {
+        hold.take {}
+        focus.failure = IllegalStateException("No service")
+        hold.release()
+        assertEquals(listOf("Could not give up the audio focus"), problems)
+    }
+
+    @Test
+    fun `losing it for good is told, and gives it up`() {
+        hold.take { lost++ }
+        focus.onLost()
+        assertEquals(1, lost)
+        assertEquals(1, focus.abandons)
+    }
+
+    @Test
+    fun `losing it after it was given up is not told`() {
+        hold.take { lost++ }
+        hold.release()
+        focus.onLost()
+        assertEquals(0, lost)
+    }
+}
+
+class WantsVibrationTest {
+    private fun wants(vibrate: Boolean, maxVolume: Float?, inCall: Boolean) =
+        wantsVibration(snapshot(vibrate = vibrate).copy(maxVolume = maxVolume), inCall)
+
+    @Test
+    fun `outside a call it follows the setting`() {
+        assertTrue(wants(vibrate = true, maxVolume = null, inCall = false))
+        assertFalse(wants(vibrate = false, maxVolume = null, inCall = false))
+        assertFalse(wants(vibrate = false, maxVolume = 0f, inCall = false))
+    }
+
+    @Test
+    fun `during a call it vibrates even with the setting off`() {
+        assertTrue(wants(vibrate = false, maxVolume = null, inCall = true))
+        assertTrue(wants(vibrate = false, maxVolume = 0.5f, inCall = true))
+        assertTrue(wants(vibrate = true, maxVolume = null, inCall = true))
+    }
+
+    @Test
+    fun `a silent alarm that says no vibration never vibrates, not even during a call`() {
+        assertFalse(wants(vibrate = false, maxVolume = 0f, inCall = true))
+    }
+
+    @Test
+    fun `a silent alarm that asks for vibration gets it`() {
+        assertTrue(wants(vibrate = true, maxVolume = 0f, inCall = true))
+    }
+}
+
 class StreamLevelTest {
     @Test
     fun `a maximum becomes the nearest step`() {
@@ -640,7 +793,15 @@ class AlarmRingerTest {
     private val stream = FakeStream()
     private val savedVolume = FakeSavedVolume()
     private val problems = mutableListOf<String>()
-    private val audio = RingAudio(AlarmVolumeKeeper(stream, savedVolume) { message, _ -> problems += message })
+    private val calls = FakeCalls()
+    private val focus = FakeFocus()
+    private val noteProblem: AudioProblem = { message, _ -> problems += message }
+    private val audio = RingAudio(
+        AlarmVolumeKeeper(stream, savedVolume, noteProblem),
+        AudioFocusHold(focus, noteProblem),
+        CallWatch(calls, noteProblem),
+        noteProblem,
+    )
     private val ringer: AlarmRinger = AlarmRinger(
         sound,
         vibration,
@@ -867,6 +1028,334 @@ class AlarmRingerTest {
     fun `with nothing left behind, nothing rings and the stream stays alone`() {
         ringer.restoreVolumeIfIdle()
         assertTrue(stream.log.isEmpty())
+    }
+
+    private val callCheck = Duration.ofSeconds(5)
+
+    @Test
+    fun `the sound asks for the focus, and gives it up when the alarm ends`() {
+        ringer.join(alarm())
+        assertEquals(1, focus.requests)
+        assertEquals(0, focus.abandons)
+        ringer.leave(1)
+        assertEquals(1, focus.abandons)
+    }
+
+    @Test
+    fun `a second alarm does not ask for the focus again, and it is only given up with the last`() {
+        ringer.join(alarm(1))
+        ringer.join(alarm(2))
+        assertEquals(1, focus.requests)
+        ringer.leave(1)
+        assertEquals(0, focus.abandons)
+        ringer.leave(2)
+        assertEquals(1, focus.abandons)
+    }
+
+    @Test
+    fun `the focus waits for the service, which Android demands`() {
+        serviceUp = false
+        ringer.join(alarm())
+        assertEquals(0, focus.requests)
+        ringer.foregroundSettled()
+        assertEquals(1, focus.requests)
+    }
+
+    @Test
+    fun `focus that is denied does not stop the sound`() {
+        focus.answer = false
+        ringer.join(alarm())
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+    }
+
+    @Test
+    fun `focus that fails does not stop the sound`() {
+        focus.failure = SecurityException("Not allowed")
+        ringer.join(alarm())
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+    }
+
+    @Test
+    fun `a silent alarm doesn't ask for the focus, so that it pauses nothing`() {
+        ringer.join(alarm(maxVolume = 0f))
+        ringer.leave(1)
+        assertEquals(0, focus.requests)
+        assertEquals(0, focus.abandons)
+    }
+
+    @Test
+    fun `losing the focus does not stop the sound`() {
+        ringer.join(alarm())
+        focus.onLost()
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+    }
+
+    @Test
+    fun `an alarm during a call has no sound and vibrates, with the vibration setting off`() {
+        calls.isActive = true
+        ringer.join(alarm(vibrate = false, maxVolume = 0.5f))
+        assertTrue(sound.log.isEmpty())
+        assertTrue(vibration.vibrating)
+        assertEquals(0, focus.requests)
+        assertTrue(stream.log.isEmpty())
+    }
+
+    @Test
+    fun `an alarm during a call still times out as normal`() {
+        calls.isActive = true
+        ringer.join(alarm())
+        timers.elapse(threeMinutes)
+        assertEquals(listOf(listOf(1L)), timedOut)
+        ringer.leave(1)
+        assertFalse(vibration.vibrating)
+        assertTrue(calls.watching.isEmpty())
+    }
+
+    @Test
+    fun `when the call ends the sound starts, and the vibration follows the setting again`() {
+        calls.isActive = true
+        ringer.join(alarm(vibrate = false, maxVolume = 0.5f))
+        calls.change(false)
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        assertFalse(vibration.vibrating)
+        assertEquals(1, focus.requests)
+        assertEquals(4, stream.level)
+    }
+
+    @Test
+    fun `when the call ends an alarm that asks for vibration goes on vibrating`() {
+        calls.isActive = true
+        ringer.join(alarm(vibrate = true))
+        assertEquals(1, vibration.starts)
+        calls.change(false)
+        assertTrue(vibration.vibrating)
+        assertEquals(1, vibration.starts)
+    }
+
+    @Test
+    fun `when a call starts the sound stops, it vibrates, and the focus goes`() {
+        ringer.join(alarm(vibrate = false))
+        calls.change(true)
+        assertEquals(listOf("play:SystemDefault:1.0", "stop"), sound.log)
+        assertTrue(vibration.vibrating)
+        assertEquals(1, focus.abandons)
+    }
+
+    @Test
+    fun `a call that comes and goes while it rings brings the sound back`() {
+        ringer.join(alarm(vibrate = false))
+        calls.change(true)
+        calls.change(false)
+        assertEquals(listOf("play:SystemDefault:1.0", "stop", "play:SystemDefault:1.0"), sound.log)
+        assertFalse(vibration.vibrating)
+        assertEquals(2, focus.requests)
+    }
+
+    @Test
+    fun `a call that starts stops the ramp, which starts over when it ends`() {
+        ringer.join(alarm(rampSeconds = 1))
+        val step = timers.active.first { it.delay == rampStep }
+        calls.change(true)
+        assertTrue(step.cancelled)
+        step.block()
+        assertEquals(listOf("play:SystemDefault:0.0", "stop"), sound.log)
+        calls.change(false)
+        assertEquals("play:SystemDefault:0.0", sound.log.last())
+        timers.elapse(rampStep)
+        assertEquals("gain:0.25", sound.log.last())
+    }
+
+    @Test
+    fun `the stream keeps its level through a call, and goes back at the end`() {
+        ringer.join(alarm(maxVolume = 0.5f))
+        calls.change(true)
+        assertEquals(4, stream.level)
+        calls.change(false)
+        assertEquals(3, savedVolume.level)
+        ringer.leave(1)
+        assertEquals(3, stream.level)
+    }
+
+    @Test
+    fun `an alarm that rang through a whole call never changed the stream`() {
+        calls.isActive = true
+        ringer.join(alarm(maxVolume = 0.5f))
+        ringer.leave(1)
+        assertTrue(stream.log.isEmpty())
+    }
+
+    @Test
+    fun `if the phone can't say whether a call is active, it rings`() {
+        calls.failure = SecurityException("Not allowed")
+        ringer.join(alarm())
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        assertFalse(vibration.vibrating)
+    }
+
+    @Test
+    fun `if calls can't be watched, it rings`() {
+        calls.failToWatch = IllegalStateException("No service")
+        ringer.join(alarm())
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        ringer.leave(1)
+    }
+
+    @Test
+    fun `a silent alarm that says no vibration never vibrates in a call that was there first`() {
+        calls.isActive = true
+        ringer.join(alarm(vibrate = false, maxVolume = 0f))
+        assertEquals(0, vibration.starts)
+        calls.change(false)
+        calls.change(true)
+        assertEquals(0, vibration.starts)
+    }
+
+    @Test
+    fun `a silent alarm that says no vibration never vibrates in a call that starts later`() {
+        ringer.join(alarm(vibrate = false, maxVolume = 0f))
+        calls.change(true)
+        assertEquals(0, vibration.starts)
+    }
+
+    @Test
+    fun `during a call any alarm that is not silent is enough to vibrate`() {
+        calls.isActive = true
+        ringer.join(alarm(1, vibrate = false, maxVolume = 0f))
+        assertEquals(0, vibration.starts)
+        ringer.join(alarm(2, vibrate = false))
+        assertTrue(vibration.vibrating)
+        ringer.leave(2)
+        assertFalse(vibration.vibrating)
+    }
+
+    @Test
+    fun `a call in the time the sound waits for the service only counts when it is up`() {
+        serviceUp = false
+        ringer.join(alarm())
+        calls.change(true)
+        assertTrue(vibration.vibrating)
+        ringer.foregroundSettled()
+        assertTrue(sound.log.isEmpty())
+        calls.change(false)
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+    }
+
+    @Test
+    fun `a call that ends in the time the sound waits for the service does not start it early`() {
+        serviceUp = false
+        calls.isActive = true
+        ringer.join(alarm())
+        calls.change(false)
+        assertTrue(sound.log.isEmpty())
+        ringer.foregroundSettled()
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+    }
+
+    @Test
+    fun `after a call the sound is that of the first alarm, also if it has left`() {
+        ringer.join(alarm(1, maxVolume = 0.5f))
+        ringer.join(alarm(2, maxVolume = 1f))
+        calls.change(true)
+        ringer.leave(1)
+        calls.change(false)
+        assertEquals(4, stream.level)
+        assertEquals("play:SystemDefault:1.0", sound.log.last())
+    }
+
+    @Test
+    fun `an emergency alarm stays quiet during a call and plays the last resort after it`() {
+        calls.isActive = true
+        ringer.join(emergencyAlarm(1, NOW))
+        assertTrue(sound.log.isEmpty())
+        assertTrue(vibration.vibrating)
+        calls.change(false)
+        assertEquals(listOf("playLastResort:1.0"), sound.log)
+    }
+
+    @Test
+    fun `the same news twice changes nothing`() {
+        ringer.join(alarm())
+        calls.change(false)
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        calls.change(true)
+        calls.change(true)
+        assertEquals(listOf("play:SystemDefault:1.0", "stop"), sound.log)
+    }
+
+    @Test
+    fun `calls are only watched while it rings, and what comes late changes nothing`() {
+        ringer.join(alarm())
+        assertEquals(1, calls.watching.size)
+        val late = calls.watching.single()
+        ringer.leave(1)
+        assertTrue(calls.watching.isEmpty())
+        late(true)
+        assertFalse(vibration.vibrating)
+        assertEquals(listOf("play:SystemDefault:1.0", "stop"), sound.log)
+    }
+
+    @Test
+    fun `if the end of a call is never told, the sound still comes`() {
+        calls.isActive = true
+        ringer.join(alarm())
+        timers.elapse(callCheck)
+        assertTrue(sound.log.isEmpty())
+        calls.isActive = false
+        timers.elapse(callCheck)
+        assertEquals(listOf("play:SystemDefault:1.0"), sound.log)
+        assertTrue(timers.active.none { it.delay == callCheck })
+    }
+
+    @Test
+    fun `there is no looking for calls outside one, and it ends with the alarm`() {
+        ringer.join(alarm())
+        assertTrue(timers.active.none { it.delay == callCheck })
+        calls.change(true)
+        val check = timers.active.single { it.delay == callCheck }
+        ringer.leave(1)
+        assertTrue(check.cancelled)
+        check.block()
+        assertTrue(timers.active.none { it.delay == callCheck })
+    }
+
+    @Test
+    fun `a check that comes too late does nothing`() {
+        ringer.join(alarm())
+        calls.change(true)
+        val check = timers.active.single { it.delay == callCheck }
+        calls.change(false)
+        val sounds = sound.log.size
+        calls.isActive = true
+        check.block()
+        assertEquals(sounds, sound.log.size)
+    }
+
+    @Test
+    fun `a vibrator that fails at a call does not keep the sound from following`() {
+        ringer.join(alarm(vibrate = false))
+        calls.change(true)
+        vibration.failOnStop = true
+        calls.change(false)
+        assertEquals("play:SystemDefault:1.0", sound.log.last())
+        assertEquals(listOf("The vibration could not follow the call"), problems)
+    }
+
+    @Test
+    fun `a sound that can't stop or start around a call is reported, and thrown nowhere`() {
+        val broken = object : AlarmSound by sound {
+            override fun play(sound: SoundRef, gain: Float) = error("No player")
+            override fun stop() = error("No player")
+        }
+        val alone = AlarmRinger(broken, vibration, timers, wakeLock, audio, {}, {})
+        calls.isActive = true
+        alone.join(alarm())
+        alone.foregroundSettled()
+        calls.change(false)
+        calls.change(true)
+        assertEquals(
+            listOf("The sound could not start after a call", "The sound could not be stopped for a call"),
+            problems,
+        )
     }
 
     @Test

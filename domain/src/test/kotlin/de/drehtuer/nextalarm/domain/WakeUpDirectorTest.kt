@@ -39,9 +39,44 @@ class ForegroundGateTest {
 
         override fun position(): Duration = Duration.ofSeconds(7)
         override fun duration(): Duration? = null
+        override fun pause() {
+            log += "pause"
+        }
+
+        override fun resume() {
+            log += "resume"
+        }
+
         override fun stop() {
             log += "stopPodcast"
         }
+    }
+
+    @Test
+    fun `what has to happen before the audio comes first, when the service is up`() {
+        val before = ForegroundGate(timers, beforeAudio = { log += "before" })
+        GatedSpeech(speech, before).speak("Gym") {}
+        assertTrue(log.isEmpty())
+        before.open()
+        assertEquals(listOf("before", "speak:Gym"), log)
+        log.clear()
+        GatedSpeech(speech, before).speak("Run") {}
+        assertEquals(listOf("before", "speak:Run"), log)
+    }
+
+    @Test
+    fun `a service that comes up with nothing waiting has nothing to do before it`() {
+        val before = ForegroundGate(timers, beforeAudio = { log += "before" })
+        before.open()
+        assertTrue(log.isEmpty())
+    }
+
+    @Test
+    fun `pausing and resuming a gated podcast go straight through`() {
+        val gated = GatedPodcast(podcast, gate)
+        gated.pause()
+        gated.resume()
+        assertEquals(listOf("pause", "resume"), log)
     }
 
     @Test
@@ -144,6 +179,16 @@ class WakeUpDirectorTest {
         var stops = 0
         var position: Duration = Duration.ZERO
         var duration: Duration? = null
+        var pauses = 0
+        var resumes = 0
+
+        override fun pause() {
+            pauses++
+        }
+
+        override fun resume() {
+            resumes++
+        }
 
         override fun play(url: String, onStarted: () -> Unit, onEnded: () -> Unit) {
             played += url
@@ -210,12 +255,16 @@ class WakeUpDirectorTest {
     private val clock = FakeClock()
     private val reports = mutableListOf<Pair<Long, AlarmEvent>>()
     private val changes = mutableListOf<WakeUpStatus>()
+    private val calls = FakeCalls()
+    private val focus = FakeFocus()
     private val director = WakeUpDirector(
         speech,
         podcast,
         fetcher,
         timers,
         wakeLock,
+        AudioFocusHold(focus) { _, _ -> },
+        CallWatch(calls) { _, _ -> },
         clock::now,
         { id, event -> reports += id to event },
         { changes += it },
@@ -253,6 +302,272 @@ class WakeUpDirectorTest {
     private fun newsDone(id: Long): Pair<Long, AlarmEvent> = id to AlarmEvent.NewsDone
 
     private fun found(feed: Feed) = FeedResult.Found(feed)
+
+    private fun stoppedByOtherAudio(id: Long): Pair<Long, AlarmEvent> = id to AlarmEvent.StopWakeUp
+
+    private fun startedPodcast() {
+        director.startNews(alarm(1, news = podcastSource))
+        fetcher.onResult(found(podcastFeed))
+        podcast.onStarted()
+    }
+
+    // Audio focus.
+
+    @Test
+    fun `speech asks for the focus, and the automation gives it up when it ends`() {
+        director.startAnnouncement(alarm(1))
+        assertEquals(1, focus.requests)
+        speech.finish()
+        director.leave(1)
+        assertEquals(1, focus.abandons)
+    }
+
+    @Test
+    fun `a podcast asks for the focus before it plays`() {
+        director.startNews(alarm(1, news = podcastSource))
+        assertEquals(0, focus.requests)
+        fetcher.onResult(found(podcastFeed))
+        assertEquals(1, focus.requests)
+    }
+
+    @Test
+    fun `the focus is kept from the titles through the news`() {
+        director.startAnnouncement(alarm(1))
+        speech.finish()
+        director.startNews(alarm(1, news = rssSource))
+        fetcher.onResult(found(rssFeed))
+        assertEquals(1, focus.requests)
+        assertEquals(0, focus.abandons)
+    }
+
+    @Test
+    fun `an automation with nothing to play asks for nothing`() {
+        director.startAnnouncement(alarm(1, reason = null))
+        director.startNews(alarm(1))
+        director.leave(1)
+        assertEquals(0, focus.requests)
+        assertEquals(0, focus.abandons)
+    }
+
+    @Test
+    fun `focus that is denied does not stop the audio`() {
+        focus.answer = false
+        director.startAnnouncement(alarm(1))
+        assertEquals(listOf("Title 1"), speech.said)
+    }
+
+    @Test
+    fun `losing the focus for good while speaking ends the automation`() {
+        director.startAnnouncement(alarm(1))
+        director.startAnnouncement(alarm(2))
+        focus.onLost()
+        assertEquals(1, speech.stops)
+        assertEquals(setOf(stoppedByOtherAudio(1), stoppedByOtherAudio(2)), reports.toSet())
+        assertNull(playing())
+        director.leave(1)
+        director.leave(2)
+        assertFalse(director.status().running)
+    }
+
+    @Test
+    fun `losing the focus for good ends a podcast`() {
+        startedPodcast()
+        focus.onLost()
+        assertEquals(1, podcast.stops)
+        assertEquals(listOf(stoppedByOtherAudio(1)), reports)
+    }
+
+    @Test
+    fun `losing the focus to a call is not the end, as the call decides`() {
+        startedPodcast()
+        calls.isActive = true
+        focus.onLost()
+        assertEquals(0, podcast.stops)
+        assertTrue(reports.isEmpty())
+    }
+
+    @Test
+    fun `the focus lost after the end means nothing`() {
+        director.startAnnouncement(alarm(1))
+        val lost = focus.onLost
+        director.leave(1)
+        lost()
+        assertTrue(reports.isEmpty())
+    }
+
+    // Calls.
+
+    @Test
+    fun `a call at the start skips the title, and the rest goes on to the end`() {
+        calls.isActive = true
+        director.startAnnouncement(alarm(1))
+        assertTrue(speech.said.isEmpty())
+        assertEquals(listOf(announced(1)), reports)
+        assertEquals(0, focus.requests)
+    }
+
+    @Test
+    fun `a call at the start skips the news without fetching it`() {
+        calls.isActive = true
+        director.startNews(alarm(1, news = rssSource))
+        assertTrue(fetcher.asked.isEmpty())
+        assertEquals(listOf(newsDone(1)), reports)
+        assertEquals(0, focus.requests)
+    }
+
+    @Test
+    fun `a call that starts stops the title, and skips the others and the news`() {
+        director.startAnnouncement(alarm(1, news = rssSource))
+        director.startAnnouncement(alarm(2))
+        director.startNews(alarm(1, news = rssSource))
+        calls.change(true)
+        assertEquals(1, speech.stops)
+        assertEquals(listOf("Title 1"), speech.said)
+        assertEquals(listOf(announced(1), announced(2), newsDone(1)), reports)
+        assertTrue(fetcher.asked.isEmpty())
+        assertEquals(1, focus.abandons)
+    }
+
+    @Test
+    fun `a call that starts stops the reading of the news, which ends`() {
+        director.startNews(alarm(1, news = rssSource))
+        fetcher.onResult(found(rssFeed))
+        calls.change(true)
+        assertEquals(1, speech.stops)
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `a call that starts pauses a podcast and leaves it in the news`() {
+        startedPodcast()
+        calls.change(true)
+        assertEquals(1, podcast.pauses)
+        assertEquals(0, podcast.stops)
+        assertTrue(reports.isEmpty())
+        assertIs<WakeUpPlaying.PlayingPodcast>(playing())
+        assertEquals(1, focus.abandons)
+    }
+
+    @Test
+    fun `when the call ends the podcast goes on, with the focus again`() {
+        startedPodcast()
+        calls.change(true)
+        calls.change(false)
+        assertEquals(1, podcast.resumes)
+        assertEquals(2, focus.requests)
+        assertTrue(reports.isEmpty())
+    }
+
+    @Test
+    fun `a call that outlasts the limit ends the news, and there is nothing left to resume`() {
+        startedPodcast()
+        calls.change(true)
+        timers.active(limit).block()
+        assertEquals(1, podcast.stops)
+        assertEquals(listOf(newsDone(1)), reports)
+        calls.change(false)
+        assertEquals(0, podcast.resumes)
+    }
+
+    @Test
+    fun `a podcast that doesn't get going again ends the news`() {
+        startedPodcast()
+        calls.change(true)
+        calls.change(false)
+        podcast.onEnded()
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `a call before a podcast has started counts as there being nothing to play`() {
+        director.startNews(alarm(1, news = podcastSource))
+        fetcher.onResult(found(podcastFeed))
+        calls.change(true)
+        assertEquals(1, podcast.stops)
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `a call while the feed is on its way waits for it, and then nothing plays`() {
+        director.startNews(alarm(1, news = podcastSource))
+        calls.change(true)
+        assertTrue(reports.isEmpty())
+        fetcher.onResult(found(podcastFeed))
+        assertTrue(podcast.played.isEmpty())
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `a call that started and ended while the feed was on its way changes nothing`() {
+        director.startNews(alarm(1, news = rssSource))
+        calls.change(true)
+        calls.change(false)
+        fetcher.onResult(found(rssFeed))
+        assertEquals(listOf("One. First"), speech.said)
+    }
+
+    @Test
+    fun `an alarm that wants to be announced during a paused podcast does not stop it`() {
+        startedPodcast()
+        calls.change(true)
+        director.startAnnouncement(alarm(2))
+        assertEquals(0, podcast.stops)
+        assertEquals(listOf(announced(2)), reports)
+        calls.change(false)
+        assertEquals(1, podcast.resumes)
+    }
+
+    @Test
+    fun `an alarm that wants news during a paused podcast joins it`() {
+        startedPodcast()
+        calls.change(true)
+        director.startNews(alarm(2, news = podcastSource))
+        assertTrue(reports.isEmpty())
+        calls.change(false)
+        podcast.onEnded()
+        assertEquals(listOf(newsDone(1), newsDone(2)), reports)
+    }
+
+    @Test
+    fun `a call that starts with nothing playing has nothing to do`() {
+        director.startAnnouncement(alarm(1))
+        speech.finish()
+        reports.clear()
+        calls.change(true)
+        assertTrue(reports.isEmpty())
+    }
+
+    @Test
+    fun `a call that ends with nothing paused has nothing to do`() {
+        director.startAnnouncement(alarm(1))
+        calls.change(false)
+        assertEquals(0, podcast.resumes)
+        assertEquals(listOf("Title 1"), speech.said)
+    }
+
+    @Test
+    fun `a podcast being played, without a call, has nothing to resume`() {
+        startedPodcast()
+        calls.change(false)
+        assertEquals(0, podcast.resumes)
+    }
+
+    @Test
+    fun `calls are only watched during the automation, and what comes late changes nothing`() {
+        director.startAnnouncement(alarm(1))
+        val late = calls.watching.single()
+        director.leave(1)
+        assertTrue(calls.watching.isEmpty())
+        late(true)
+        assertTrue(reports.isEmpty())
+    }
+
+    @Test
+    fun `if there's no telling whether a call is active, it plays`() {
+        calls.failure = SecurityException("Not allowed")
+        director.startAnnouncement(alarm(1))
+        assertEquals(listOf("Title 1"), speech.said)
+    }
 
     @Test
     fun `a stored RSS feed that is plain http plays nothing when the alarm comes, and the automation goes on to its end`() {

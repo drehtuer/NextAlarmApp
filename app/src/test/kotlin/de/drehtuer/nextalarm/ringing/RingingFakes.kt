@@ -9,6 +9,10 @@ import de.drehtuer.nextalarm.domain.AlarmSound
 import de.drehtuer.nextalarm.domain.AlarmState
 import de.drehtuer.nextalarm.domain.AlarmStream
 import de.drehtuer.nextalarm.domain.AlarmVolumeKeeper
+import de.drehtuer.nextalarm.domain.AudioFocus
+import de.drehtuer.nextalarm.domain.AudioFocusHold
+import de.drehtuer.nextalarm.domain.CallWatch
+import de.drehtuer.nextalarm.domain.PhoneCalls
 import de.drehtuer.nextalarm.domain.RingAudio
 import de.drehtuer.nextalarm.domain.SavedAlarmVolume
 import de.drehtuer.nextalarm.domain.AlarmVibration
@@ -121,9 +125,23 @@ class FakeSavedVolume(var level: Int? = null) : SavedAlarmVolume {
     }
 }
 
-/** A stream that nobody needs to look at. */
-fun fakeRingAudio(stream: AlarmStream = FakeAlarmStream(), saved: SavedAlarmVolume = FakeSavedVolume()) =
-    RingAudio(AlarmVolumeKeeper(stream, saved) { _, _ -> })
+object NoCalls : PhoneCalls {
+    override fun active() = false
+    override fun watch(onChange: (Boolean) -> Unit): () -> Unit = {}
+}
+
+object FakeNoFocus : AudioFocus {
+    override fun request(onLostForGood: () -> Unit) = true
+    override fun abandon() = Unit
+}
+
+/** Surroundings of the sound that nobody needs to look at. */
+fun fakeRingAudio(stream: AlarmStream = FakeAlarmStream(), saved: SavedAlarmVolume = FakeSavedVolume()) = RingAudio(
+    AlarmVolumeKeeper(stream, saved) { _, _ -> },
+    AudioFocusHold(FakeNoFocus) { _, _ -> },
+    CallWatch(NoCalls) { _, _ -> },
+    { _, _ -> },
+)
 
 class FakeVibration : AlarmVibration {
     override fun start() = Unit

@@ -231,7 +231,7 @@ sequenceDiagram
     R->>SM: Fire(lateBy)
     SM-->>R: Ringing
     R->>S: vibrate, ring timeout timer, notification, startForegroundService
-    S->>S: startForeground, then play sound (USAGE_ALARM)
+    S->>S: startForeground, then focus, volume and sound (USAGE_ALARM)
     S->>A: full-screen intent notification
     A->>SM: Dismiss
     SM-->>A: Announcing
@@ -359,8 +359,64 @@ sequenceDiagram
   the exact alarm permission, so a phone with that setting on can silence an alarm whose service runs as it should.
   `adb dumpsys audio` and `logcat` show an entry starting with `AudioHardening` for sound that was silenced.
 
+Audio focus is under the rule as well: without a service, Android answers `AUDIOFOCUS_REQUEST_FAILED`. So the alarm asks for
+it just before the sound, and the wake-up automation asks again when the gate opens (`AudioFocusHold.retry`, from
+`ForegroundGate`). Without focus, the audio plays anyway and other audio goes on.
+
 The wake-up automation is media, without the waiver: see [below](#wake-up-automation-and-the-lock-screen). Test playback on
 the news screen only runs while the screen can be seen, so a visible activity covers it.
+
+### Calls and audio focus
+
+Alarms and wake-up audio don't talk over a call, and they pause other audio. Android stays behind thin interfaces in
+`domain` (`PhoneCalls`, `AudioFocus`), implemented in `CallsAndFocus.kt`.
+
+**What counts as a call** is the audio mode: `MODE_IN_CALL` and `MODE_IN_COMMUNICATION`. This needs no permission and covers
+internet calls too, so the app doesn't ask for `READ_PHONE_STATE`. A phone that only rings (`MODE_RINGTONE`) doesn't count:
+nobody talks yet, and a call that nobody answers must not keep an alarm quiet. If the call is answered, the mode changes.
+`MODE_CALL_SCREENING` doesn't count either, as Android lets other audio go on during it. If the mode is unknown or the check
+throws, there is no call, so that the alarm rings (`CallWatch`). A mode that an app leaves set after its call ends, which
+would be its bug, keeps alarms without sound until that app's process ends.
+
+**The alarm** takes the focus for a moment (`USAGE_ALARM`, `AUDIOFOCUS_GAIN_TRANSIENT`), so other audio pauses and goes on by
+itself afterwards, and gives it up when no alarm rings any more. A focus request that fails, is denied or is lost never
+stops the sound.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Sounding: rings, no call
+    [*] --> Vibrating: rings, in a call
+    Sounding --> Vibrating: call starts
+    Vibrating --> Sounding: call ends
+    Sounding --> [*]: Dismiss, Snooze, timeout, hard limit
+    Vibrating --> [*]: Dismiss, Snooze, timeout, hard limit
+```
+
+- During a call an alarm makes no sound and vibrates, even with vibration off in the settings. The timeout and everything
+  else work as normal.
+- When the call ends the sound starts from the beginning, with its ramp if it has one, and the vibration follows the setting
+  again. When a call starts, the sound stops and the focus goes. The stream keeps its level until no alarm rings.
+- Android reports the changes of the mode. While the sound waits for a call to end, `AlarmRinger` also looks for itself every
+  5 seconds, because a missed end would be an alarm without sound.
+- An alarm that rings through a whole call has not changed the stream and asked for no focus.
+- **A silent alarm** (`maxVolume = 0`) asks for no focus. If it also says no vibration, it never vibrates, not even during a
+  call, as the silent device tests run with someone asleep next to the phone.
+
+**Wake-up audio** (speech, RSS, podcasts, and the test on the news screen) takes the focus before it first plays (`USAGE_MEDIA`,
+`AUDIOFOCUS_GAIN`), and gives it up when the automation ends.
+
+| What happens | Speech (titles, RSS) | Podcast |
+|---|---|---|
+| A call is active when it would start | Skipped: `AnnouncementDone` or `NewsDone`, and on to the end | Skipped: `NewsDone`, and on to the end |
+| A call starts while it plays | Stops. The other titles and the news are skipped | Pauses, and the focus goes. The time limit keeps running |
+| The call ends | Nothing: it has ended | Resumes, with the focus, unless the limit has ended it |
+| A call starts before an episode has started | | Counts as skipped |
+| The user starts other audio (`AUDIOFOCUS_LOSS`) | The automation ends (`StopWakeUp`) | The automation ends (`StopWakeUp`) |
+| Something takes the focus for a moment | Goes on | Goes on |
+
+An internet call can take the focus for good. If a call is active when that happens, the call rules apply; if the focus goes
+just before the mode changes, the automation ends. A test on the news screen ended by a call or by other audio before anything
+was heard is no failure of the feed, so it ends without a banner.
 
 ### Wake-up automation and the lock screen
 
@@ -372,7 +428,8 @@ unlocked. This has consequences, because the phone is usually still locked at th
 - The news source is an RSS feed, read aloud with `TextToSpeech`, or a podcast feed, of which the latest episode is
   played. Both stop at a configurable maximum duration (default 15 minutes).
 - All wake-up audio, speech and news alike, uses the media stream (`USAGE_MEDIA`), so the volume keys work as
-  expected. Unlike the alarm sound, it follows the media volume and is subject to Do Not Disturb.
+  expected. Unlike the alarm sound, it follows the media volume and is subject to Do Not Disturb. It pauses other audio and
+  doesn't play during a call: see [Calls and audio focus](#calls-and-audio-focus).
 - The alarm screen and the wake-up screen are shown over the lock screen (`showWhenLocked`, `turnScreenOn`).
   Dismissing an alarm does not require unlocking; neither does stopping the wake-up automation, which is also
   possible from the media notification on the lock screen.
@@ -404,7 +461,7 @@ utterances.
   differ (the settings changed between two alarms), the first alarm's is played. A title to speak while news plays stops
   the news, which starts again from the beginning after it, so that two voices never talk at once.
 - **Stop** ends every alarm in the automation (`AlarmEngine.stopWakeUp`), from the wake-up screen, the media
-  notification and the `MediaSession`.
+  notification and the `MediaSession`. Other audio that the user starts ends it the same way, one `StopWakeUp` per alarm.
 - **Screen 9 follows screen 8.** Android does not let an app in the background open an activity, so when an alarm is
   dismissed from its notification, the automation runs without opening the screen. The media notification opens it.
 - **The maximum duration** counts from the start of the news step, including the time the feed takes to download, so
@@ -426,7 +483,7 @@ else, and hands it the feed it has just fetched. So it uses the media stream, th
 none of the automation's state, its notification or `WakeUpService`. That is enough, as a test only runs while the screen
 can be seen. `TextToSpeechOutput` and `MediaPlayerPodcastOutput` have their own instances for it. The director does not
 tell a failure from an end, so the player counts a test as failed if the news ended before anything was heard (no entry
-was read to its end and no episode started) and before the limit.
+was read to its end and no episode started) and before the limit, unless a call or other audio ended it.
 
 Feeds come from servers the user does not control, so they are treated as hostile:
 

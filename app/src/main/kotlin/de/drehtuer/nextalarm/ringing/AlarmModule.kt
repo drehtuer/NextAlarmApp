@@ -14,6 +14,8 @@ import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.domain.AlarmVolumeKeeper
+import de.drehtuer.nextalarm.domain.AudioFocusHold
+import de.drehtuer.nextalarm.domain.CallWatch
 import de.drehtuer.nextalarm.domain.FallbackSound
 import de.drehtuer.nextalarm.domain.ForegroundGate
 import de.drehtuer.nextalarm.domain.GatedPodcast
@@ -114,7 +116,12 @@ object AlarmModule {
         vibration = AndroidVibration(context),
         timers = HandlerRingTimers(),
         wakeLock = AndroidRingWakeLock(context),
-        audio = RingAudio(AlarmVolumeKeeper(AndroidAlarmStream(context), data.savedVolume, ::logAudioProblem)),
+        audio = RingAudio(
+            AlarmVolumeKeeper(AndroidAlarmStream(context), data.savedVolume, ::logAudioProblem),
+            AudioFocusHold(alarmAudioFocus(context), ::logAudioProblem),
+            CallWatch(AndroidPhoneCalls(context), ::logAudioProblem),
+            ::logAudioProblem,
+        ),
         onTimeout = { ids -> scope.launch { engine.get().ringTimedOut(ids) } },
         onChanged = { alarms ->
             foreground.ringingChanged(alarms)
@@ -138,7 +145,12 @@ object AlarmModule {
 
     @Provides
     @Singleton
-    fun wakeUpGate() = ForegroundGate(HandlerRingTimers())
+    fun wakeUpFocus(@ApplicationContext context: Context) = AudioFocusHold(mediaAudioFocus(context), ::logAudioProblem)
+
+    /** Android only gives the focus with the service up, so it is asked for again when that has come. */
+    @Provides
+    @Singleton
+    fun wakeUpGate(focus: AudioFocusHold) = ForegroundGate(HandlerRingTimers(), beforeAudio = focus::retry)
 
     @Provides
     @Singleton
@@ -163,6 +175,7 @@ object AlarmModule {
         data: DataComponents,
         foreground: WakeUpForeground,
         gate: ForegroundGate,
+        focus: AudioFocusHold,
         changes: WakeUpChanges,
         scope: CoroutineScope,
         engine: Lazy<AlarmEngine>,
@@ -172,6 +185,8 @@ object AlarmModule {
         feeds = ScopedNewsFetcher(scope, data.feeds),
         timers = HandlerRingTimers(),
         wakeLock = AndroidRingWakeLock(context, "NextAlarm:wakeup"),
+        focus = focus,
+        calls = CallWatch(AndroidPhoneCalls(context), ::logAudioProblem),
         now = Instant::now,
         report = { id, event -> scope.launch { engine.get().handle(id, event) } },
         onChanged = { status ->

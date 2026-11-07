@@ -96,8 +96,8 @@ adb shell am start -W -n de.drehtuer.nextalarm/.MainActivity
 ### Silent device tests
 
 `app/src/androidTest` holds tests that only a real phone can answer. They fire real alarms through the real receivers,
-but every alarm plays at volume 0, without vibration or speech, so they can run at any time. Their screen can still
-light up. They use their own alarms in the app's database and delete them.
+but every alarm plays at volume 0, without vibration or speech, so they can run at any time. They don't change the phone's
+alarm volume or ask for the audio focus, which would pause what plays. Their screen can still light up. They use their own alarms in the app's database and delete them.
 
 ```bash
 ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest

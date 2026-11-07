@@ -116,7 +116,7 @@ Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the cur
 | `Remove`             | Re-planning no longer contains this entry                                           |
 | `AnnouncementDone`   | TTS finished (or failed)                                                            |
 | `NewsDone`           | News finished (or failed, e.g. no network)                                          |
-| `StopWakeUp`         | User stops the wake-up automation (sent to every alarm in it), or the recovery sweep ends an interrupted one |
+| `StopWakeUp`         | User stops the wake-up automation or starts other audio (sent to every alarm in it), or the recovery sweep ends an interrupted one |
 
 Guards:
 

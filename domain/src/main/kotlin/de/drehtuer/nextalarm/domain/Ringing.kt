@@ -150,10 +150,116 @@ class AlarmVolumeKeeper(
     }
 }
 
+/** Whether the phone is in a call, a phone call or an internet one. */
+interface PhoneCalls {
+    fun active(): Boolean
+
+    /** Tells about changes, until the result is called. */
+    fun watch(onChange: (Boolean) -> Unit): () -> Unit
+}
+
+/**
+ * [PhoneCalls] without its failures. If there is no telling whether a call is active, then there is none: an alarm that
+ * talks over a call beats one that isn't heard.
+ */
+class CallWatch(private val calls: PhoneCalls, private val onProblem: AudioProblem) {
+    fun active(): Boolean = try {
+        calls.active()
+    } catch (failure: RuntimeException) {
+        onProblem("Could not find out whether a call is active", failure)
+        false
+    }
+
+    fun watch(onChange: (Boolean) -> Unit): () -> Unit = try {
+        calls.watch(onChange)
+    } catch (failure: RuntimeException) {
+        onProblem("Could not watch for calls", failure)
+        NOTHING_TO_STOP
+    }
+
+    private companion object {
+        val NOTHING_TO_STOP: () -> Unit = {}
+    }
+}
+
+/** Asks other audio to pause, in the way the audio it is for needs. */
+interface AudioFocus {
+    /** True if it was given. [onLostForGood] is called if something else takes it for good, not for a moment. */
+    fun request(onLostForGood: () -> Unit): Boolean
+    fun abandon()
+}
+
+/**
+ * Having [AudioFocus] for as long as something wants it. Nothing here throws, and focus that is denied is no reason to stay
+ * silent: it only means that other audio goes on. Android 17 denies it without a foreground service, so [retry] asks again
+ * when the service is up. See docs/architecture.md#background-audio-on-android-17.
+ */
+class AudioFocusHold(private val focus: AudioFocus, private val onProblem: AudioProblem) {
+    private var wanted = false
+    private var granted = false
+    private var onLost: () -> Unit = {}
+
+    @Synchronized
+    fun take(onLostForGood: () -> Unit) {
+        wanted = true
+        onLost = onLostForGood
+        if (!granted) request()
+    }
+
+    /** Asks again if it was denied, for audio that is about to start. */
+    @Synchronized
+    fun retry() {
+        if (wanted && !granted) request()
+    }
+
+    /** Does nothing if it was not taken, so that a silent alarm has no effect on any other audio. */
+    @Synchronized
+    fun release() {
+        if (!wanted) return
+        wanted = false
+        granted = false
+        try {
+            focus.abandon()
+        } catch (failure: RuntimeException) {
+            onProblem("Could not give up the audio focus", failure)
+        }
+    }
+
+    private fun request() {
+        granted = try {
+            focus.request(::lost)
+        } catch (failure: RuntimeException) {
+            onProblem("Could not ask for the audio focus", failure)
+            false
+        }
+        if (!granted) onProblem("The audio focus was denied: other audio goes on", null)
+    }
+
+    /** Outside this class's lock, as what is told takes its own, which it holds while it calls in here. */
+    private fun lost() {
+        val tell = synchronized(this) {
+            if (!wanted) return
+            release()
+            onLost
+        }
+        tell()
+    }
+}
+
 /** What the ringer needs around the sound. */
 class RingAudio(
     val volume: AlarmVolumeKeeper,
+    val focus: AudioFocusHold,
+    val calls: CallWatch,
+    val onProblem: AudioProblem,
 )
+
+/**
+ * During a call an alarm vibrates, as it doesn't sound, even if its setting says no vibration. An alarm without any sound
+ * of its own has no sound to make up for: it stays still if it says so, which the silent device tests rely on.
+ */
+fun wantsVibration(snapshot: AlarmSnapshot, inCall: Boolean): Boolean =
+    snapshot.vibrate || (inCall && snapshot.maxVolume != 0f)
 
 /** Plays one alarm sound at a time, in a loop. */
 interface AlarmSound {
@@ -361,6 +467,9 @@ class FallbackSound<S>(
  * vibration and timeout, and reports through [onChanged], which leads to the notification and the service. The sound starts
  * at [foregroundSettled], or after [FOREGROUND_WAIT] if that does not come, because a chance of sound beats none.
  *
+ * During a call there is no sound: it stops when a call starts, and starts when the call ends, with the alarm vibrating in
+ * the meantime. See docs/architecture.md#calls-and-audio-focus.
+ *
  * The timeout normally ends the ringing through `AlarmEngine`. If that does not happen [HARD_STOP_MARGIN] later, the ringer
  * stops on its own, because a sound nobody can stop is worse than a stored state that is out of date.
  */
@@ -384,13 +493,20 @@ class AlarmRinger(
     private var cancelTimeout: () -> Unit = {}
     private var cancelHardStop: () -> Unit = {}
     private var cancelForegroundWait: () -> Unit = {}
+    private var cancelCallCheck: () -> Unit = {}
+    private var stopWatchingCalls: () -> Unit = {}
 
     /** The alarm whose sound waits for the service. */
     private var waitingToPlay: AlarmInstance? = null
 
+    /** The alarm whose sound it is, also when it has left, for when a call ends. */
+    private lateinit var soundAlarm: AlarmInstance
+    private var inCall = false
+
     /** Told apart from each other, because a timer can have fired just before it was cancelled. */
     private var rampRun = 0
     private var timeoutRun = 0
+    private var callCheckRun = 0
 
     @Synchronized
     fun ringing(): List<AlarmInstance> = alarms.values.toList()
@@ -400,6 +516,7 @@ class AlarmRinger(
     fun join(alarm: AlarmInstance) {
         val first = alarms.isEmpty()
         alarms[alarm.id] = alarm
+        if (first) watchCalls()
         val timeout = Duration.ofMinutes(alarms.values.map { it.snapshot.ringTimeoutMinutes }.max().toLong())
         wakeLock.hold(timeout.plus(WAKE_LOCK_MARGIN))
         restartTimeout(timeout)
@@ -417,13 +534,7 @@ class AlarmRinger(
         val alarm = waitingToPlay ?: return
         waitingToPlay = null
         cancelForegroundWait()
-        // Android 17 only lets the volume change with the service up, as it does the sound.
-        audio.volume.raise(alarm.snapshot.maxVolume)
-        if (alarm.key.isEmergency) {
-            sound.playLastResort(soundGain(Duration.ZERO, 0, alarm.snapshot.maxVolume))
-        } else {
-            startSound(alarm.snapshot)
-        }
+        startSound(alarm)
     }
 
     /**
@@ -450,6 +561,7 @@ class AlarmRinger(
     }
 
     private fun waitForForeground(alarm: AlarmInstance) {
+        soundAlarm = alarm
         waitingToPlay = alarm
         cancelForegroundWait = timers.after(FOREGROUND_WAIT) { foregroundLate(alarm) }
     }
@@ -461,10 +573,73 @@ class AlarmRinger(
         foregroundSettled()
     }
 
-    private fun startSound(snapshot: AlarmSnapshot) {
+    /** Android 17 only lets focus and volume change with the service up, as it does the sound, so they come here. */
+    private fun startSound(alarm: AlarmInstance) {
+        if (inCall) return
+        val snapshot = alarm.snapshot
+        // A silent alarm has no reason to pause anything, and no effect on anyone who sleeps next to the phone.
+        if (snapshot.maxVolume != 0f) audio.focus.take {}
+        audio.volume.raise(snapshot.maxVolume)
+        if (alarm.key.isEmergency) {
+            sound.playLastResort(soundGain(Duration.ZERO, 0, snapshot.maxVolume))
+            return
+        }
         sound.play(snapshot.sound, soundGain(Duration.ZERO, effectiveRampSeconds(snapshot), snapshot.maxVolume))
         // Without a ramp, or with a silent maximum, the gain never changes.
         if (snapshot.volumeRampSeconds > 0 && snapshot.maxVolume != 0f) scheduleRamp(snapshot, Duration.ZERO, ++rampRun)
+    }
+
+    /** Listening comes first, so that a call that starts in the moment between the two is not missed. */
+    private fun watchCalls() {
+        stopWatchingCalls = audio.calls.watch(::callChanged)
+        inCall = audio.calls.active()
+        checkCallLater()
+    }
+
+    @Synchronized
+    private fun callChanged(active: Boolean) {
+        if (alarms.isEmpty() || active == inCall) return
+        inCall = active
+        checkCallLater()
+        attempt("The vibration could not follow the call", ::updateVibration)
+        if (waitingToPlay != null) return
+        if (active) {
+            attempt("The sound could not be stopped for a call", ::silence)
+        } else {
+            attempt("The sound could not start after a call") { startSound(soundAlarm) }
+        }
+    }
+
+    /**
+     * Android tells about a call that ends, but the sound must not depend on that: a missed end is an alarm without a
+     * sound. So this looks for itself as well, for as long as the sound waits for a call.
+     */
+    private fun checkCallLater() {
+        cancelCallCheck()
+        val run = ++callCheckRun
+        if (inCall) cancelCallCheck = timers.after(CALL_CHECK) { checkCall(run) }
+    }
+
+    @Synchronized
+    private fun checkCall(run: Int) {
+        if (run != callCheckRun) return
+        callChanged(audio.calls.active())
+        if (run == callCheckRun) checkCallLater()
+    }
+
+    private fun silence() {
+        rampRun++
+        cancelRamp()
+        sound.stop()
+        audio.focus.release()
+    }
+
+    private inline fun attempt(problem: String, step: () -> Unit) {
+        try {
+            step()
+        } catch (failure: RuntimeException) {
+            audio.onProblem(problem, failure)
+        }
     }
 
     private fun scheduleRamp(snapshot: AlarmSnapshot, elapsed: Duration, run: Int) {
@@ -480,7 +655,7 @@ class AlarmRinger(
     }
 
     private fun updateVibration() {
-        val wanted = alarms.values.any { it.snapshot.vibrate }
+        val wanted = alarms.values.any { wantsVibration(it.snapshot, inCall) }
         if (wanted == vibrating) return
         vibrating = wanted
         if (wanted) vibration.start() else vibration.stop()
@@ -522,7 +697,17 @@ class AlarmRinger(
         cancelHardStop()
         cancelForegroundWait()
         waitingToPlay = null
-        return listOf(sound::stop, audio.volume::restore, ::updateVibration, wakeLock::release).mapNotNull { step ->
+        callCheckRun++
+        cancelCallCheck()
+        inCall = false
+        return listOf(
+            sound::stop,
+            audio.focus::release,
+            audio.volume::restore,
+            ::updateVibration,
+            wakeLock::release,
+            stopWatchingCalls,
+        ).mapNotNull { step ->
             try {
                 step()
                 null
@@ -537,6 +722,9 @@ class AlarmRinger(
 
         /** A service that is allowed to start is up long before this. */
         val FOREGROUND_WAIT: Duration = Duration.ofSeconds(3)
+
+        /** How long a sound can stay off after a call has ended, if Android doesn't say that it has. */
+        val CALL_CHECK: Duration = Duration.ofSeconds(5)
 
         /** Far longer than storing a state takes, and within the margin of the wake lock, so that the CPU is awake for it. */
         val HARD_STOP_MARGIN: Duration = Duration.ofSeconds(30)

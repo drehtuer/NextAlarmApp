@@ -47,6 +47,49 @@ class FakeAlarmRepository : AlarmRepository {
     }
 }
 
+class FakeCalls(var isActive: Boolean = false) : PhoneCalls {
+    var failure: RuntimeException? = null
+    var failToWatch: RuntimeException? = null
+    val watching = mutableListOf<(Boolean) -> Unit>()
+
+    override fun active(): Boolean {
+        failure?.let { throw it }
+        return isActive
+    }
+
+    override fun watch(onChange: (Boolean) -> Unit): () -> Unit {
+        failToWatch?.let { throw it }
+        watching += onChange
+        return { watching -= onChange }
+    }
+
+    /** A call starts or ends, and Android says so. */
+    fun change(active: Boolean) {
+        isActive = active
+        watching.toList().forEach { it(active) }
+    }
+}
+
+class FakeFocus : AudioFocus {
+    var requests = 0
+    var abandons = 0
+    var answer = true
+    var failure: RuntimeException? = null
+    var onLost: () -> Unit = {}
+
+    override fun request(onLostForGood: () -> Unit): Boolean {
+        requests++
+        onLost = onLostForGood
+        failure?.let { throw it }
+        return answer
+    }
+
+    override fun abandon() {
+        abandons++
+        failure?.let { throw it }
+    }
+}
+
 object NoAlarmEffects : AlarmEffects {
     override fun perform(instance: AlarmInstance, action: AlarmAction) = Unit
     override fun showNextAlarm(alarm: AlarmInstance?) = Unit

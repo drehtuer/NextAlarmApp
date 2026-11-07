@@ -273,6 +273,8 @@ Details decided while building this screen:
   - Ring for: 1, 2, 3, 5, 10 or 15 min.
   - Snooze length: 1, 5, 10, 15, 20 or 30 min.
 - "Maximum volume" keeps its secondary line also when a value is set.
+- "Vibration" is what happens outside a call. During a call an alarm has no sound and vibrates even if this is off. See
+  [Calls and audio focus](architecture.md#calls-and-audio-focus).
 - The file's own name is kept in the name of the app's copy (`sound-<unique id>-<file name>`), because the settings only
   store that one name. It shows at most 64 characters of the file name.
 - The "News" row names the feed's host name, without "www.", for both kinds. A feed's own title ("Der Tag") isn't stored.
@@ -331,6 +333,8 @@ Details decided while building this screen:
 - **The progress line:** while the feed is on its way, "Getting the news · tagesschau.de". An episode shorter than the
   maximum duration counts up to its own end: "Playing “Der Tag” · 0:42 of 10:00". The bar moves without a value until the
   sound has started.
+- **A call or other audio** that ends a test, or a call that keeps one from starting, is no failure of the feed: the test
+  just ends, without a banner.
 - **"Turn off news"** empties the field and stores no news. It is disabled when there is nothing to turn off.
 - Emptying the field does not turn the news off: only the button does. Coming back to the screen shows what is stored.
 - The test stops at "Stop test", on leaving the screen, when the screen is hidden (also by a ringing alarm), when the

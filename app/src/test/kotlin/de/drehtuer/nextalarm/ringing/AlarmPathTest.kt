@@ -53,6 +53,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLog
 import org.robolectric.shadows.ShadowAlarmManager
 import org.robolectric.shadows.ShadowTextToSpeech
 import org.w3c.dom.Element
@@ -345,10 +346,11 @@ private class AlarmPathParts(private val context: Context, private val data: Dat
         AlarmModule.ringer(context, data, foreground, changes, notifications, AlarmModule.soundWorker(scope), scope, lazyEngine)
     private val wakeUpNotifications = AlarmModule.wakeUpNotifications(context)
     val wakeUpMedia = AlarmModule.wakeUpMedia(context, scope, lazyEngine)
-    private val wakeUpGate = AlarmModule.wakeUpGate()
+    private val wakeUpFocus = AlarmModule.wakeUpFocus(context)
+    private val wakeUpGate = AlarmModule.wakeUpGate(wakeUpFocus)
     val wakeUpForeground = AlarmModule.wakeUpForeground(context, wakeUpNotifications, wakeUpMedia, wakeUpGate)
     val wakeUpChanges = AlarmModule.wakeUpChanges()
-    val director = AlarmModule.wakeUpDirector(context, data, wakeUpForeground, wakeUpGate, wakeUpChanges, scope, lazyEngine)
+    val director = AlarmModule.wakeUpDirector(context, data, wakeUpForeground, wakeUpGate, wakeUpFocus, wakeUpChanges, scope, lazyEngine)
     private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(director))
     val engine: AlarmEngine = AlarmModule.engine(context, data, effects)
     private val controllerData = data
@@ -480,6 +482,22 @@ class AlarmManifestTest {
     fun `plain http is allowed for the app, as many podcast addresses still use it, and limited by readFeed`() {
         val application = manifest.getElementsByTagName("application").item(0) as Element
         assertEquals("true", application.getAttribute("android:usesCleartextTraffic"))
+    }
+
+    @Test
+    fun `problems around the sound are logged, with or without a failure`() {
+        logAudioProblem("Without", null)
+        logAudioProblem("With", SecurityException("Not allowed"))
+        val logged = ShadowLog.getLogsForTag("NextAlarm").map { it.msg }
+        assertTrue("Without" in logged && "With" in logged)
+    }
+
+    @Test
+    fun `calls are found out about without asking for the phone's state`() {
+        val requested = context.packageManager
+            .getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
+            .requestedPermissions.orEmpty().toSet()
+        assertTrue("android.permission.READ_PHONE_STATE" !in requested)
     }
 
     @Test

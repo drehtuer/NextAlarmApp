@@ -178,9 +178,6 @@ private fun detectedFeed(feed: Feed, now: Instant, zone: ZoneId): DetectedFeedMo
     )
 }
 
-private const val INSECURE_FEED_REASON =
-    "This RSS feed uses plain http, which NextAlarm only allows for podcasts. Use its https address."
-
 private fun failureReason(failure: FeedFailure): String = when (failure) {
     FeedFailure.InvalidAddress -> "This isn't a web address: it has to start with https:// or http://."
     is FeedFailure.Http -> {
@@ -190,7 +187,7 @@ private fun failureReason(failure: FeedFailure): String = when (failure) {
     FeedFailure.Unreachable -> "The server can't be reached, or the phone has no connection."
     FeedFailure.TooLarge -> "The answer is too large to be read as a feed."
     FeedFailure.NotAFeed -> "The answer isn't a feed NextAlarm can read."
-    FeedFailure.InsecureFeed -> INSECURE_FEED_REASON
+    FeedFailure.InsecureFeed -> "This RSS feed uses plain http, which NextAlarm only allows for podcasts. Use its https address."
 }
 
 private fun playbackFailure(kind: NewsType): String = when (kind) {
@@ -219,7 +216,7 @@ fun newsFailureBanner(draft: NewsDraft): BannerText? {
     val reason = when (val check = draft.check) {
         NewsCheck.None, is NewsCheck.Found -> return null
         NewsCheck.Failed(FeedFailure.InsecureFeed) ->
-            return BannerText("This feed can't be used.", "$INSECURE_FEED_REASON ${untilItWorks(draft)}")
+            return BannerText("This feed can't be used.", "${failureReason(FeedFailure.InsecureFeed)} ${untilItWorks(draft)}")
         is NewsCheck.Unplayable -> playbackFailure(check.feed.kind)
         is NewsCheck.Failed -> "${failureReason(check.failure)} Check the address, then try again."
         NewsCheck.Empty -> "The feed has nothing in it to play. Check the address, then try again."
@@ -273,13 +270,16 @@ fun buildNews(draft: NewsDraft, test: NewsTestProgress?, now: Instant, zone: Zon
 /**
  * Plays a feed for the test on screen 6, with the parts of the wake-up automation and by its rules: `WakeUpDirector`
  * plays it as the news of an alarm that exists nowhere else, so the limits and the stream are the ones an alarm would
- * get. Its parts are its own, so that a test cannot get into the automation's state.
+ * get, also during a call and when other audio starts. Its parts are its own, so that a test cannot get into the
+ * automation's state.
  */
 class NewsTestPlayer(
     speech: SpeechOutput,
     podcast: PodcastOutput,
     timers: RingTimers,
     wakeLock: RingWakeLock,
+    focus: AudioFocusHold,
+    private val calls: CallWatch,
     private val now: () -> Instant,
 ) {
     private var feed: FeedResult = FeedResult.Failed(FeedFailure.NotAFeed)
@@ -300,9 +300,11 @@ class NewsTestPlayer(
         },
         timers = timers,
         wakeLock = wakeLock,
+        focus = focus,
+        calls = calls,
         now = now,
-        // Only the news is ever asked for, so its end is all that is ever reported.
-        report = { _, _ -> ended() },
+        // Only the news is ever asked for, so its end or being stopped by other audio is all that is ever reported.
+        report = { _, event -> ended(event) },
         onChanged = {},
     )
 
@@ -326,9 +328,12 @@ class NewsTestPlayer(
         director.leave(TEST_ALARM_ID)
     }
 
-    /** Reaching the limit before the first utterance is done is no failure: a long first entry can take that long. */
-    private fun ended() {
-        val worked = heard || !now().isBefore(stopsAt)
+    /**
+     * Reaching the limit before the first utterance is done is no failure: a long first entry can take that long. Neither is
+     * a call or other audio getting in the way, as these say nothing about the feed.
+     */
+    private fun ended(event: AlarmEvent) {
+        val worked = heard || !now().isBefore(stopsAt) || event == AlarmEvent.StopWakeUp || calls.active()
         director.leave(TEST_ALARM_ID)
         onEnded(worked)
     }

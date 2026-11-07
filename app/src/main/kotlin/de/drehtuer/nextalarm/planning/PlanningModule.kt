@@ -15,12 +15,17 @@ import de.drehtuer.nextalarm.data.AlarmIntents
 import de.drehtuer.nextalarm.data.DataComponents
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.EngineLock
+import de.drehtuer.nextalarm.domain.AudioFocusHold
+import de.drehtuer.nextalarm.domain.CallWatch
 import de.drehtuer.nextalarm.domain.NewsTestPlayer
 import de.drehtuer.nextalarm.domain.PlannerEngine
+import de.drehtuer.nextalarm.ringing.AndroidPhoneCalls
 import de.drehtuer.nextalarm.ringing.AndroidRingWakeLock
 import de.drehtuer.nextalarm.ringing.HandlerRingTimers
 import de.drehtuer.nextalarm.ringing.MediaPlayerPodcastOutput
 import de.drehtuer.nextalarm.ringing.TextToSpeechOutput
+import de.drehtuer.nextalarm.ringing.logAudioProblem
+import de.drehtuer.nextalarm.ringing.mediaAudioFocus
 import de.drehtuer.nextalarm.ui.AndroidPhoneAudio
 import de.drehtuer.nextalarm.ui.AppPorts
 import de.drehtuer.nextalarm.ui.ContentResolverLogDocuments
@@ -124,6 +129,8 @@ object PlanningModule {
                 podcast = MediaPlayerPodcastOutput(context),
                 timers = HandlerRingTimers(),
                 wakeLock = AndroidRingWakeLock(context, "NextAlarm:newstest"),
+                focus = AudioFocusHold(mediaAudioFocus(context), ::logAudioProblem),
+                calls = CallWatch(AndroidPhoneCalls(context), ::logAudioProblem),
                 now = Instant::now,
             ),
         ),
