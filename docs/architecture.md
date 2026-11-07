@@ -454,6 +454,11 @@ process start. The services run in the app's process, so at process start nothin
 state says what should be. `AlarmService` is sticky, so Android restarts the process after a crash during ringing.
 `WakeUpService` is not, as an interrupted automation is not resumed.
 
+A restarted `AlarmService` can reach `AlarmForeground.attach` while the sweep is still running on its background thread.
+It goes into the foreground with its placeholder notification, as Android demands, but only stops if nothing rings once
+the sweep has finished. If the sweep rings an alarm, the running service takes it over. Otherwise the sweep would have to
+start a service from the background, which is likely refused, and the sound would likely be silenced.
+
 | Persisted state             | Sweep                                                                                 |
 |-----------------------------|---------------------------------------------------------------------------------------|
 | `Scheduled`, `Snoozed`      | Trigger in the future: register with `AlarmManager` again. Trigger reached: `Fire(lateBy)`. |

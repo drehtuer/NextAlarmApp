@@ -173,6 +173,7 @@ class AlarmForegroundTest {
 
     @Test
     fun `when the last alarm has left, the service stops, without another notification`() {
+        foreground.sweepFinished()
         foreground.ringingChanged(listOf(alarm(1)))
         val host = FakeHost()
         foreground.attach(host)
@@ -184,6 +185,7 @@ class AlarmForegroundTest {
 
     @Test
     fun `a new alarm after that starts a new service, instead of using the one that is stopping`() {
+        foreground.sweepFinished()
         foreground.ringingChanged(listOf(alarm(1)))
         val host = FakeHost()
         foreground.attach(host)
@@ -196,10 +198,54 @@ class AlarmForegroundTest {
 
     @Test
     fun `a service that starts after the alarms have left still goes into the foreground, as Android demands, and stops`() {
+        foreground.sweepFinished()
         val host = FakeHost()
         foreground.attach(host)
         assertEquals(listOf(AlarmNotifications.PLACEHOLDER_ID to "Alarm"), host.shown)
         assertEquals(1, host.finished)
+    }
+
+    @Test
+    fun `a service restarted during the sweep goes into the foreground, and waits for the sweep before it decides`() {
+        val host = FakeHost()
+        foreground.attach(host)
+        assertEquals(listOf(AlarmNotifications.PLACEHOLDER_ID to "Alarm"), host.shown)
+        assertEquals(0, host.finished)
+        foreground.sync()
+        foreground.ringingChanged(emptyList())
+        assertEquals(0, host.finished)
+        foreground.sweepFinished()
+        assertEquals(1, host.finished)
+    }
+
+    @Test
+    fun `an alarm that the sweep rings uses the service that waited, without starting another from the background`() {
+        val host = FakeHost()
+        foreground.attach(host)
+        foreground.ringingChanged(listOf(alarm(1, reason = "Gym")))
+        assertEquals(AlarmNotifications.ringingId(1) to "Gym", host.shown.last())
+        assertEquals(0, starts)
+        assertEquals(1, settled)
+        foreground.sweepFinished()
+        assertEquals(0, host.finished)
+        foreground.ringingChanged(emptyList())
+        assertEquals(1, host.finished)
+    }
+
+    @Test
+    fun `the end of a sweep with no service does nothing`() {
+        foreground.sweepFinished()
+        assertEquals(0, starts)
+        assertEquals(0, settled)
+    }
+
+    @Test
+    fun `the end of a sweep with something ringing and no service yet starts it, if that was refused before`() {
+        refuseStart = true
+        foreground.ringingChanged(listOf(alarm(1)))
+        refuseStart = false
+        foreground.sweepFinished()
+        assertEquals(1, starts)
     }
 
     @Test
@@ -229,6 +275,7 @@ class AlarmForegroundTest {
 
     @Test
     fun `a refusal with nothing ringing does not get in the way of stopping`() {
+        foreground.sweepFinished()
         val host = FakeHost(refuse = true)
         foreground.attach(host)
         assertEquals(1, host.finished)

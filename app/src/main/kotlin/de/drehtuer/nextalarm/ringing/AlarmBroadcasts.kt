@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 class AlarmBroadcasts(
     private val scope: CoroutineScope,
     private val engine: AlarmEngine,
+    private val foreground: AlarmForeground,
 ) {
     /** An alarm's time has come. */
     fun fired(intent: Intent, finish: () -> Unit) = run(finish) {
@@ -35,7 +36,10 @@ class AlarmBroadcasts(
     }
 
     /** The recovery sweep, on `LOCKED_BOOT_COMPLETED` and at every process start. */
-    fun sweep(finish: () -> Unit = {}) = run(finish) { engine.recover() }
+    fun sweep(finish: () -> Unit = {}) = run({
+        foreground.sweepFinished()
+        finish()
+    }) { engine.recover() }
 
     private fun run(finish: () -> Unit, work: suspend () -> Unit) {
         scope.launch {

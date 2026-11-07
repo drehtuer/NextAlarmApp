@@ -188,7 +188,8 @@ object AlarmModule {
 
     @Provides
     @Singleton
-    fun broadcasts(scope: CoroutineScope, engine: AlarmEngine) = AlarmBroadcasts(scope, engine)
+    fun broadcasts(scope: CoroutineScope, engine: AlarmEngine, foreground: AlarmForeground) =
+        AlarmBroadcasts(scope, engine, foreground)
 
     /** A new one per screen. */
     @Provides

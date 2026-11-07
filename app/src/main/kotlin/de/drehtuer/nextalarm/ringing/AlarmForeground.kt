@@ -28,6 +28,7 @@ class AlarmForeground(
     private var host: AlarmForegroundHost? = null
     private var ringing: List<AlarmInstance> = emptyList()
     private var settled = false
+    private var sweepDone = false
 
     fun ringingChanged(alarms: List<AlarmInstance>) = locked {
         ringing = alarms
@@ -39,16 +40,24 @@ class AlarmForeground(
 
     /**
      * The service started. Android demands that it goes into the foreground now, even if the alarms have left in the
-     * meantime, and even if it was restarted because it is sticky.
+     * meantime, and even if it was restarted because it is sticky. In that last case the recovery sweep is still finding
+     * out what rings, and a service that has gone is one it would have to start from the background, which is likely
+     * refused. So nothing ringing only counts once the sweep has finished.
      */
     fun attach(service: AlarmForegroundHost) = locked {
         host = service
         if (ringing.isEmpty()) {
             foreground(service, AlarmNotifications.PLACEHOLDER_ID) { notifications.placeholder() }
-            finish(service)
+            if (sweepDone) finish(service)
         } else {
             show(service)
         }
+    }
+
+    /** The recovery sweep of this process is over, however it went. Anything that rings has reported by now. */
+    fun sweepFinished() = locked {
+        sweepDone = true
+        syncNow()
     }
 
     @Synchronized
@@ -67,7 +76,7 @@ class AlarmForeground(
     private fun syncNow() {
         val current = host
         when {
-            current != null && ringing.isEmpty() -> finish(current)
+            current != null && ringing.isEmpty() -> if (sweepDone) finish(current)
             current != null -> show(current)
             ringing.isNotEmpty() -> start()
         }
@@ -89,7 +98,7 @@ class AlarmForeground(
         try {
             service.showForeground(id, notification())
             notifications.cancelForegroundRefused()
-            settled = true
+            settled = ringing.isNotEmpty()
         } catch (refused: RuntimeException) {
             refused("The alarm service could not go into the foreground", refused)
         }

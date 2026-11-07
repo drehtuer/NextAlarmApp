@@ -135,6 +135,32 @@ class AlarmPathTest {
     }
 
     @Test
+    fun `a service that Android restarts while the sweep runs stays, and shows the alarm the sweep rings`(): Unit = runBlocking {
+        val silent = Settings.DEFAULT.copy(maxVolume = 0f).snapshotFor("Gym")
+        val alarm = created(Instant.now(), silent)
+        data.alarms.update(alarm.copy(state = AlarmState.Ringing))
+        val host = object : AlarmForegroundHost {
+            var shown = -1
+            var finished = false
+            override fun showForeground(id: Int, notification: Notification) {
+                shown = id
+            }
+
+            override fun finishRinging() {
+                finished = true
+            }
+        }
+        parts.foreground.attach(host)
+        assertEquals(AlarmNotifications.PLACEHOLDER_ID, host.shown)
+        AlarmModule.broadcasts(alarmScope(Dispatchers.Unconfined), engine, parts.foreground).sweep()
+        awaitUntil { host.shown == AlarmNotifications.ringingId(alarm.id) }
+        assertEquals(false, host.finished)
+        assertNull(shadowOf(real as Application).nextStartedService)
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        awaitUntil { host.finished }
+    }
+
+    @Test
     fun `an alarm is registered with the system`() {
         created(Instant.now().plusSeconds(600))
         assertNotNull(real.getSystemService(AlarmManager::class.java).nextAlarmClock)
@@ -318,7 +344,8 @@ class AlarmServiceTest {
         val service = service()
         service.onStartCommand(Intent(context, AlarmService::class.java), 0, 1)
         assertEquals(AlarmNotifications.PLACEHOLDER_ID, shadowOf(service).lastForegroundNotificationId)
-        assertTrue(shadowOf(service).isStoppedBySelf)
+        // The sweep of this process start runs on a background thread, and the service waits for it.
+        awaitUntil { shadowOf(service).isStoppedBySelf }
         assertTrue(shadowOf(service).isForegroundStopped)
     }
 
@@ -339,7 +366,8 @@ class AlarmServiceTest {
         service.foreground.ringingChanged(listOf(alarm(id = 5)))
         service.onStartCommand(null, 0, 1)
         service.foreground.ringingChanged(emptyList())
-        assertTrue(shadowOf(service).isStoppedBySelf)
+        // The sweep of this process start runs on a background thread, and the service waits for it.
+        awaitUntil { shadowOf(service).isStoppedBySelf }
     }
 
     @Test

@@ -47,7 +47,10 @@ class AlarmBroadcastsTest {
     private val engine = AlarmEngine(alarms, scheduler, NoEffects, { AT }, MutexEngineLock())
 
     // With these fakes nothing leaves the thread, so everything is done when a call returns.
-    private val broadcasts = AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), engine)
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private var serviceStarts = 0
+    private val foreground = AlarmForeground(AlarmNotifications(context)) { serviceStarts++ }
+    private val broadcasts = AlarmBroadcasts(alarmScope(Dispatchers.Unconfined), engine, foreground)
     private var finished = 0
 
     private fun state(id: Long) = alarms.stored[id]?.state
@@ -147,6 +150,35 @@ class AlarmBroadcastsTest {
         alarms.failure = IllegalStateException("storage failed")
         broadcasts.sweep { finished++ }
         assertEquals(1, finished)
+    }
+
+    private class WaitingService : AlarmForegroundHost {
+        var finished = 0
+
+        override fun showForeground(id: Int, notification: android.app.Notification) = Unit
+
+        override fun finishRinging() {
+            finished++
+        }
+    }
+
+    @Test
+    fun `the end of the sweep lets a service that waited for it stop`() {
+        alarms.stored.clear()
+        val service = WaitingService()
+        foreground.attach(service)
+        assertEquals(0, service.finished)
+        broadcasts.sweep()
+        assertEquals(1, service.finished)
+    }
+
+    @Test
+    fun `a sweep that fails does not leave the service waiting for ever`() {
+        val service = WaitingService()
+        foreground.attach(service)
+        alarms.failure = IllegalStateException("storage failed")
+        broadcasts.sweep()
+        assertEquals(1, service.finished)
     }
 }
 
