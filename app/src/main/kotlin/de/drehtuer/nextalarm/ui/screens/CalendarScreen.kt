@@ -25,10 +25,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import de.drehtuer.nextalarm.domain.groupCalendars
+import de.drehtuer.nextalarm.ui.theme.nextAlarmRadioColors
 
 /** Screen 4. */
 @Composable
@@ -49,15 +51,26 @@ fun CalendarScreen(
                 .padding(16.dp),
             Arrangement.spacedBy(16.dp),
         ) {
-            Text("Every timed event in this calendar rings at its start time. No other calendar is read.")
-            CalendarList(calendars, selected, onSelect)
+            Text(
+                "Every timed event in this calendar rings at its start time. No other calendar is read.",
+                Modifier.padding(horizontal = TEXT_INSET),
+            )
+            CalendarList(calendars, selected, onSelect, headerInset = TEXT_INSET)
         }
     }
 }
 
-/** The list shared by screen 4 and the last step of onboarding. */
+/**
+ * The list shared by screen 4 and the last step of onboarding. [headerInset] brings the group headers to the design's
+ * 24 dp margin for text, where the list itself is at the 16 dp margin for cards.
+ */
 @Composable
-fun CalendarList(calendars: List<DeviceCalendar>, selected: CalendarId?, onSelect: (CalendarId) -> Unit) {
+fun CalendarList(
+    calendars: List<DeviceCalendar>,
+    selected: CalendarId?,
+    onSelect: (CalendarId) -> Unit,
+    headerInset: Dp = 0.dp,
+) {
     if (calendars.isEmpty()) {
         Surface(Modifier.fillMaxWidth(), MaterialTheme.shapes.extraLarge, MaterialTheme.colorScheme.surfaceContainer) {
             Column(Modifier.padding(24.dp), Arrangement.spacedBy(8.dp)) {
@@ -82,7 +95,12 @@ fun CalendarList(calendars: List<DeviceCalendar>, selected: CalendarId?, onSelec
             )
         }
         groupCalendars(calendars).forEach { group ->
-            Text(group.label, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+            Text(
+                group.label,
+                Modifier.padding(horizontal = headerInset),
+                MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelLarge,
+            )
             group.calendars.forEach { calendar -> CalendarRow(calendar, calendar.id == selected, onSelect) }
         }
     }
@@ -101,8 +119,13 @@ private fun CalendarRow(calendar: DeviceCalendar, selected: Boolean, onSelect: (
         Arrangement.spacedBy(12.dp),
         Alignment.CenterVertically,
     ) {
-        RadioButton(selected, onClick = null, Modifier.padding(8.dp))
-        calendar.color?.let { Box(Modifier.size(12.dp).background(Color(it), MaterialTheme.shapes.extraSmall)) }
+        RadioButton(selected, onClick = null, Modifier.padding(8.dp), colors = nextAlarmRadioColors())
+        // Without a colour the place stays empty, so that the names line up.
+        val swatch = calendar.color?.let(::Color) ?: Color.Transparent
+        Box(Modifier.size(12.dp).background(swatch, MaterialTheme.shapes.extraSmall))
         Text(calendar.name)
     }
 }
+
+/** With the 16 dp around the column, the design's 24 dp margin for text. */
+private val TEXT_INSET = 8.dp

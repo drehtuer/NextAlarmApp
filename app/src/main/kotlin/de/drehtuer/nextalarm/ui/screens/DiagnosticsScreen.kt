@@ -39,6 +39,9 @@ import de.drehtuer.nextalarm.domain.StatusCard
 import de.drehtuer.nextalarm.domain.StatusKind
 import de.drehtuer.nextalarm.domain.TEST_ALARM_NOTE
 import de.drehtuer.nextalarm.ui.theme.LocalExtraColors
+import de.drehtuer.nextalarm.ui.theme.TABULAR_FIGURES
+import de.drehtuer.nextalarm.ui.theme.outlinedButtonBorder
+import de.drehtuer.nextalarm.ui.theme.tonalButtonColors
 
 /** How a status card or an outcome chip looks. */
 @Immutable
@@ -72,7 +75,12 @@ fun DiagnosticsScreen(
             Status(model.status)
             Facts(model)
             Buttons(testAlarmPending, logNote, onRingTestAlarm, onExportLog)
-            Text("Past alarms", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+            Text(
+                "Past alarms",
+                Modifier.padding(horizontal = TEXT_INSET),
+                MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.labelLarge,
+            )
             PastAlarms(model.pastAlarms)
         }
     }
@@ -113,7 +121,9 @@ private fun Status(status: StatusCard) {
         content = tone.content,
         icon = tone.icon,
     ) {
-        if (status.kind == StatusKind.PLANNING) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (status.kind == StatusKind.PLANNING) {
+            LinearProgressIndicator(Modifier.fillMaxWidth(), trackColor = MaterialTheme.colorScheme.outlineVariant)
+        }
     }
 }
 
@@ -139,14 +149,14 @@ private fun Fact(label: String, value: String) {
 @Composable
 private fun Buttons(testAlarmPending: Boolean, logNote: String?, onRingTestAlarm: () -> Unit, onExportLog: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilledTonalButton(onRingTestAlarm, Modifier.fillMaxWidth(), enabled = !testAlarmPending) {
+        FilledTonalButton(onRingTestAlarm, Modifier.fillMaxWidth(), enabled = !testAlarmPending, colors = tonalButtonColors()) {
             // The icon follows the label, which in a disabled button is dimmed.
             SymbolIcon(R.drawable.ic_bell, null, Modifier.size(ButtonDefaults.IconSize), tint = LocalContentColor.current)
             Spacer(Modifier.width(ButtonDefaults.IconSpacing))
             Text("Ring a test alarm")
         }
         if (testAlarmPending) Note(TEST_ALARM_NOTE)
-        OutlinedButton(onExportLog, Modifier.fillMaxWidth()) { Text("Export log") }
+        OutlinedButton(onExportLog, Modifier.fillMaxWidth(), border = outlinedButtonBorder()) { Text("Export log") }
         Note(LOG_TITLES_NOTE)
         logNote?.let { Note(it) }
     }
@@ -154,7 +164,12 @@ private fun Buttons(testAlarmPending: Boolean, logNote: String?, onRingTestAlarm
 
 @Composable
 private fun Note(text: String) {
-    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+    Text(
+        text,
+        Modifier.padding(horizontal = TEXT_INSET),
+        MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 @Composable
@@ -179,9 +194,16 @@ private fun PastAlarms(rows: List<PastAlarmRow>) {
 
 @Composable
 private fun PastAlarm(row: PastAlarmRow) {
-    Row(Modifier.padding(16.dp), Arrangement.spacedBy(12.dp), Alignment.Top) {
-        Text(row.time, Modifier.width(TIME_WIDTH), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(Modifier.padding(16.dp), Arrangement.spacedBy(12.dp)) {
+        Text(
+            row.time,
+            Modifier
+                .width(TIME_WIDTH)
+                .alignByBaseline(),
+            style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = TABULAR_FIGURES),
+            maxLines = 1,
+        )
+        Column(Modifier.alignByBaseline(), Arrangement.spacedBy(4.dp)) {
             val title = row.title
             if (title != null) {
                 Text(title, style = MaterialTheme.typography.bodyLarge)
@@ -216,3 +238,6 @@ private fun OutcomeChip(row: PastAlarmRow) {
 /** Room for "Thu 07:00:30", for an alarm whose time has seconds. */
 private val TIME_WIDTH = 88.dp
 private val CHIP_ICON = 16.dp
+
+/** With the 16 dp around the column, the design's 24 dp margin for text. */
+private val TEXT_INSET = 8.dp

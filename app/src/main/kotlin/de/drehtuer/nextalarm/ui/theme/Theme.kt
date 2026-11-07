@@ -1,9 +1,16 @@
 package de.drehtuer.nextalarm.ui.theme
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButtonColors
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.SwitchColors
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -141,6 +148,39 @@ val NextAlarmShapes = Shapes(
     large = RoundedCornerShape(16.dp),
     extraLarge = RoundedCornerShape(28.dp),
 )
+
+// Material's own defaults for these components use roles that the design gives another meaning, or leaves on the
+// baseline palette: a tonal button in the warning colour, a switch track with a purple tint.
+
+/** A filled button. */
+@Composable
+fun filledButtonColors(): ButtonColors =
+    ButtonDefaults.buttonColors(disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+
+/** A tonal button: `primaryContainer`, not the warning colour `secondaryContainer`. */
+@Composable
+fun tonalButtonColors(): ButtonColors = ButtonDefaults.filledTonalButtonColors(
+    containerColor = MaterialTheme.colorScheme.primaryContainer,
+    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+)
+
+/** The border of an outlined button, also one with only an icon. */
+@Composable
+fun outlinedButtonBorder(enabled: Boolean = true): BorderStroke {
+    val outline = MaterialTheme.colorScheme.outline
+    return BorderStroke(1.dp, if (enabled) outline else outline.copy(alpha = DISABLED_BORDER_ALPHA))
+}
+
+@Composable
+fun nextAlarmSwitchColors(): SwitchColors =
+    SwitchDefaults.colors(uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+
+@Composable
+fun nextAlarmRadioColors(): RadioButtonColors =
+    RadioButtonDefaults.colors(unselectedColor = MaterialTheme.colorScheme.outline)
+
+private const val DISABLED_BORDER_ALPHA = 0.38f
 
 /** Screens 1 to 7. They follow the system's light or dark setting, with a fixed palette. */
 @Composable

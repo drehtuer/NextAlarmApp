@@ -34,6 +34,9 @@ import de.drehtuer.nextalarm.R
 import de.drehtuer.nextalarm.domain.AlarmSettingsModel
 import de.drehtuer.nextalarm.domain.ValuePicker
 import de.drehtuer.nextalarm.ui.AlarmSettingsActions
+import de.drehtuer.nextalarm.ui.theme.nextAlarmRadioColors
+import de.drehtuer.nextalarm.ui.theme.nextAlarmSwitchColors
+import de.drehtuer.nextalarm.ui.theme.outlinedButtonBorder
 
 /** Screen 5. [onChooseFile] opens the file picker. [onNews] is where the "News" row leads: screen 6. */
 @Composable
@@ -114,7 +117,7 @@ private fun SoundRow(model: AlarmSettingsModel, actions: AlarmSettingsActions, o
         Alignment.CenterVertically,
     ) {
         RowText("Alarm sound", model.soundName, Modifier.weight(1f))
-        OutlinedButton(onClick = onChooseFile) { Text("Choose file") }
+        OutlinedButton(onClick = onChooseFile, border = outlinedButtonBorder()) { Text("Choose file") }
     }
     if (model.usesFile) {
         TextButton(onClick = actions::useDefaultSound, modifier = Modifier.padding(horizontal = 12.dp)) {
@@ -168,7 +171,7 @@ private fun <T> PickerDialog(title: String, picker: ValuePicker<T>, onDismiss: (
                         Arrangement.spacedBy(12.dp),
                         Alignment.CenterVertically,
                     ) {
-                        RadioButton(selected, onClick = null)
+                        RadioButton(selected, onClick = null, colors = nextAlarmRadioColors())
                         Text(option.label)
                     }
                 }
@@ -189,7 +192,7 @@ private fun SwitchRow(title: String, secondary: String?, checked: Boolean, onCha
         Alignment.CenterVertically,
     ) {
         RowText(title, secondary, Modifier.weight(1f))
-        Switch(checked, onCheckedChange = null)
+        Switch(checked, onCheckedChange = null, colors = nextAlarmSwitchColors())
     }
 }
 

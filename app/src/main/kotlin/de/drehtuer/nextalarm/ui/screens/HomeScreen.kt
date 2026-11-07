@@ -19,7 +19,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
@@ -31,6 +30,7 @@ import de.drehtuer.nextalarm.domain.HomeHero
 import de.drehtuer.nextalarm.domain.HomeModel
 import de.drehtuer.nextalarm.domain.HomeRow
 import de.drehtuer.nextalarm.ui.theme.ListTimeStyle
+import de.drehtuer.nextalarm.ui.theme.outlinedButtonBorder
 
 /** Screen 2. Read-only, because alarms are changed in the calendar app. */
 @Composable
@@ -57,7 +57,7 @@ fun HomeScreen(model: HomeModel, onSettings: () -> Unit, onDiagnostics: () -> Un
                         content = MaterialTheme.colorScheme.onErrorContainer,
                         icon = R.drawable.ic_warning,
                     ) {
-                        OutlinedButton(onClick = onDiagnostics) {
+                        OutlinedButton(onClick = onDiagnostics, border = outlinedButtonBorder()) {
                             Text("See what went wrong", color = MaterialTheme.colorScheme.onErrorContainer)
                         }
                     }
@@ -143,9 +143,16 @@ private fun Day(day: HomeDay) {
 
 @Composable
 private fun AlarmRow(row: HomeRow) {
-    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-        Text(row.time, Modifier.width(WIDE_TIME), style = ListTimeStyle, maxLines = 1)
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(Modifier.padding(16.dp)) {
+        Text(
+            row.time,
+            Modifier
+                .width(WIDE_TIME)
+                .alignByBaseline(),
+            style = ListTimeStyle,
+            maxLines = 1,
+        )
+        Column(Modifier.alignByBaseline(), Arrangement.spacedBy(4.dp)) {
             EventTitle(row.title, maxLines = 2, MaterialTheme.typography.bodyLarge)
             row.snoozedUntil?.let { Chip(it) }
         }

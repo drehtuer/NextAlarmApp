@@ -47,6 +47,8 @@ import de.drehtuer.nextalarm.domain.NewsModel
 import de.drehtuer.nextalarm.domain.NewsTestLine
 import de.drehtuer.nextalarm.domain.NewsType
 import de.drehtuer.nextalarm.ui.NewsActions
+import de.drehtuer.nextalarm.ui.theme.filledButtonColors
+import de.drehtuer.nextalarm.ui.theme.outlinedButtonBorder
 
 /** Screen 6. */
 @Composable
@@ -189,6 +191,7 @@ private fun StepButton(symbol: String, description: String, enabled: Boolean, on
             .size(STEP_BUTTON)
             .semantics { contentDescription = description },
         enabled = enabled,
+        border = outlinedButtonBorder(enabled),
     ) {
         Text(symbol, style = MaterialTheme.typography.titleLarge)
     }
@@ -196,7 +199,7 @@ private fun StepButton(symbol: String, description: String, enabled: Boolean, on
 
 @Composable
 private fun TestButton(model: NewsModel, onClick: () -> Unit) {
-    Button(onClick, Modifier.fillMaxWidth(), enabled = model.canTest) {
+    Button(onClick, Modifier.fillMaxWidth(), enabled = model.canTest, colors = filledButtonColors()) {
         // The icon follows the label, which in a disabled button is dimmed.
         SymbolIcon(
             if (model.testing) R.drawable.ic_stop else R.drawable.ic_play,
@@ -213,12 +216,18 @@ private fun TestButton(model: NewsModel, onClick: () -> Unit) {
 private fun TestProgress(line: NewsTestLine) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val progress = line.progress
+        val track = MaterialTheme.colorScheme.outlineVariant
         if (progress != null) {
-            LinearProgressIndicator(progress = { progress }, Modifier.fillMaxWidth())
+            LinearProgressIndicator(progress = { progress }, Modifier.fillMaxWidth(), trackColor = track)
         } else {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
+            LinearProgressIndicator(Modifier.fillMaxWidth(), trackColor = track)
         }
-        Text(line.text, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+        Text(
+            line.text,
+            Modifier.padding(horizontal = 8.dp),
+            MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
