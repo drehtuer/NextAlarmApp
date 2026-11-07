@@ -20,13 +20,11 @@ import dagger.Lazy
 import de.drehtuer.nextalarm.NextAlarmApplication
 import de.drehtuer.nextalarm.data.DataComponents
 import de.drehtuer.nextalarm.domain.AlarmAction
+import de.drehtuer.nextalarm.domain.AlarmEffects
+import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmInstance
-import de.drehtuer.nextalarm.domain.AlarmKey
-import de.drehtuer.nextalarm.domain.AlarmState
 import de.drehtuer.nextalarm.domain.PlannerState
 import de.drehtuer.nextalarm.domain.PlanningFailure
-import de.drehtuer.nextalarm.domain.Settings
-import de.drehtuer.nextalarm.domain.snapshotFor
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -62,7 +60,18 @@ class PlanningTest {
 
     private fun work(name: String): WorkInfo = workManager.getWorkInfosForUniqueWork(name).get().single()
 
-    private fun engine() = PlanningModule.plannerEngine(context, data, planning)
+    private fun engine() = PlanningModule.plannerEngine(context, data, planning, alarmEngine())
+
+    private fun alarmEngine() = AlarmEngine(
+        data.alarms,
+        data.scheduler(AppAlarmIntents(context)),
+        object : AlarmEffects {
+            override fun perform(instance: AlarmInstance, action: AlarmAction) = Unit
+            override fun showNextAlarm(alarm: AlarmInstance?) = Unit
+        },
+        Instant::now,
+        MutexEngineLock(),
+    )
 
     private fun factory() = NextAlarmWorkerFactory(Lazy { engine() }, Lazy { planning })
 
@@ -189,12 +198,7 @@ class PlanningTest {
 
     @Test
     fun `the lock runs its block and hands back the result`() = runBlocking {
-        assertEquals(3, MutexPlannerLock().withLock { 3 })
-    }
-
-    @Test
-    fun `the alarm effects do nothing until ringing exists`() {
-        NO_ALARM_EFFECTS.perform(ALARM, AlarmAction.JoinAlarmService)
+        assertEquals(3, MutexEngineLock().withLock { 3 })
     }
 
     @Test
@@ -223,22 +227,6 @@ class PlanningTest {
         assertTrue(work(PlanningWork.REPLAN_WORK).tags.contains(ReplanWorker::class.java.name))
     }
 
-    @Test
-    fun `a fired alarm has nothing to ring yet`() {
-        AlarmReceiver().onReceive(context, Intent())
-    }
-
-    private companion object {
-        val ALARM = AlarmInstance(
-            id = 1,
-            key = AlarmKey.forTestAlarm(1),
-            triggerAt = Instant.EPOCH,
-            state = AlarmState.Ringing,
-            snoozeCount = 0,
-            autoSnoozed = false,
-            snapshot = Settings.DEFAULT.snapshotFor(null),
-        )
-    }
 }
 
 /** Reads the merged manifest, which is what Android delivers the broadcasts by. */

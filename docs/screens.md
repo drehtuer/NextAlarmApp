@@ -53,7 +53,7 @@ is planned for later.
 
 | Notification         | When                                         | Actions                    |
 |----------------------|----------------------------------------------|----------------------------|
-| Next alarm           | Whenever an alarm lies in the 48 h window: shows the next one, updated after every planning run, removed when none is left | none (information only) |
+| Next alarm           | Whenever an alarm lies in the 48 h window: shows the next one, updated after every planning run and whenever an alarm's state changes, removed when none is left | none (information only) |
 | Alarm (full-screen)  | `Ringing` (one per ringing alarm)            | Snooze, Dismiss            |
 | Snoozed              | `Snoozed`                                    | Dismiss                    |
 | Wake-up media        | `Announcing`, `NewsPlaying`                  | Stop                       |

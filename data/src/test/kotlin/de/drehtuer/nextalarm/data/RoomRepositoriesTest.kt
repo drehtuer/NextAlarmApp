@@ -131,9 +131,15 @@ class RoomRepositoriesTest {
             autoSnoozed = true,
             triggerAt = time.plusSeconds(600),
             snapshot = MINIMAL_SNAPSHOT,
+            lateBy = Duration.ofMinutes(7),
         )
         alarms.update(changed)
         assertEquals(changed, alarms.find(changed.id))
+    }
+
+    @Test
+    fun `a new alarm has not been late`() = runBlocking {
+        assertNull(alarms.find(alarms.create(key, time, SNAPSHOT).id)?.lateBy)
     }
 
     @Test

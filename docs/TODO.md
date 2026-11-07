@@ -104,7 +104,7 @@ These come before ringing, so that the app can be configured on the phone from t
 
 | Step | Work | Specification |
 |------|------|---------------|
-| 7.1  | `WakeUpService`: foreground service of type `mediaPlayback`, `MediaSession`, media notification, `USAGE_MEDIA`. | [Wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen) |
+| 7.1  | `WakeUpService`: foreground service of type `mediaPlayback`, `MediaSession`, media notification, `USAGE_MEDIA`. It replaces `SkippedWakeUp` behind `WakeUpAutomation`, in `AlarmModule`, and also has to leave on `LeaveAllServices`. | [Wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen) |
 | 7.2  | Speak the event title with `TextToSpeech`, continue if TTS is unavailable. | [Wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen) |
 | 7.3  | Wake-up screen (screen 9) over the lock screen, with Stop. | [Screen list](screens.md#screen-list) |
 | 7.4  | News from an RSS feed, read aloud with `TextToSpeech`. | [Wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen) |

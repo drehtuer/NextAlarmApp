@@ -94,6 +94,11 @@ Notes:
 
 Terminal instances are kept for a few days for the history view and then deleted.
 
+"Remove notifications" means the alarm's "Alarm" and "Snoozed" notifications: those reporting what happened stay.
+Leaving `AlarmService` removes the same two, and joining it removes "Snoozed", so an alarm that rings again or is
+dismissed while snoozed never keeps a stale one. Every change of state also refreshes the "Next alarm" notification.
+`AlarmEngine` stores `lateBy` when a `Fire` posts the "late alarm" notification, and leaves it alone otherwise.
+
 Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the current snooze was started by
 `RingTimeout`, not by the user) and the snapshot (`snoozeMinutes`, `ringTimeoutMinutes`, `speakReason`, `news`).
 
@@ -103,8 +108,8 @@ Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the cur
 |----------------------|-------------------------------------------------------------------------------------|
 | `Create`             | Planner commits a new plan entry (only creates the instance in `Scheduled`)          |
 | `Fire(lateBy)`       | `AlarmManager` alarm, or the [recovery sweep](architecture.md#recovery) at boot / process start |
-| `Snooze`             | User taps "Snooze" on the alarm screen (sent to every ringing alarm)                |
-| `Dismiss`            | User taps "Dismiss" on the alarm screen (sent to every ringing alarm) or on a snooze notification (sent to that alarm) |
+| `Snooze`             | User taps "Snooze" on the alarm screen or an alarm's notification (sent to every ringing alarm) |
+| `Dismiss`            | User taps "Dismiss" on the alarm screen or an alarm's notification (sent to every ringing alarm), or on a snooze notification (sent to that alarm) |
 | `RingTimeout`        | The ringing alarms rang for `ringTimeoutMinutes` without interaction (sent to every ringing alarm) |
 | `Refresh(snapshot)`  | Re-planning found a different snapshot (event title or settings changed)            |
 | `Remove`             | Re-planning no longer contains this entry                                           |

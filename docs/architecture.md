@@ -227,9 +227,20 @@ sequenceDiagram
   `WakeUpService` uses type `mediaPlayback` with a `MediaSession`, so the news can be controlled from the lock screen.
 - The full-screen intent requires `USE_FULL_SCREEN_INTENT`. Onboarding checks
   `NotificationManager.canUseFullScreenIntent()`; if it is denied, the alarm still rings with a heads-up notification.
-- Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it passes Do Not Disturb. Without a ramp (the default) the
-  alarm plays at full level straight away; with one, the volume ramps up from silent over the configured duration. A
-  maximum volume is optional: without one (the default), the app leaves the system's alarm volume as it is.
+- The sound, vibration and shared ring timeout live in `AlarmRinger` (`domain`), in the app's process. `AlarmService`
+  is what keeps the process alive and holds the first ringing alarm's notification; the other alarms' notifications
+  are posted as usual. If Android refuses the service (`ForegroundServiceStartNotAllowedException`), the alarm still
+  rings and its notification is posted; the alarm screen tries to start the service again when it comes up. A partial
+  wake lock is held while alarms ring, so that the ramp and the ring timeout run with the screen off.
+- Alarm audio uses `AudioAttributes.USAGE_ALARM`, so it passes Do Not Disturb. **The app never changes the system's
+  stream volume.** Volume is only the player's own gain (`MediaPlayer.setVolume`): the maximum volume if there is one,
+  otherwise 1.0. Without a ramp (the default) that gain applies straight away; with one, it ramps up from 0 over the
+  configured duration. A maximum volume can therefore only make the alarm quieter than the phone's alarm volume, and
+  a maximum volume of 0 is silent.
+- `AlarmEngine` handles one event at a time under a lock, so that events from the system, the user, the ring timeout,
+  the recovery sweep and the planner cannot overwrite each other's state. Effects run under that lock; anything that
+  reports back (such as the wake-up automation) must do so from outside the call. Until Phase 7, `SkippedWakeUp` ends
+  the wake-up automation at once, so that a dismissed alarm reaches `Done`.
 - **Ring timeout and snooze:** an alarm rings for `ringTimeoutMinutes` (default 3) and is then snoozed
   automatically. If it times out again after that automatic snooze, the app gives up and posts an "alarm not
   answered" notification. The user can snooze any number of times; the snooze length is `snoozeMinutes`
@@ -248,10 +259,18 @@ sequenceDiagram
 - **Several alarms at once:** alarms are never delayed. All alarms use the same sound, so an alarm that fires
   while another one rings joins the running `AlarmService`: the sound simply continues, the ring timeout restarts,
   the new alarm gets its own notification and is listed on the alarm screen. Snooze and Dismiss on the alarm screen
-  apply to all ringing alarms, and the wake-up automation speaks all their titles.
+  and on an alarm's notification apply to all ringing alarms, and the wake-up automation speaks all their titles.
+  Snapshots can differ if the settings changed between two alarms: the sound and its volume stay those of the alarm
+  that started it, the phone vibrates while any ringing alarm asks for it, and the ring timeout is the longest one.
 - **Late alarms:** if the phone was off at the alarm time, the alarm is detected as overdue at boot. If it is at
   most 60 minutes late, it rings and a "late alarm" notification is posted; otherwise it does not ring and a
-  "missed alarm" notification is posted.
+  "missed alarm" notification is posted. How late it rang is stored in `lateBy` for the history. Only a start that
+  gets the "late alarm" notification records it, so an alarm that rang late stays late through an on-time snooze, and an
+  alarm rung again after a crash does not seem late.
+- **Notifications that report something stay.** When an alarm ends, its "Alarm" and "Snoozed" notifications go, but
+  "late alarm", "missed alarm" and "alarm not answered" remain until the user clears them. Their "Open history" action
+  opens the app until the history (screen 7) exists. "Missed alarm" and "alarm not answered" name the time of the event,
+  taken from the alarm's key, because a snooze moves `triggerAt`.
 
 ### Wake-up automation and the lock screen
 
@@ -282,9 +301,13 @@ unlocked. This has consequences, because the phone is usually still locked at th
 A Pixel installs system updates by rebooting at night. Until the user unlocks the phone, credential-encrypted
 storage and the calendar provider are not available. To ring anyway:
 
-- `AlarmReceiver`, `AlarmService`, `AlarmActivity`, `WakeUpService`, the wake-up screen and a `LockedBootReceiver`
-  are `directBootAware`.
+- `AlarmReceiver`, `AlarmActionReceiver`, `AlarmService`, `AlarmActivity`, `WakeUpService`, the wake-up screen and a
+  `LockedBootReceiver` are `directBootAware`.
 - The alarm database lives in device-protected storage (`createDeviceProtectedStorageContext()`).
+- WorkManager keeps its database in credential-encrypted storage, so `WorkManager.getInstance` must not be called on
+  any path that runs before the unlock. `AlarmModule` therefore provides `AlarmEngine` and everything on the alarm path
+  without it. `PlanningModule` builds on `AlarmModule`, never the other way round, and the application only holds the
+  worker factory, whose parts are lazy.
 - On `LOCKED_BOOT_COMPLETED` the [recovery sweep](#recovery) runs.
 - The chosen alarm sound is a copy in device-protected storage (see [Ringing](#ringing)). The phone's default
   alarm sound may not be readable before the first unlock; the bundled sound is then played instead.
@@ -303,7 +326,9 @@ state says what should be. `AlarmService` is sticky, so Android restarts the pro
 | `Announcing`, `NewsPlaying` | `StopWakeUp`: an interrupted wake-up automation is not resumed.                       |
 | Terminal states             | Nothing.                                                                              |
 
-Running the sweep twice is harmless, because every event is defined in every state.
+Running the sweep twice is harmless, because every event is defined in every state. `recoverySteps` in `domain` decides
+these steps. A reboot clears notifications as well, so the sweep also posts the "Snoozed" notification of a snoozed
+alarm with a trigger in the future (it is the only way to dismiss that alarm) and refreshes the "Next alarm" one.
 
 ## Data model
 
@@ -333,6 +358,7 @@ classDiagram
         snoozeCount: Int
         autoSnoozed: Boolean
         snapshot: AlarmSnapshot
+        lateBy: Duration?
     }
     class AlarmSnapshot {
         reason: String?
@@ -353,7 +379,9 @@ classDiagram
 Until the user changes them, the settings are: no alarm calendar, the phone's default alarm sound, no vibration, no volume ramp, the
 system's alarm volume left as it is, a ring timeout of 3 minutes, a snooze of 10 minutes, no spoken title and no news.
 
-Every version of the database schema is kept in `data/schemas/`, as the basis for migrations.
+Every version of the database schema is kept in `data/schemas/`, as the basis for migrations. Phones hold real data, so
+a schema change gets a new version with a real migration, never a destructive fallback. Version 2 adds the nullable
+column `lateBy` (in milliseconds) to `alarm_instance`.
 
 ## Future: Philips Hue (not in the MVP)
 

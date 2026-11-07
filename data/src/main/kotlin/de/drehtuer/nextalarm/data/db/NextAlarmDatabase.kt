@@ -9,6 +9,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Update
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Dao
 interface AlarmDao {
@@ -43,13 +45,20 @@ interface PlannerDao {
     suspend fun save(entity: PlannerEntity)
 }
 
+/** Version 2 records how late an alarm rang. Alarms from before that are not known to have been late. */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE alarm_instance ADD COLUMN lateBy INTEGER")
+    }
+}
+
 /**
  * All app data. The database lives in device-protected storage, so that alarms can ring before the first unlock
  * after a reboot. See docs/architecture.md#direct-boot.
  */
 @Database(
     entities = [AlarmInstanceEntity::class, SettingsEntity::class, PlannerEntity::class],
-    version = 1,
+    version = 2,
 )
 abstract class NextAlarmDatabase : RoomDatabase() {
     abstract fun alarms(): AlarmDao
@@ -61,6 +70,7 @@ abstract class NextAlarmDatabase : RoomDatabase() {
 
         fun open(context: Context): NextAlarmDatabase = Room
             .databaseBuilder(context.createDeviceProtectedStorageContext(), NextAlarmDatabase::class.java, NAME)
+            .addMigrations(MIGRATION_1_2)
             .build()
     }
 }

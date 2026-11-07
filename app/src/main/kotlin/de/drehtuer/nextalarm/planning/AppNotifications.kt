@@ -29,12 +29,16 @@ class AppNotifications(
         }
         ensureChannels()
         val text = nextAlarmText(alarm, now(), ZoneId.systemDefault())
-        manager.notify(NEXT_ALARM_ID, builder(NEXT_ALARM_CHANNEL, text.title, text.text).setOngoing(true).build())
+        manager.notify(
+            NEXT_ALARM_ID,
+            notificationBuilder(context, NEXT_ALARM_CHANNEL, text.title, text.text).setOngoing(true).build(),
+        )
     }
 
     fun showFailSafeWarning() {
         ensureChannels()
-        val notification = builder(
+        val notification = notificationBuilder(
+            context,
             WARNING_CHANNEL,
             "New alarms aren't being added",
             "NextAlarm can't read your calendar. Alarms already planned will still ring.",
@@ -45,20 +49,6 @@ class AppNotifications(
     fun removeFailSafeWarning() {
         manager.cancel(FAIL_SAFE_ID)
     }
-
-    private fun builder(channel: String, title: String, text: String) = Notification.Builder(context, channel)
-        .setSmallIcon(R.drawable.ic_stat_alarm)
-        .setColor(ACCENT)
-        .setContentTitle(title)
-        .setContentText(text)
-        .setContentIntent(
-            PendingIntent.getActivity(
-                context,
-                0,
-                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            ),
-        )
 
     private fun ensureChannels() {
         manager.createNotificationChannel(
@@ -74,9 +64,26 @@ class AppNotifications(
         const val FAIL_SAFE_ID = 2
         const val NEXT_ALARM_CHANNEL = "next_alarm"
         const val WARNING_CHANNEL = "warnings"
-        private const val ACCENT = 0xFF00639B.toInt()
     }
 }
+
+private const val ACCENT = 0xFF00639B.toInt()
+
+/** The look that all notifications share. Tapping one opens the app, unless the caller sets something else. */
+fun notificationBuilder(context: Context, channel: String, title: String, text: String): Notification.Builder =
+    Notification.Builder(context, channel)
+        .setSmallIcon(R.drawable.ic_stat_alarm)
+        .setColor(ACCENT)
+        .setContentTitle(title)
+        .setContentText(text)
+        .setContentIntent(
+            PendingIntent.getActivity(
+                context,
+                0,
+                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            ),
+        )
 
 /** What planning asks of Android: its jobs from [PlanningWork], its notifications from [AppNotifications]. */
 class AppPlannerEffects(

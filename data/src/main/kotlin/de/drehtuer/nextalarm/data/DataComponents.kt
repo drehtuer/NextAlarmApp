@@ -17,6 +17,7 @@ class DataComponents(private val context: Context) {
     val planner: PlannerRepository by lazy { RoomPlannerRepository(database.planner()) }
     val alarms: AlarmRepository by lazy { RoomAlarmRepository(database.alarms()) }
     val calendars: CalendarRepository by lazy { AndroidCalendarRepository(context.contentResolver) }
+    val sounds: SoundStore by lazy { SoundStore(context) }
 
     fun scheduler(intents: AlarmIntents): AlarmScheduler =
         AndroidAlarmScheduler(context.getSystemService(AlarmManager::class.java), intents)

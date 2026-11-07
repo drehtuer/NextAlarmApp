@@ -7,6 +7,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.work.testing.WorkManagerTestInitHelper
 import de.drehtuer.nextalarm.data.AlarmIntents
 import de.drehtuer.nextalarm.data.DataComponents
+import de.drehtuer.nextalarm.domain.AlarmAction
+import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.AlarmKey
@@ -17,7 +19,7 @@ import de.drehtuer.nextalarm.domain.CalendarRepository
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import de.drehtuer.nextalarm.domain.PlannerEffects
 import de.drehtuer.nextalarm.domain.PlannerEngine
-import de.drehtuer.nextalarm.domain.PlannerLock
+import de.drehtuer.nextalarm.domain.EngineLock
 import de.drehtuer.nextalarm.domain.PlannerState
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.snapshotFor
@@ -68,7 +70,12 @@ private class RecordingEffects : PlannerEffects {
     override fun showNextAlarm(alarm: AlarmInstance?) = Unit
 }
 
-private object OpenLock : PlannerLock {
+private object NoAlarmEffects : AlarmEffects {
+    override fun perform(instance: AlarmInstance, action: AlarmAction) = Unit
+    override fun showNextAlarm(alarm: AlarmInstance?) = Unit
+}
+
+private object OpenLock : EngineLock {
     override suspend fun <T> withLock(block: suspend () -> T): T = block()
 }
 
@@ -82,7 +89,7 @@ class AppViewModelTest {
     private val calendars = FakeCalendars()
     private val effects = RecordingEffects()
     private val changes = MutableSharedFlow<Unit>()
-    private val alarmEngine = AlarmEngine(data.alarms, data.scheduler(NO_INTENTS), { _, _ -> }, { NOW })
+    private val alarmEngine = AlarmEngine(data.alarms, data.scheduler(NO_INTENTS), NoAlarmEffects, { NOW }, OpenLock)
     private val engine = PlannerEngine(data.planner, data.settings, calendars, data.alarms, alarmEngine, effects, OpenLock) { NOW }
     private val viewModel = AppViewModel(
         AppPorts(data.settings, data.planner, data.alarms, calendars, engine, changes, { NOW }, { ZoneId.of("Europe/Berlin") }),
@@ -306,7 +313,7 @@ class AppPlannerEffectsTest {
     @Test
     fun `the module provides what the screens need`() = runBlocking {
         val data = PlanningModule.dataComponents(context)
-        val engine = PlanningModule.plannerEngine(context, data, PlanningModule.planningWork(context))
+        val engine = PlanningModule.plannerEngine(context, data, PlanningModule.planningWork(context), AlarmEngine(data.alarms, data.scheduler(de.drehtuer.nextalarm.planning.AppAlarmIntents(context)), NoAlarmEffects, { NOW }, OpenLock))
         val ports = PlanningModule.appPorts(context, data, engine)
         assertEquals(PlannerState.Unconfigured, ports.planner.load().state)
         assertTrue(ports.alarms.all().isEmpty())

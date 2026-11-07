@@ -90,6 +90,7 @@ internal fun AlarmInstance.toEntity() = AlarmInstanceEntity(
     autoSnoozed = autoSnoozed,
     reason = snapshot.reason,
     config = snapshot.toConfigColumns(),
+    lateByMillis = lateBy?.toMillis(),
 )
 
 internal fun AlarmInstanceEntity.toDomain() = AlarmInstance(
@@ -110,6 +111,7 @@ internal fun AlarmInstanceEntity.toDomain() = AlarmInstance(
         speakReason = config.speakReason,
         news = config.news?.toDomain(),
     ),
+    lateBy = lateByMillis?.let(Duration::ofMillis),
 )
 
 internal fun Settings.toEntity() = SettingsEntity(

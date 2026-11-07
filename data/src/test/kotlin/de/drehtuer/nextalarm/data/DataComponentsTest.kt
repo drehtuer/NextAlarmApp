@@ -7,6 +7,7 @@ import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.Settings
+import de.drehtuer.nextalarm.domain.SoundRef
 import java.time.Instant
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -46,5 +47,10 @@ class DataComponentsTest {
     @Test
     fun `the calendar repository is available without opening the database`() {
         assertTrue(components.calendars is AndroidCalendarRepository)
+    }
+
+    @Test
+    fun `the sound store always offers the bundled sound`() {
+        assertEquals(SoundSource.Bundled(R.raw.alarm_fallback), components.sounds.sources(SoundRef.SystemDefault).last())
     }
 }

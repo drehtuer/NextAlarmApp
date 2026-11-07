@@ -16,8 +16,11 @@ interface PlannerEffects {
     fun showNextAlarm(alarm: AlarmInstance?)
 }
 
-/** Lets only one caller at a time work on the planner state. */
-interface PlannerLock {
+/**
+ * Lets only one caller at a time work on the state of an engine. The planner and the alarm engine each have their own,
+ * and the planner calls into the alarm engine while it holds its lock, so never the other way round.
+ */
+interface EngineLock {
     suspend fun <T> withLock(block: suspend () -> T): T
 }
 
@@ -32,7 +35,7 @@ class PlannerEngine(
     private val alarms: AlarmRepository,
     private val alarmEngine: AlarmEngine,
     private val effects: PlannerEffects,
-    private val lock: PlannerLock,
+    private val lock: EngineLock,
     private val now: () -> Instant,
 ) {
     suspend fun setupCompleted() = lock.withLock { request(PlannerEvent.SetupCompleted) }

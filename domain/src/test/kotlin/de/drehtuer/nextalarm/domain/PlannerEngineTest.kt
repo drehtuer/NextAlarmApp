@@ -19,7 +19,7 @@ class PlannerEngineTest {
     private val clock = FakeClock()
     private val effects = FakePlannerEffects()
     private val lock = FakeLock()
-    private val alarmEngine = AlarmEngine(alarms, scheduler, { _, _ -> }, clock::now)
+    private val alarmEngine = AlarmEngine(alarms, scheduler, NoAlarmEffects, clock::now, FakeLock())
     private val engine = PlannerEngine(planner, settingsRepo, calendars, alarms, alarmEngine, effects, lock, clock::now)
 
     private val future = NOW.plus(Duration.ofHours(2))

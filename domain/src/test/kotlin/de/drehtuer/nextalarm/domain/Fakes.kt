@@ -29,6 +29,11 @@ class FakeAlarmRepository : AlarmRepository {
     }
 }
 
+object NoAlarmEffects : AlarmEffects {
+    override fun perform(instance: AlarmInstance, action: AlarmAction) = Unit
+    override fun showNextAlarm(alarm: AlarmInstance?) = Unit
+}
+
 class FakeScheduler : AlarmScheduler {
     val scheduled = linkedMapOf<Long, Instant>()
     val cancelled = mutableListOf<Long>()
@@ -106,7 +111,7 @@ class FakePlannerEffects : PlannerEffects {
 }
 
 /** Counts how the lock is used. Tests run on one coroutine, so it does not have to exclude anyone. */
-class FakeLock : PlannerLock {
+class FakeLock : EngineLock {
     var uses = 0
 
     override suspend fun <T> withLock(block: suspend () -> T): T {

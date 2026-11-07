@@ -34,6 +34,8 @@ data class AlarmInstanceEntity(
     val autoSnoozed: Boolean,
     val reason: String?,
     @Embedded val config: AlarmConfigColumns,
+    /** In milliseconds. Empty unless the alarm rang late. */
+    @ColumnInfo(name = "lateBy") val lateByMillis: Long?,
 )
 
 /** The only row of its table. */

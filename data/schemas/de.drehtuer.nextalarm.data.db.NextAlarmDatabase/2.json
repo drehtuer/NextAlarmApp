@@ -1,0 +1,271 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "64f20814ea11082ce02f027041db2549",
+    "entities": [
+      {
+        "tableName": "alarm_instance",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `alarmKey` TEXT NOT NULL, `triggerAtMillis` INTEGER NOT NULL, `state` TEXT NOT NULL, `snoozeCount` INTEGER NOT NULL, `autoSnoozed` INTEGER NOT NULL, `reason` TEXT, `lateBy` INTEGER, `soundFile` TEXT, `vibrate` INTEGER NOT NULL, `volumeRampSeconds` INTEGER NOT NULL, `maxVolume` REAL, `ringTimeoutMinutes` INTEGER NOT NULL, `snoozeMinutes` INTEGER NOT NULL, `speakReason` INTEGER NOT NULL, `news_type` TEXT, `news_url` TEXT, `news_maxMinutes` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "alarmKey",
+            "columnName": "alarmKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "triggerAtMillis",
+            "columnName": "triggerAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "snoozeCount",
+            "columnName": "snoozeCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "autoSnoozed",
+            "columnName": "autoSnoozed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reason",
+            "columnName": "reason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lateByMillis",
+            "columnName": "lateBy",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "config.soundFile",
+            "columnName": "soundFile",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "config.vibrate",
+            "columnName": "vibrate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config.volumeRampSeconds",
+            "columnName": "volumeRampSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config.maxVolume",
+            "columnName": "maxVolume",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "config.ringTimeoutMinutes",
+            "columnName": "ringTimeoutMinutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config.snoozeMinutes",
+            "columnName": "snoozeMinutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config.speakReason",
+            "columnName": "speakReason",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config.news.type",
+            "columnName": "news_type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "config.news.url",
+            "columnName": "news_url",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "config.news.maxMinutes",
+            "columnName": "news_maxMinutes",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_alarm_instance_alarmKey",
+            "unique": false,
+            "columnNames": [
+              "alarmKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_alarm_instance_alarmKey` ON `${TABLE_NAME}` (`alarmKey`)"
+          }
+        ]
+      },
+      {
+        "tableName": "settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `alarmCalendarId` INTEGER, `soundFile` TEXT, `vibrate` INTEGER NOT NULL, `volumeRampSeconds` INTEGER NOT NULL, `maxVolume` REAL, `ringTimeoutMinutes` INTEGER NOT NULL, `snoozeMinutes` INTEGER NOT NULL, `speakReason` INTEGER NOT NULL, `news_type` TEXT, `news_url` TEXT, `news_maxMinutes` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "alarmCalendarId",
+            "columnName": "alarmCalendarId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "config.soundFile",
+            "columnName": "soundFile",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "config.vibrate",
+            "columnName": "vibrate",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config.volumeRampSeconds",
+            "columnName": "volumeRampSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config.maxVolume",
+            "columnName": "maxVolume",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "config.ringTimeoutMinutes",
+            "columnName": "ringTimeoutMinutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config.snoozeMinutes",
+            "columnName": "snoozeMinutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config.speakReason",
+            "columnName": "speakReason",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "config.news.type",
+            "columnName": "news_type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "config.news.url",
+            "columnName": "news_url",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "config.news.maxMinutes",
+            "columnName": "news_maxMinutes",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "planner",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `state` TEXT NOT NULL, `generation` INTEGER NOT NULL, `consecutiveFailures` INTEGER NOT NULL, `lastRun_startedAtMillis` INTEGER, `lastRun_durationMillis` INTEGER, `lastRun_alarmCount` INTEGER, `lastRun_failure` TEXT, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generation",
+            "columnName": "generation",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consecutiveFailures",
+            "columnName": "consecutiveFailures",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastRun.startedAtMillis",
+            "columnName": "lastRun_startedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastRun.durationMillis",
+            "columnName": "lastRun_durationMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastRun.alarmCount",
+            "columnName": "lastRun_alarmCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastRun.failure",
+            "columnName": "lastRun_failure",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '64f20814ea11082ce02f027041db2549')"
+    ]
+  }
+}

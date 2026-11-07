@@ -1,5 +1,6 @@
 package de.drehtuer.nextalarm.domain
 
+import java.time.Duration
 import java.time.Instant
 
 @JvmInline
@@ -41,7 +42,7 @@ data class Settings(
     val sound: SoundRef,
     val vibrate: Boolean,
     val volumeRampSeconds: Int,
-    /** Between 0 and 1. Without a value, the system's alarm volume is left as it is. */
+    /** The player's own gain, between 0 and 1. The system's alarm volume is never changed. Without a value: 1. */
     val maxVolume: Float?,
     val ringTimeoutMinutes: Int = DEFAULT_RING_TIMEOUT_MINUTES,
     val snoozeMinutes: Int = DEFAULT_SNOOZE_MINUTES,
@@ -106,6 +107,8 @@ data class AlarmInstance(
     val snoozeCount: Int,
     val autoSnoozed: Boolean,
     val snapshot: AlarmSnapshot,
+    /** How late it rang, if it was late enough to be reported (see [LATE_NOTICE_THRESHOLD]). Empty otherwise. */
+    val lateBy: Duration? = null,
 )
 
 /** Identifies an alarm across planning runs. It contains the start time, so a moved event is a new alarm. */
@@ -114,6 +117,13 @@ value class AlarmKey(val value: String) {
     /** True if this alarm comes from the calendar and therefore takes part in the plan diff. */
     val isFromCalendar: Boolean
         get() = value.startsWith(EVENT_PREFIX)
+
+    /**
+     * When the event starts. Unlike the trigger time of an alarm, a snooze does not change it. Empty for an alarm that
+     * does not come from the calendar.
+     */
+    val eventStart: Instant?
+        get() = if (isFromCalendar) Instant.ofEpochMilli(value.substringAfterLast(':').toLong()) else null
 
     companion object {
         private const val EVENT_PREFIX = "event:"

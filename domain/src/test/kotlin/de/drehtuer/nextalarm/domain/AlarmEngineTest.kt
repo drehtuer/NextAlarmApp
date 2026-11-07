@@ -4,6 +4,7 @@ import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
@@ -12,7 +13,17 @@ class AlarmEngineTest {
     private val scheduler = FakeScheduler()
     private val clock = FakeClock()
     private val performed = mutableListOf<AlarmAction>()
-    private val engine = AlarmEngine(alarms, scheduler, { _, action -> performed += action }, clock::now)
+    private val nextAlarms = mutableListOf<AlarmInstance?>()
+    private val effects = object : AlarmEffects {
+        override fun perform(instance: AlarmInstance, action: AlarmAction) {
+            performed += action
+        }
+
+        override fun showNextAlarm(alarm: AlarmInstance?) {
+            nextAlarms += alarm
+        }
+    }
+    private val engine = AlarmEngine(alarms, scheduler, effects, clock::now, FakeLock())
 
     private val future = NOW.plus(Duration.ofHours(2))
 
@@ -129,5 +140,176 @@ class AlarmEngineTest {
         stored(AlarmState.Snoozed, id = 6, triggerAt = NOW.minusSeconds(1))
         engine.registerWaiting()
         assertEquals(setOf(1L, 2L), scheduler.scheduled.keys)
+    }
+
+    @Test
+    fun `firing works out how late the alarm is`() = runBlocking {
+        val instance = stored(AlarmState.Scheduled, triggerAt = NOW.minus(Duration.ofMinutes(7)))
+        engine.fire(instance.id)
+        val updated = alarms.find(instance.id)!!
+        assertEquals(AlarmState.Ringing, updated.state)
+        assertEquals(Duration.ofMinutes(7), updated.lateBy)
+    }
+
+    @Test
+    fun `firing an unknown alarm does nothing`() = runBlocking {
+        engine.fire(404)
+        assertTrue(performed.isEmpty())
+    }
+
+    @Test
+    fun `an alarm that fires too late is missed`() = runBlocking {
+        val instance = stored(AlarmState.Scheduled, triggerAt = NOW.minus(Duration.ofMinutes(61)))
+        engine.fire(instance.id)
+        val updated = alarms.find(instance.id)!!
+        assertEquals(AlarmState.Missed, updated.state)
+        assertNull(updated.lateBy)
+    }
+
+    @Test
+    fun `an alarm that rings on time has not been late`() = runBlocking {
+        val instance = stored(AlarmState.Scheduled, triggerAt = NOW.minusSeconds(30))
+        engine.fire(instance.id)
+        assertNull(alarms.find(instance.id)?.lateBy)
+    }
+
+    @Test
+    fun `the late notification can say how late`() = runBlocking {
+        val instance = stored(AlarmState.Scheduled, triggerAt = NOW.minus(Duration.ofMinutes(7)))
+        val seen = mutableListOf<AlarmInstance>()
+        val effects = object : AlarmEffects {
+            override fun perform(instance: AlarmInstance, action: AlarmAction) {
+                if (action == AlarmAction.PostLateNotification) seen += instance
+            }
+
+            override fun showNextAlarm(alarm: AlarmInstance?) = Unit
+        }
+        AlarmEngine(alarms, scheduler, effects, clock::now, FakeLock()).fire(instance.id)
+        assertEquals(Duration.ofMinutes(7), seen.single().lateBy)
+    }
+
+    @Test
+    fun `an alarm that rang late stays late through a snooze that ends on time`() = runBlocking {
+        val instance = stored(AlarmState.Scheduled, triggerAt = NOW.minus(Duration.ofMinutes(7)))
+        engine.fire(instance.id)
+        engine.handle(instance.id, AlarmEvent.Snooze)
+        clock.time = NOW.plus(Duration.ofMinutes(10))
+        engine.fire(instance.id)
+        assertEquals(AlarmState.Ringing, alarms.find(instance.id)?.state)
+        assertEquals(Duration.ofMinutes(7), alarms.find(instance.id)?.lateBy)
+    }
+
+    @Test
+    fun `a snooze that ends late counts as late`() = runBlocking {
+        val instance = stored(AlarmState.Ringing)
+        engine.handle(instance.id, AlarmEvent.Snooze)
+        clock.time = NOW.plus(Duration.ofMinutes(30))
+        engine.fire(instance.id)
+        assertEquals(Duration.ofMinutes(20), alarms.find(instance.id)?.lateBy)
+    }
+
+    @Test
+    fun `an alarm that rings again after a crash does not count as late`() = runBlocking {
+        val instance = stored(AlarmState.Ringing, triggerAt = NOW.minus(Duration.ofMinutes(5)))
+        engine.fire(instance.id)
+        assertEquals(AlarmState.Ringing, alarms.find(instance.id)?.state)
+        assertNull(alarms.find(instance.id)?.lateBy)
+    }
+
+    @Test
+    fun `an event goes to the ringing alarms only`() = runBlocking {
+        stored(AlarmState.Ringing, id = 1)
+        stored(AlarmState.Ringing, id = 2)
+        stored(AlarmState.Snoozed, id = 3)
+        stored(AlarmState.Scheduled, id = 4)
+        engine.sendToRinging(AlarmEvent.Snooze)
+        assertEquals(AlarmState.Snoozed, alarms.find(1)?.state)
+        assertEquals(AlarmState.Snoozed, alarms.find(2)?.state)
+        assertEquals(0, alarms.find(3)?.snoozeCount)
+        assertEquals(AlarmState.Scheduled, alarms.find(4)?.state)
+    }
+
+    @Test
+    fun `dismissing all ringing alarms leaves snoozed ones waiting`() = runBlocking {
+        stored(AlarmState.Ringing, id = 1)
+        stored(AlarmState.Snoozed, id = 2)
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        assertEquals(AlarmState.Announcing, alarms.find(1)?.state)
+        assertEquals(AlarmState.Snoozed, alarms.find(2)?.state)
+    }
+
+    @Test
+    fun `the recovery sweep does what the persisted state asks for`() = runBlocking {
+        stored(AlarmState.Scheduled, id = 1)
+        stored(AlarmState.Snoozed, id = 2)
+        stored(AlarmState.Scheduled, id = 3, triggerAt = NOW.minus(Duration.ofMinutes(5)))
+        stored(AlarmState.Ringing, id = 4, triggerAt = NOW.minus(Duration.ofMinutes(61)))
+        stored(AlarmState.Announcing, id = 5)
+        stored(AlarmState.Done, id = 6)
+        engine.recover()
+        assertEquals(setOf(1L, 2L), scheduler.scheduled.keys)
+        assertEquals(AlarmState.Scheduled, alarms.find(1)?.state)
+        assertEquals(AlarmState.Snoozed, alarms.find(2)?.state)
+        assertEquals(AlarmState.Ringing, alarms.find(3)?.state)
+        assertEquals(AlarmState.Missed, alarms.find(4)?.state)
+        assertEquals(AlarmState.Done, alarms.find(5)?.state)
+        assertEquals(AlarmState.Done, alarms.find(6)?.state)
+    }
+
+    @Test
+    fun `a sweep gives a snoozed alarm its notification back, as a reboot clears it`() = runBlocking {
+        stored(AlarmState.Snoozed, id = 1)
+        stored(AlarmState.Scheduled, id = 2)
+        engine.recover()
+        assertEquals(listOf<AlarmAction>(AlarmAction.PostSnoozeNotification), performed)
+    }
+
+    @Test
+    fun `running the sweep twice is harmless`() = runBlocking {
+        val instance = stored(AlarmState.Scheduled, triggerAt = NOW.minus(Duration.ofMinutes(5)))
+        engine.recover()
+        val once = alarms.find(instance.id)
+        performed.clear()
+        engine.recover()
+        assertEquals(once, alarms.find(instance.id))
+        assertEquals(listOf<AlarmAction>(AlarmAction.JoinAlarmService), performed)
+    }
+
+    @Test
+    fun `the sweep shows the next alarm, which a reboot cleared`() = runBlocking {
+        val instance = stored(AlarmState.Scheduled)
+        engine.recover()
+        assertEquals(listOf<AlarmInstance?>(instance), nextAlarms)
+    }
+
+    @Test
+    fun `a change of state refreshes the next alarm`() = runBlocking {
+        val first = stored(AlarmState.Scheduled, id = 1)
+        val second = stored(AlarmState.Scheduled, id = 2, triggerAt = future.plusSeconds(60))
+        engine.handle(first.id, AlarmEvent.Remove)
+        assertEquals(listOf<AlarmInstance?>(second), nextAlarms)
+        engine.handle(second.id, AlarmEvent.Remove)
+        assertEquals(listOf(second, null), nextAlarms)
+    }
+
+    @Test
+    fun `an ignored event does not refresh the next alarm`() = runBlocking {
+        val instance = stored(AlarmState.Done)
+        engine.handle(instance.id, AlarmEvent.Remove)
+        assertTrue(nextAlarms.isEmpty())
+    }
+
+    @Test
+    fun `every call goes through the lock`() = runBlocking {
+        val lock = FakeLock()
+        val locked = AlarmEngine(alarms, scheduler, effects, clock::now, lock)
+        val instance = stored(AlarmState.Scheduled)
+        locked.create(PlanEntry(AlarmKey.forEvent(9, future), future, snapshot()))
+        locked.handle(instance.id, AlarmEvent.Refresh(snapshot()))
+        locked.fire(instance.id)
+        locked.sendToRinging(AlarmEvent.Snooze)
+        locked.registerWaiting()
+        locked.recover()
+        assertEquals(6, lock.uses)
     }
 }
