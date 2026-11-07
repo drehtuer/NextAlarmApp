@@ -65,3 +65,7 @@ and tapping it opens home.
 | Late alarm           | Alarm rang more than 1 min late (phone was off) | Open history            |
 | Missed alarm         | Alarm entered `Missed` (more than 60 min late) | Open history             |
 | Alarm not answered   | Alarm entered `Unanswered`                   | Open history               |
+| Alarm that could not be read | An alarm fires but its stored alarm can't be read (emergency alarm) | Snooze, Dismiss |
+| Alarm may be silent  | Android refused the alarm's foreground service; goes when it comes up | none                |
+| No sound could be played | No sound source would play; stays after the alarm | none                      |
+| Alarm stopped by the limit | The ringing passed the hard limit after the ring timeout | Open history       |

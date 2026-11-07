@@ -1,0 +1,17 @@
+<!-- GitHub's Jekyll does not render Mermaid, so the diagrams are drawn in the browser. -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+  document.addEventListener("DOMContentLoaded", async () => {
+    // Kramdown writes a ```mermaid block as <pre><code class="language-mermaid">, with Rouge
+    // inside <div class="language-mermaid highlighter-rouge">. Either is replaced as a whole.
+    for (const code of document.querySelectorAll("code.language-mermaid, div.language-mermaid code")) {
+      const block = code.closest("div.language-mermaid") ?? code.closest("pre");
+      const diagram = document.createElement("pre");
+      diagram.className = "mermaid";
+      diagram.textContent = code.textContent;
+      block.replaceWith(diagram);
+    }
+    mermaid.initialize({ startOnLoad: false });
+    await mermaid.run();
+  });
+</script>

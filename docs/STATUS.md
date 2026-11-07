@@ -4,7 +4,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 **Last updated:** 2026-11-07
 
-**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are on the branch `impl/audio-and-calendars`, not merged. No alarm has been heard on a real phone yet. Phase 9 needs the owner and an audible test. Hue is waiting for Q-H5.
+**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are merged in #20. The documentation is published as a GitHub Pages site with every release. No alarm has been heard on a real phone yet. Phase 9 needs the owner and an audible test. Hue is waiting for Q-H5.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -19,6 +19,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 |-------------------------------------------|--------|-----------------------------------------|
 | Concept and architecture documents        | `Done` | Later decisions are updated as they come. |
 | [Dev container](development.md)           | `Done` | Merged in #4.                           |
+| [Documentation site](development.md#documentation-site) | `Done` | Built with Jekyll and published to GitHub Pages on every release. |
 
 ## Device checks
 
@@ -66,7 +67,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 |------|-----------------------------------------|---------------|-------|
 | 3.1  | Room database                           | `Done`        | Merged in #7. |
 | 3.2  | `SettingsRepository`, `AlarmRepository` | `Done`        | Merged in #7. |
-| 3.3  | `CalendarRepository`                    | `Done`        | Merged in #7. Only tested against a fake provider; not yet run on real calendars. |
+| 3.3  | `CalendarRepository`                    | `Done`        | Merged in #7. Run on a real DAVx⁵ calendar (device checks); aCalendar and ICSx⁵ are still to do in 9.2. |
 | 3.4  | `AlarmScheduler`                        | `Done`        | Merged in #7. |
 | 3.5  | Alarm sound storage                     | `Done`        | Merged in #7. |
 
@@ -82,7 +83,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 | Step | Topic                     | Status        | Notes |
 |------|---------------------------|---------------|-------|
-| 5.1  | Visual design, navigation | `Done`        | App icon added: adaptive launcher icon with a monochrome layer, and the notification icon `ic_stat_alarm`. Theme and navigation still to do. |
+| 5.1  | Visual design, navigation | `Done`        | Merged in #8, #9 and #11: app icon, notification icon `ic_stat_alarm`, Compose theme and navigation. |
 | 5.2  | Onboarding                | `Done`        | Merged in #11. |
 | 5.3  | Alarm calendar selection  | `Done`        | Merged in #11. |
 | 5.4  | Home                      | `Done`        | Merged in #11. The fail-safe banner's "See what went wrong" button comes with step 8.4. |

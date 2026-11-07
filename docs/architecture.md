@@ -5,6 +5,7 @@ Status: initial draft. Open points are tracked in [open_questions.md](open_quest
 Related documents:
 
 - [screens.md](screens.md): screens and navigation
+- [design.md](design.md): colours, type, wording and states of every screen
 - [state_machines.md](state_machines.md): planner and alarm state machines with complete transition tables
 - [open_questions.md](open_questions.md): open points in the project description
 
@@ -19,7 +20,7 @@ Related documents:
 | Language       | Kotlin                                                                   |
 | UI             | Jetpack Compose. The visual design comes from Claude Design              |
 | UI language    | English only, no translations                                            |
-| Persistence    | Room for all app data (settings, alarm instances, plan), one database in device-protected storage |
+| Persistence    | Room for settings, alarm instances and the planner record, one database in device-protected storage. Sound copies are files and the saved alarm volume is a preference, both in device-protected storage too |
 | DI             | Hilt                                                                     |
 | Background     | `AlarmManager` for alarms, WorkManager for re-planning                   |
 | Backup         | None. `android:allowBackup="false"`: the alarms live in the calendar, and the few settings are quickly set again |
@@ -46,7 +47,7 @@ flowchart LR
         UI[Compose screens]
         RCV[Broadcast receivers]
         SVC[AlarmService<br/>WakeUpService]
-        WRK[PlanWorker]
+        WRK[ReplanWorker<br/>PlanWorker]
     end
     subgraph data[":data (Android)"]
         CAL[CalendarRepository<br/>CalendarContract.Instances]
@@ -190,8 +191,8 @@ The diff decides per key:
 | `Missed`, otherwise                              | Nothing: its time has passed, or it rang before it was snoozed | Nothing                |
 | `Cancelled`                                      | `Create`: the event was restored              | Nothing                                 |
 
-Alarm instances that do not come from the calendar, which is only the test alarm (key `test:<id>`), are left out of
-the diff. The test alarm is created through `AlarmEngine`, 5 seconds ahead and with the current settings, so it rings
+Stored alarm instances that do not come from the calendar, which is only the test alarm (key `test:<id>`), are left out of
+the diff. (An emergency alarm, `emergency:<id>`, exists only in memory; see [When the database fails](#when-the-database-fails).) The test alarm is created through `AlarmEngine`, 5 seconds ahead and with the current settings, so it rings
 the normal way.
 
 A forward jump of the clock by more than 60 minutes makes waiting alarms `Missed`. If that was a mistake and the clock is
@@ -204,8 +205,10 @@ cannot come back.
 
 ## Re-planning triggers
 
-Every trigger sends `ReplanRequested` to the [planner state machine](state_machines.md#planner-state-machine).
-Planning runs in a unique WorkManager job (`REPLACE` policy), so concurrent triggers collapse into one run.
+Every trigger except `LOCKED_BOOT_COMPLETED`, which only runs the [recovery sweep](#recovery), sends `ReplanRequested` to
+the [planner state machine](state_machines.md#planner-state-machine). Triggers go through `ReplanWorker`, and planning
+runs in `PlanWorker` as a unique WorkManager job (`REPLACE` policy), so concurrent triggers collapse into one run. The
+daily job is unique too, with the `KEEP` policy, so that it is not moved by every run.
 
 | Trigger                                   | Mechanism                                                                    |
 |-------------------------------------------|------------------------------------------------------------------------------|
@@ -214,7 +217,7 @@ Planning runs in a unique WorkManager job (`REPLACE` policy), so concurrent trig
 | Device boot / user unlock                 | `LOCKED_BOOT_COMPLETED` (restore alarms), `BOOT_COMPLETED` (re-plan)        |
 | Time or time zone changed                 | `TIME_SET`, `TIMEZONE_CHANGED`                                               |
 | App updated                               | `MY_PACKAGE_REPLACED`                                                        |
-| Day rollover                              | Periodic work, once a day after midnight (moves the 48 h window forward)     |
+| Day rollover                              | Periodic work, once a day, 5 minutes after local midnight (moves the 48 h window forward) |
 | Retry after failure                       | Exponential backoff while in `FailSafe`: one minute, doubling, up to one hour |
 
 `PlannerEngine` and `AlarmEngine` in `domain` run the state machines against the repositories, so this logic is tested
@@ -675,13 +678,13 @@ classDiagram
         news: NewsSource?
     }
     class PlanEntry {
-        key: String
+        key: AlarmKey
         triggerAt: Instant
         snapshot: AlarmSnapshot
     }
     class AlarmInstance {
         id: Long
-        key: String
+        key: AlarmKey
         triggerAt: Instant
         state: AlarmState
         snoozeCount: Int
@@ -745,6 +748,6 @@ The project rule is that every function is unit tested (see `.claude/CLAUDE.md`)
 
 | Layer    | How it is tested                                                                                     |
 |----------|------------------------------------------------------------------------------------------------------|
-| `domain` | JUnit on the JVM. The planner gets a fixed `now`, zone and event list. State machines are tested for every (state, event) pair. |
-| `data`   | Robolectric for repositories (fake calendar provider, in-memory Room), fake `AlarmManager` via interface. |
-| `app`    | Compose UI tests for screens; instrumented tests on a Pixel 10a for ringing, direct boot and full-screen intent. |
+| `domain` | JUnit on the JVM. The planner gets a fixed `now` and event list; display and schedule helpers get a fixed zone. State machines are tested for every (state, event) pair. |
+| `data`   | Robolectric for repositories (fake calendar provider, in-memory Room) and for `AndroidAlarmScheduler`, against Robolectric's `AlarmManager`. |
+| `app`    | Compose UI tests, activities, receivers and services under Robolectric on the JVM; the [silent device tests](development.md#silent-device-tests) on a Pixel 10a for ringing. Direct boot and the full-screen intent have no instrumented test yet (step 9.1). |

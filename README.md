@@ -4,7 +4,7 @@
 
 The stock Android alarm clock rings whether or not you have a holiday, are on vacation, or need to get up early for a flight. NextAlarm takes its alarms from dedicated alarm calendars instead: alarms are set, moved and deleted in your calendar app, and the app rings them.
 
-**Status:** early implementation. See [STATUS](docs/STATUS.md).
+**Status:** the MVP is implemented and being verified on the phone. See [STATUS](docs/STATUS.md). The documentation is also published at <https://drehtuer.github.io/NextAlarmApp/>.
 
 ## Goals
 
@@ -46,11 +46,11 @@ Sound, vibration, snooze and the wake-up automation are configured once in the a
 
 ## Roadmap
 
-- [ ] Calendar reading and planner
-- [ ] Exact alarm scheduling, rescheduling after reboot and time zone changes
-- [ ] Alarm screen with snooze
-- [ ] Text-to-speech for the event title
-- [ ] News readout (RSS / podcast)
+- [x] Calendar reading and planner
+- [x] Exact alarm scheduling, rescheduling after reboot and time zone changes
+- [x] Alarm screen with snooze
+- [x] Text-to-speech for the event title
+- [x] News readout (RSS / podcast)
 
 Later, after the MVP:
 

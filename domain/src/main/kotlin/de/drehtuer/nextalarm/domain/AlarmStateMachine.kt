@@ -52,7 +52,7 @@ sealed interface AlarmAction {
     data class SetAutoSnoozed(val value: Boolean) : AlarmAction
     data object IncrementSnoozeCount : AlarmAction
 
-    /** Sets the trigger time to now plus [minutes] and registers the alarm there. */
+    /** Sets the trigger time to the current minute plus [minutes] and registers the alarm there. */
     data class RegisterSnoozeAlarm(val minutes: Int) : AlarmAction
     data object StartAnnouncement : AlarmAction
     data object StartNews : AlarmAction
