@@ -11,6 +11,7 @@ import de.drehtuer.nextalarm.domain.NotificationText
 import de.drehtuer.nextalarm.domain.RINGING_PLACEHOLDER_TEXT
 import de.drehtuer.nextalarm.domain.lateText
 import de.drehtuer.nextalarm.domain.missedText
+import de.drehtuer.nextalarm.domain.ringLimitText
 import de.drehtuer.nextalarm.domain.ringingText
 import de.drehtuer.nextalarm.domain.snoozedText
 import de.drehtuer.nextalarm.domain.unansweredText
@@ -77,6 +78,9 @@ class AlarmNotifications(
     fun showMissed(alarm: AlarmInstance) = showNotice(missedId(alarm.id), missedText(alarm, zone()))
 
     fun showUnanswered(alarm: AlarmInstance) = showNotice(unansweredId(alarm.id), unansweredText(alarm, zone()))
+
+    /** Only one of these and the missed and unanswered ones can happen to an alarm that ends here. */
+    fun showRingLimit(alarm: AlarmInstance) = showNotice(unansweredId(alarm.id), ringLimitText(alarm, zone()))
 
     private fun showNotice(id: Int, text: NotificationText) {
         ensureChannels()

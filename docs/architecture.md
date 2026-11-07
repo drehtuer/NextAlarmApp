@@ -365,6 +365,27 @@ Feeds come from servers the user does not control, so they are treated as hostil
   still use it, and nothing but public feeds travels over it.
 - **Time:** 10 seconds to connect, 15 seconds per read, 60 seconds for the whole download, at most 5 redirects.
 
+## When the database fails
+
+The worst failure of this app is an alarm that does not ring or cannot be stopped, so ringing does not depend on the
+database working. `AlarmEngine` still stores a new state first, so that a crash cannot lose it, but:
+
+- **Each alarm is on its own.** `recover`, `registerWaiting`, `sendToRinging`, `ringTimedOut` and `stopWakeUp` handle every
+  alarm they can, and each action of a transition runs even if another one failed. The first failure is thrown at the end
+  for the caller to report, with the others attached to it. Only a `CancellationException` ends the loop at once.
+- **What rings is known without the database.** `AlarmEffects.ringing()` is the list in `AlarmRinger`. `AlarmEngine` goes
+  by that list before the stored state, and `sendToRinging` reaches both, so an alarm rings and can be stopped whatever
+  the database says. The alarm screen goes by the same list.
+- **A failed write does not stop what the user asked for.** If the state cannot be stored, the actions of the transition
+  still run, with two exceptions. `Remove` does nothing, so that a failure never removes an alarm. `Dismiss` does not start
+  the wake-up automation, which could not be stopped, as `stopWakeUp` goes by the stored state.
+- **After a failed write the stored state is behind.** A dismissed alarm is then still stored as `Ringing`, so the
+  recovery sweep rings it again at the next process start if that is within 60 minutes. Ringing once too often is the
+  better way round.
+- **The ringing has a hard limit.** The ring timeout goes through `AlarmEngine`. If the alarms still ring 30 seconds after
+  it, for whichever reason, `AlarmRinger` stops them on its own and posts "An alarm was stopped". This limit is measured
+  from the last alarm that joined, so that no alarm rings for less time than it should.
+
 ## Direct boot
 
 A Pixel installs system updates by rebooting at night. Until the user unlocks the phone, credential-encrypted

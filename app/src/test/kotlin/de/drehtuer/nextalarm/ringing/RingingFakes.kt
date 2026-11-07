@@ -29,14 +29,20 @@ fun alarm(
 
 class FakeAlarms(vararg alarms: AlarmInstance) : AlarmRepository {
     val stored = alarms.associateByTo(linkedMapOf()) { it.id }
+
+    /** Reading fails. */
     var failure: Exception? = null
+    var failOnUpdate: Exception? = null
 
     override suspend fun all(): List<AlarmInstance> {
         failure?.let { throw it }
         return stored.values.toList()
     }
 
-    override suspend fun find(id: Long) = stored[id]
+    override suspend fun find(id: Long): AlarmInstance? {
+        failure?.let { throw it }
+        return stored[id]
+    }
 
     override suspend fun create(key: AlarmKey, triggerAt: Instant, snapshot: AlarmSnapshot): AlarmInstance {
         val instance = AlarmInstance(stored.size + 1L, key, triggerAt, AlarmState.Scheduled, 0, false, snapshot)
@@ -45,6 +51,7 @@ class FakeAlarms(vararg alarms: AlarmInstance) : AlarmRepository {
     }
 
     override suspend fun update(instance: AlarmInstance) {
+        failOnUpdate?.let { throw it }
         stored[instance.id] = instance
     }
 

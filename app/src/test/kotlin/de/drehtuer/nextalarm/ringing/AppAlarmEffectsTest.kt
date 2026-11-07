@@ -70,6 +70,12 @@ class AppAlarmEffectsTest {
     }
 
     @Test
+    fun `it knows what rings, from the ringer`() {
+        effects.perform(alarm(id = 1), AlarmAction.JoinAlarmService)
+        assertEquals(listOf(1L), effects.ringing().map { it.id })
+    }
+
+    @Test
     fun `the wake-up automation is started for the alarm`() {
         effects.perform(alarm(id = 1), AlarmAction.StartAnnouncement)
         effects.perform(alarm(id = 2), AlarmAction.StartNews)

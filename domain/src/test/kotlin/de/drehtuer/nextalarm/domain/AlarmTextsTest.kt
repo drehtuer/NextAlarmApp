@@ -13,6 +13,13 @@ class AlarmTextsTest {
     private val at = Instant.parse("2026-11-07T05:45:00Z")
 
     @Test
+    fun `an alarm stopped by the limit says so`() {
+        val text = ringLimitText(alarm("Gym"), zone)
+        assertEquals("An alarm was stopped", text.title)
+        assertEquals("“Gym” at 06:45 rang past its time and NextAlarm couldn't end it the normal way.", text.text)
+    }
+
+    @Test
     fun `the fail-safe warning names what it knows`() {
         val general = "NextAlarm can't read your calendar. Alarms already planned will still ring."
         assertEquals(general, failSafeWarningText(null).text)

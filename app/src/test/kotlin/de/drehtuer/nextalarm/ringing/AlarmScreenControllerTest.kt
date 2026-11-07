@@ -103,6 +103,7 @@ class AlarmScreenControllerTest {
         controller.start(screenScope)
         alarms.stored.clear()
         changes.report(listOf(alarm(id = 9)))
+        changes.report(emptyList())
         assertTrue(controller.finished.value)
     }
 
@@ -131,6 +132,34 @@ class AlarmScreenControllerTest {
         screenScope.cancel()
         controller.dismiss()
         assertEquals(AlarmState.Done, alarms.stored[1]?.state)
+    }
+
+    @Test
+    fun `an alarm that only the ringer knows of shows too, once`() {
+        controller.start(screenScope)
+        changes.report(listOf(alarm(id = 1), alarm(id = 9)))
+        assertEquals(listOf(1L, 2L, 9L), controller.ringing.value.map { it.id })
+        assertFalse(controller.finished.value)
+    }
+
+    @Test
+    fun `without a readable database it goes by the ringer`() {
+        changes.report(listOf(alarm(id = 9)))
+        alarms.failure = IllegalStateException("storage failed")
+        controller.start(screenScope)
+        assertEquals(listOf(9L), controller.ringing.value.map { it.id })
+        assertFalse(controller.finished.value)
+    }
+
+    @Test
+    fun `if the alarms cannot be ended the normal way, the screen goes by what still rings`() {
+        changes.report(listOf(alarm(id = 1)))
+        controller.start(screenScope)
+        alarms.failure = IllegalStateException("storage failed")
+        changes.report(emptyList())
+        controller.dismiss()
+        assertTrue(controller.finished.value)
+        assertFalse(controller.wakeUpFollows.value)
     }
 
     @Test

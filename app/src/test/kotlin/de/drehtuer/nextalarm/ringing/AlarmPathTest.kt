@@ -258,7 +258,7 @@ private class AlarmPathParts(context: Context, data: DataComponents) {
     private val foreground = AlarmModule.foreground(context, notifications)
     private val changes = AlarmModule.ringingChanges()
     private val lazyEngine: Lazy<AlarmEngine> = Lazy { engine }
-    val ringer = AlarmModule.ringer(context, data, foreground, changes, scope, lazyEngine)
+    val ringer = AlarmModule.ringer(context, data, foreground, changes, notifications, scope, lazyEngine)
     private val wakeUpNotifications = AlarmModule.wakeUpNotifications(context)
     val wakeUpMedia = AlarmModule.wakeUpMedia(context, scope, lazyEngine)
     private val wakeUpForeground = AlarmModule.wakeUpForeground(context, wakeUpNotifications, wakeUpMedia)

@@ -459,6 +459,7 @@ accent colour (`setColor`).
 | Late alarm | "An alarm rang 7 min late" | "“Train to Cologne” was due at 06:45, but the phone was off." | "Open history" |
 | Missed alarm | "An alarm didn't ring" | "“Brunch with Lea” at 09:00 was missed because the phone was off." | "Open history" |
 | Alarm not answered | "An alarm wasn't answered" | "“Gym” at 06:30 rang twice with no response. It won't ring again." | "Open history" |
+| Alarm stopped by the limit | "An alarm was stopped" | "“Gym” at 06:30 rang past its time and NextAlarm couldn't end it the normal way." | "Open history" |
 
 The relative day in "Next alarm" follows the home screen: "today", "tomorrow", or the weekday.
 

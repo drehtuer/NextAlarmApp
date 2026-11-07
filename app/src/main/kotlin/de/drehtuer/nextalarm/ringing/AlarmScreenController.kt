@@ -1,5 +1,6 @@
 package de.drehtuer.nextalarm.ringing
 
+import android.util.Log
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmEvent
 import de.drehtuer.nextalarm.domain.AlarmInstance
@@ -7,6 +8,7 @@ import de.drehtuer.nextalarm.domain.AlarmRepository
 import de.drehtuer.nextalarm.domain.AlarmState
 import java.time.Duration
 import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,7 +28,8 @@ class RingingChanges {
 
 /**
  * The logic of the alarm screen. The stored state says which alarms ring, also while the recovery sweep has not got to
- * them yet after a crash. The screen ends when none is left, however they ended.
+ * them yet after a crash, and so does the ringer, which knows without the database. The screen ends when none is left,
+ * however they ended. It works without the database, because it has to be possible to stop an alarm then.
  */
 class AlarmScreenController(
     private val alarms: AlarmRepository,
@@ -67,18 +70,44 @@ class AlarmScreenController(
 
     fun dismiss() = sendToRinging(AlarmEvent.Dismiss)
 
+    /** If the state could not be stored, it says that alarms ring that do not, so only the ringer counts then. */
     private fun sendToRinging(event: AlarmEvent) {
         appScope.launch {
-            engine.sendToRinging(event)
-            reload()
+            try {
+                engine.sendToRinging(event)
+                reload()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                Log.e(TAG, "An alarm could not be ended the normal way", failure)
+                publish(changes.alarms.value, wakeUpFollows = false)
+            }
         }
     }
 
     private suspend fun reload() {
-        val all = alarms.all()
-        val current = all.filter { it.state == AlarmState.Ringing }
+        val all = try {
+            alarms.all()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Log.e(TAG, "The alarms could not be read", failure)
+            emptyList()
+        }
+        val stored = all.filter { it.state == AlarmState.Ringing }
+        publish(
+            stored + changes.alarms.value.filter { live -> stored.none { it.id == live.id } },
+            all.any { it.state == AlarmState.Announcing || it.state == AlarmState.NewsPlaying },
+        )
+    }
+
+    private fun publish(current: List<AlarmInstance>, wakeUpFollows: Boolean) {
         mutableRinging.value = current
-        mutableWakeUpFollows.value = all.any { it.state == AlarmState.Announcing || it.state == AlarmState.NewsPlaying }
+        mutableWakeUpFollows.value = wakeUpFollows
         mutableFinished.value = current.isEmpty()
+    }
+
+    private companion object {
+        const val TAG = "NextAlarm"
     }
 }

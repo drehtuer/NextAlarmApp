@@ -112,6 +112,9 @@ class FallbackSound<S>(
  * Alarm snapshots can differ if the settings changed between two alarms, which is settled as follows: the sound and its
  * volume stay those of the alarm that started it, the phone vibrates while any ringing alarm asks for it, and the
  * timeout is the longest one, so that no alarm rings for less time than it should.
+ *
+ * The timeout normally ends the ringing through `AlarmEngine`. If that does not happen [HARD_STOP_MARGIN] later, the ringer
+ * stops on its own, because a sound nobody can stop is worse than a stored state that is out of date.
  */
 class AlarmRinger(
     private val sound: AlarmSound,
@@ -121,11 +124,14 @@ class AlarmRinger(
     /** The ring timeout ran out for these alarms. Alarms that joined later have a new timeout. */
     private val onTimeout: (List<Long>) -> Unit,
     private val onChanged: (List<AlarmInstance>) -> Unit,
+    /** The ringing went on past its timeout, and the ringer ended it on its own. */
+    private val onHardStop: (List<AlarmInstance>) -> Unit = {},
 ) {
     private val alarms = linkedMapOf<Long, AlarmInstance>()
     private var vibrating = false
     private var cancelRamp: () -> Unit = {}
     private var cancelTimeout: () -> Unit = {}
+    private var cancelHardStop: () -> Unit = {}
 
     /** Told apart from each other, because a timer can have fired just before it was cancelled. */
     private var rampRun = 0
@@ -151,8 +157,14 @@ class AlarmRinger(
     @Synchronized
     fun leave(instanceId: Long) {
         alarms.remove(instanceId) ?: return
-        if (alarms.isEmpty()) stopAll() else updateVibration()
+        val failure = if (alarms.isEmpty()) {
+            stopAll()
+        } else {
+            updateVibration()
+            null
+        }
         onChanged(ringing())
+        failure?.let { throw it }
     }
 
     private fun startSound(snapshot: AlarmSnapshot) {
@@ -182,27 +194,53 @@ class AlarmRinger(
 
     private fun restartTimeout(timeout: Duration) {
         cancelTimeout()
+        cancelHardStop()
         val run = ++timeoutRun
         cancelTimeout = timers.after(timeout) { timedOut(run) }
     }
 
     private fun timedOut(run: Int) {
-        val expired = synchronized(this) { if (run == timeoutRun) alarms.keys.toList() else emptyList() }
-        if (expired.isNotEmpty()) onTimeout(expired)
+        val expired = synchronized(this) {
+            if (run != timeoutRun) return
+            cancelHardStop = timers.after(HARD_STOP_MARGIN) { hardStop(run) }
+            alarms.keys.toList()
+        }
+        onTimeout(expired)
     }
 
-    private fun stopAll() {
+    @Synchronized
+    private fun hardStop(run: Int) {
+        if (run != timeoutRun) return
+        val stopped = ringing()
+        alarms.clear()
+        val failure = stopAll()
+        onChanged(emptyList())
+        onHardStop(stopped)
+        failure?.let { throw it }
+    }
+
+    /** One part that fails must not keep the others going. Reports the first failure. */
+    private fun stopAll(): RuntimeException? {
         rampRun++
         timeoutRun++
         cancelRamp()
         cancelTimeout()
-        sound.stop()
-        updateVibration()
-        wakeLock.release()
+        cancelHardStop()
+        return listOf(sound::stop, ::updateVibration, wakeLock::release).mapNotNull { step ->
+            try {
+                step()
+                null
+            } catch (failure: RuntimeException) {
+                failure
+            }
+        }.firstOrNull()
     }
 
     private companion object {
         val RAMP_STEP: Duration = Duration.ofMillis(250)
+
+        /** Far longer than storing a state takes, and within the margin of the wake lock, so that the CPU is awake for it. */
+        val HARD_STOP_MARGIN: Duration = Duration.ofSeconds(30)
 
         /** Long enough for the timeout to be handled, and short enough not to matter if something goes wrong. */
         val WAKE_LOCK_MARGIN: Duration = Duration.ofMinutes(1)

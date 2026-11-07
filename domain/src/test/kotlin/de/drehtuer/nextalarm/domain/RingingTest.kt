@@ -3,6 +3,7 @@ package de.drehtuer.nextalarm.domain
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -173,6 +174,7 @@ private class FakeSound : AlarmSound {
 private class FakeVibration : AlarmVibration {
     var vibrating = false
     var starts = 0
+    var failOnStop = false
 
     override fun start() {
         vibrating = true
@@ -180,6 +182,7 @@ private class FakeVibration : AlarmVibration {
     }
 
     override fun stop() {
+        check(!failOnStop) { "vibrator failed" }
         vibrating = false
     }
 }
@@ -203,10 +206,20 @@ class AlarmRingerTest {
     private val wakeLock = FakeWakeLock()
     private val timedOut = mutableListOf<List<Long>>()
     private val changes = mutableListOf<List<Long>>()
-    private val ringer = AlarmRinger(sound, vibration, timers, wakeLock, { timedOut += it }) { list -> changes += list.map { it.id } }
+    private val hardStopped = mutableListOf<List<Long>>()
+    private val ringer = AlarmRinger(
+        sound,
+        vibration,
+        timers,
+        wakeLock,
+        { timedOut += it },
+        { list -> changes += list.map { it.id } },
+        { list -> hardStopped += list.map { it.id } },
+    )
 
     private val threeMinutes = Duration.ofMinutes(3)
     private val rampStep = Duration.ofMillis(250)
+    private val hardStopMargin = Duration.ofSeconds(30)
 
     private fun alarm(
         id: Long = 1,
@@ -405,6 +418,74 @@ class AlarmRingerTest {
         sound.log.clear()
         step.block()
         assertTrue(sound.log.isEmpty())
+    }
+
+    @Test
+    fun `if nothing ends the ringing after the timeout, it stops on its own, without the engine`() {
+        ringer.join(alarm(1, vibrate = true))
+        ringer.join(alarm(2))
+        timers.elapse(threeMinutes)
+        assertEquals("play:SystemDefault:1.0", sound.log.last())
+        timers.elapse(hardStopMargin)
+        assertEquals("stop", sound.log.last())
+        assertFalse(vibration.vibrating)
+        assertEquals(null, wakeLock.heldFor)
+        assertTrue(ringer.ringing().isEmpty())
+        assertEquals(emptyList(), changes.last())
+        assertEquals(listOf(listOf(1L, 2L)), hardStopped)
+    }
+
+    @Test
+    fun `the limit does not apply if the timeout has ended the ringing`() {
+        ringer.join(alarm(1))
+        timers.elapse(threeMinutes)
+        val limit = timers.active.single()
+        assertEquals(hardStopMargin, limit.delay)
+        ringer.leave(1)
+        assertTrue(limit.cancelled)
+        limit.block()
+        assertTrue(hardStopped.isEmpty())
+    }
+
+    @Test
+    fun `an alarm that joins after the timeout gets its full time`() {
+        ringer.join(alarm(1))
+        timers.elapse(threeMinutes)
+        val limit = timers.active.single()
+        ringer.join(alarm(2))
+        assertTrue(limit.cancelled)
+        limit.block()
+        assertTrue(hardStopped.isEmpty())
+        assertEquals(listOf(threeMinutes), timers.active.map { it.delay })
+    }
+
+    @Test
+    fun `a part that fails to stop does not keep the others going, and is reported`() {
+        ringer.join(alarm(1, vibrate = true))
+        vibration.failOnStop = true
+        assertFailsWith<IllegalStateException> { ringer.leave(1) }
+        assertEquals("stop", sound.log.last())
+        assertEquals(null, wakeLock.heldFor)
+        assertEquals(emptyList(), changes.last())
+    }
+
+    @Test
+    fun `a part that fails to stop does not keep the limit from stopping the rest`() {
+        ringer.join(alarm(1, vibrate = true))
+        timers.elapse(threeMinutes)
+        vibration.failOnStop = true
+        assertFailsWith<IllegalStateException> { timers.elapse(hardStopMargin) }
+        assertEquals("stop", sound.log.last())
+        assertEquals(listOf(listOf(1L)), hardStopped)
+    }
+
+    @Test
+    fun `without anyone to tell, the limit still stops the ringing`() {
+        val quiet = AlarmRinger(sound, vibration, timers, wakeLock, {}, {})
+        quiet.join(alarm(1))
+        timers.elapse(threeMinutes)
+        timers.elapse(hardStopMargin)
+        assertEquals("stop", sound.log.last())
     }
 
     @Test

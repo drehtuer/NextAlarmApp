@@ -321,6 +321,244 @@ class AlarmEngineTest {
         assertTrue(nextAlarms.isEmpty())
     }
 
+    /** Effects like the real ones in the one way that matters here: they know what rings. */
+    private inner class RingingEffects(vararg ringing: AlarmInstance) : AlarmEffects {
+        val rings = ringing.toMutableList()
+        val log = mutableListOf<Pair<Long, AlarmAction>>()
+        var failFor: Set<Long> = emptySet()
+        var failNextAlarm = false
+
+        override fun perform(instance: AlarmInstance, action: AlarmAction) {
+            check(instance.id !in failFor) { "effect failed" }
+            log += instance.id to action
+            when (action) {
+                AlarmAction.JoinAlarmService -> rings += instance
+                AlarmAction.LeaveAlarmService, AlarmAction.LeaveAllServices -> rings.removeAll { it.id == instance.id }
+                else -> Unit
+            }
+        }
+
+        override fun showNextAlarm(alarm: AlarmInstance?) {
+            check(!failNextAlarm) { "effect failed" }
+        }
+
+        override fun ringing(): List<AlarmInstance> = rings.toList()
+    }
+
+    private fun engineWith(effects: AlarmEffects) = AlarmEngine(alarms, scheduler, effects, clock::now, FakeLock())
+
+    private suspend fun fails(block: suspend () -> Unit): Throwable? = try {
+        block()
+        null
+    } catch (failure: IllegalStateException) {
+        failure
+    }
+
+    @Test
+    fun `the sweep goes on after an alarm that fails, and reports the failure at the end`() = runBlocking {
+        stored(AlarmState.Scheduled, id = 1)
+        stored(AlarmState.Scheduled, id = 2)
+        stored(AlarmState.Scheduled, id = 3, triggerAt = NOW.minusSeconds(60))
+        stored(AlarmState.Scheduled, id = 4)
+        stored(AlarmState.Scheduled, id = 5, triggerAt = NOW.minusSeconds(60))
+        scheduler.failFor = setOf(1)
+        alarms.failOnUpdate = { it == 3L }
+        val effects = RingingEffects()
+        assertTrue(fails { engineWith(effects).recover() } != null)
+        assertEquals(setOf(2L, 4L), scheduler.scheduled.keys)
+        assertEquals(setOf(3L, 5L), effects.rings.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `the sweep still shows the next alarm after a failure, and a failure there is reported too`() = runBlocking {
+        stored(AlarmState.Scheduled, id = 1)
+        scheduler.failFor = setOf(1)
+        assertTrue(fails { engine.recover() } != null)
+        assertEquals(1, nextAlarms.size)
+
+        scheduler.failFor = emptySet()
+        val effects = RingingEffects().apply { failNextAlarm = true }
+        assertTrue(fails { engineWith(effects).recover() } != null)
+        assertEquals(setOf(1L), scheduler.scheduled.keys)
+    }
+
+    @Test
+    fun `registering goes on after an alarm that fails`() = runBlocking {
+        stored(AlarmState.Scheduled, id = 1)
+        stored(AlarmState.Snoozed, id = 2)
+        stored(AlarmState.Scheduled, id = 3)
+        scheduler.failFor = setOf(1, 2)
+        assertTrue(fails { engine.registerWaiting() } != null)
+        assertEquals(setOf(3L), scheduler.scheduled.keys)
+    }
+
+    @Test
+    fun `a dismiss that fails for one alarm still reaches the others`() = runBlocking {
+        val one = stored(AlarmState.Ringing, id = 1)
+        val two = stored(AlarmState.Ringing, id = 2)
+        val effects = RingingEffects(one, two).apply { failFor = setOf(1) }
+        assertTrue(fails { engineWith(effects).sendToRinging(AlarmEvent.Dismiss) } != null)
+        assertEquals(listOf(1L), effects.rings.map { it.id })
+        assertEquals(AlarmState.Announcing, alarms.find(2)?.state)
+    }
+
+    @Test
+    fun `a timeout that fails for one alarm still reaches the others`() = runBlocking {
+        stored(AlarmState.Ringing, id = 1)
+        stored(AlarmState.Ringing, id = 2)
+        alarms.failOnUpdate = { it == 1L }
+        assertTrue(fails { engine.ringTimedOut(listOf(1, 2)) } != null)
+        assertEquals(AlarmState.Snoozed, alarms.find(2)?.state)
+        assertEquals(2, performed.count { it == AlarmAction.LeaveAlarmService })
+    }
+
+    @Test
+    fun `stopping the wake-up automation goes on after an alarm that fails`() = runBlocking {
+        val failing = RingingEffects().apply { failFor = setOf(1) }
+        stored(AlarmState.Announcing, id = 1)
+        stored(AlarmState.NewsPlaying, id = 2)
+        assertTrue(fails { engineWith(failing).stopWakeUp() } != null)
+        assertEquals(AlarmState.Done, alarms.find(2)?.state)
+    }
+
+    @Test
+    fun `being cancelled is not a failure to carry on from`(): Unit = runBlocking {
+        stored(AlarmState.Scheduled, id = 1)
+        stored(AlarmState.Scheduled, id = 2)
+        val cancelling = object : AlarmScheduler {
+            var calls = 0
+
+            override fun schedule(instanceId: Long, at: java.time.Instant) {
+                calls++
+                throw kotlin.coroutines.cancellation.CancellationException("cancelled")
+            }
+
+            override fun cancel(instanceId: Long) = Unit
+        }
+        val engine = AlarmEngine(alarms, cancelling, NoAlarmEffects, clock::now, FakeLock())
+        kotlin.test.assertFailsWith<kotlin.coroutines.cancellation.CancellationException> { engine.registerWaiting() }
+        assertEquals(1, cancelling.calls)
+    }
+
+    @Test
+    fun `several failures come out as the first, with the others attached`() = runBlocking {
+        stored(AlarmState.Scheduled, id = 1)
+        stored(AlarmState.Scheduled, id = 2)
+        scheduler.failFor = setOf(1, 2)
+        val failure = fails { engine.registerWaiting() }
+        assertEquals(1, failure?.suppressedExceptions?.size)
+    }
+
+    @Test
+    fun `if the state cannot be stored, Dismiss still stops the sound, without starting the wake-up automation`() = runBlocking {
+        val instance = stored(AlarmState.Ringing)
+        alarms.failOnUpdate = { true }
+        val effects = RingingEffects(instance)
+        assertTrue(fails { engineWith(effects).sendToRinging(AlarmEvent.Dismiss) } != null)
+        assertTrue(effects.rings.isEmpty())
+        assertEquals(listOf<Pair<Long, AlarmAction>>(1L to AlarmAction.LeaveAlarmService), effects.log)
+        assertEquals(listOf(1L), scheduler.cancelled)
+        assertEquals(AlarmState.Ringing, alarms.find(1)?.state)
+    }
+
+    @Test
+    fun `if the state cannot be stored, news does not start either`() = runBlocking {
+        val instance = alarms.add(
+            AlarmInstance(1, AlarmKey.forEvent(1, future), future, AlarmState.Ringing, 0, false, snapshot(speakReason = false, news = NEWS)),
+        )
+        alarms.failOnUpdate = { true }
+        val effects = RingingEffects(instance)
+        assertTrue(fails { engineWith(effects).sendToRinging(AlarmEvent.Dismiss) } != null)
+        assertEquals(listOf<Pair<Long, AlarmAction>>(1L to AlarmAction.LeaveAlarmService), effects.log)
+    }
+
+    @Test
+    fun `if the state cannot be stored, the timeout still stops the sound, and the snooze still rings again`() = runBlocking {
+        val instance = stored(AlarmState.Ringing)
+        alarms.failOnUpdate = { true }
+        val effects = RingingEffects(instance)
+        assertTrue(fails { engineWith(effects).ringTimedOut(listOf(1)) } != null)
+        assertTrue(effects.rings.isEmpty())
+        assertEquals(NOW.plus(Duration.ofMinutes(10)), scheduler.scheduled[1])
+        assertTrue(1L to AlarmAction.PostSnoozeNotification in effects.log)
+    }
+
+    @Test
+    fun `if the state cannot be stored, a fired alarm still rings`() = runBlocking {
+        stored(AlarmState.Scheduled, triggerAt = NOW)
+        alarms.failOnUpdate = { true }
+        val effects = RingingEffects()
+        assertTrue(fails { engineWith(effects).fire(1) } != null)
+        assertEquals(listOf(1L), effects.rings.map { it.id })
+        assertEquals(AlarmState.Ringing, effects.rings.single().state)
+    }
+
+    @Test
+    fun `an alarm that rings although the database does not say so can still be stopped`() = runBlocking {
+        stored(AlarmState.Scheduled, triggerAt = NOW)
+        alarms.failOnUpdate = { true }
+        val effects = RingingEffects()
+        val engine = engineWith(effects)
+        fails { engine.fire(1) }
+        alarms.failOnUpdate = { false }
+        engine.sendToRinging(AlarmEvent.Dismiss)
+        assertTrue(effects.rings.isEmpty())
+        assertEquals(AlarmState.Announcing, alarms.find(1)?.state)
+    }
+
+    @Test
+    fun `without a readable database, what rings can still be stopped`() = runBlocking {
+        val instance = stored(AlarmState.Ringing)
+        val effects = RingingEffects(instance)
+        val engine = engineWith(effects)
+        alarms.failOnRead = true
+        alarms.failOnUpdate = { true }
+        assertTrue(fails { engine.sendToRinging(AlarmEvent.Dismiss) } != null)
+        assertTrue(effects.rings.isEmpty())
+
+        effects.rings += instance
+        assertTrue(fails { engine.ringTimedOut(listOf(1)) } != null)
+        assertTrue(effects.rings.isEmpty())
+    }
+
+    @Test
+    fun `if the state cannot be stored, a removed alarm stays, as a failure must never remove an alarm`() = runBlocking {
+        stored(AlarmState.Scheduled)
+        alarms.failOnUpdate = { true }
+        assertTrue(fails { engine.handle(1, AlarmEvent.Remove) } != null)
+        assertTrue(performed.isEmpty())
+        assertTrue(scheduler.cancelled.isEmpty())
+    }
+
+    @Test
+    fun `a failure of the next alarm does not get in the way of the alarm itself`() = runBlocking {
+        val instance = stored(AlarmState.Ringing)
+        val effects = RingingEffects(instance).apply { failNextAlarm = true }
+        assertTrue(fails { engineWith(effects).sendToRinging(AlarmEvent.Dismiss) } != null)
+        assertEquals(AlarmState.Announcing, alarms.find(1)?.state)
+        assertTrue(effects.rings.isEmpty())
+    }
+
+    @Test
+    fun `an effect that fails does not keep the others from running`() = runBlocking {
+        val instance = stored(AlarmState.Ringing)
+        val effects = object : AlarmEffects {
+            override fun perform(instance: AlarmInstance, action: AlarmAction) {
+                performed += action
+                check(action != AlarmAction.LeaveAlarmService) { "effect failed" }
+            }
+
+            override fun showNextAlarm(alarm: AlarmInstance?) = Unit
+        }
+        assertTrue(fails { engineWith(effects).handle(instance.id, AlarmEvent.Snooze) } != null)
+        assertTrue(AlarmAction.PostSnoozeNotification in performed)
+    }
+
+    @Test
+    fun `the default effects know of nothing that rings`() {
+        assertTrue(NoAlarmEffects.ringing().isEmpty())
+    }
+
     @Test
     fun `every call goes through the lock`() = runBlocking {
         val lock = FakeLock()
@@ -333,6 +571,7 @@ class AlarmEngineTest {
         locked.stopWakeUp()
         locked.registerWaiting()
         locked.recover()
-        assertEquals(7, lock.uses)
+        locked.ringTimedOut(listOf(instance.id))
+        assertEquals(8, lock.uses)
     }
 }

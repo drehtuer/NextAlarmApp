@@ -57,6 +57,12 @@ fun unansweredText(alarm: AlarmInstance, zone: ZoneId): NotificationText = Notif
     "${subject(alarm)} at ${originalTime(alarm, zone)} rang twice with no response. It won't ring again.",
 )
 
+/** The ringer stopped an alarm on its own, because it could not be ended the normal way. */
+fun ringLimitText(alarm: AlarmInstance, zone: ZoneId): NotificationText = NotificationText(
+    "An alarm was stopped",
+    "${subject(alarm)} at ${originalTime(alarm, zone)} rang past its time and NextAlarm couldn't end it the normal way.",
+)
+
 private fun subject(alarm: AlarmInstance): String = alarm.snapshot.reason?.let { "“$it”" } ?: "An alarm"
 
 /** A snooze moves the trigger time, but the user knows the alarm by the time of the event. */

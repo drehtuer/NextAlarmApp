@@ -12,7 +12,6 @@ import dagger.hilt.components.SingletonComponent
 import de.drehtuer.nextalarm.data.DataComponents
 import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
-import de.drehtuer.nextalarm.domain.AlarmEvent
 import de.drehtuer.nextalarm.domain.AlarmRinger
 import de.drehtuer.nextalarm.domain.FallbackSound
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
@@ -29,10 +28,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
+private const val TAG = "NextAlarm"
+
 /** Work of the alarm path that outlives whatever started it. A failure of one job does not end the others. */
 fun alarmScope(dispatcher: CoroutineDispatcher): CoroutineScope = CoroutineScope(
     SupervisorJob() + dispatcher + CoroutineExceptionHandler { _, failure ->
-        Log.e("NextAlarm", "Alarm work failed", failure)
+        Log.e(TAG, "Alarm work failed", failure)
     },
 )
 
@@ -71,6 +72,7 @@ object AlarmModule {
         data: DataComponents,
         foreground: AlarmForeground,
         changes: RingingChanges,
+        notifications: AlarmNotifications,
         scope: CoroutineScope,
         engine: Lazy<AlarmEngine>,
     ) = AlarmRinger(
@@ -78,12 +80,14 @@ object AlarmModule {
         vibration = AndroidVibration(context),
         timers = HandlerRingTimers(),
         wakeLock = AndroidRingWakeLock(context),
-        onTimeout = { ids ->
-            scope.launch { ids.forEach { engine.get().handle(it, AlarmEvent.RingTimeout) } }
-        },
+        onTimeout = { ids -> scope.launch { engine.get().ringTimedOut(ids) } },
         onChanged = { alarms ->
             foreground.ringingChanged(alarms)
             changes.report(alarms)
+        },
+        onHardStop = { alarms ->
+            Log.e(TAG, "Alarms rang past their timeout and were stopped without the engine: ${alarms.map { it.id }}")
+            alarms.forEach(notifications::showRingLimit)
         },
     )
 

@@ -7,10 +7,21 @@ class FakeAlarmRepository : AlarmRepository {
     val stored = linkedMapOf<Long, AlarmInstance>()
     var failOnCreate = false
     var failOnDelete = false
+    var failOnRead = false
+
+    /** The alarms whose new state cannot be stored. */
+    var failOnUpdate: (Long) -> Boolean = { false }
     private var nextId = 1L
 
-    override suspend fun all() = stored.values.toList()
-    override suspend fun find(id: Long) = stored[id]
+    override suspend fun all(): List<AlarmInstance> {
+        check(!failOnRead) { "storage failed" }
+        return stored.values.toList()
+    }
+
+    override suspend fun find(id: Long): AlarmInstance? {
+        check(!failOnRead) { "storage failed" }
+        return stored[id]
+    }
 
     override suspend fun create(key: AlarmKey, triggerAt: Instant, snapshot: AlarmSnapshot): AlarmInstance {
         check(!failOnCreate) { "storage failed" }
@@ -20,6 +31,7 @@ class FakeAlarmRepository : AlarmRepository {
     }
 
     override suspend fun update(instance: AlarmInstance) {
+        check(!failOnUpdate(instance.id)) { "storage failed" }
         stored[instance.id] = instance
     }
 
@@ -44,7 +56,11 @@ class FakeScheduler : AlarmScheduler {
     val scheduled = linkedMapOf<Long, Instant>()
     val cancelled = mutableListOf<Long>()
 
+    /** The alarms the system refuses to register. */
+    var failFor: Set<Long> = emptySet()
+
     override fun schedule(instanceId: Long, at: Instant) {
+        check(instanceId !in failFor) { "not registered" }
         scheduled[instanceId] = at
     }
 

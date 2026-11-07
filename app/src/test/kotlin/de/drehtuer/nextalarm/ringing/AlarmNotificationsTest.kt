@@ -147,6 +147,14 @@ class AlarmNotificationsTest {
     }
 
     @Test
+    fun `an alarm stopped by the limit is reported`() {
+        notifications.showRingLimit(alarm())
+        val notification = assertNotNull(posted(AlarmNotifications.unansweredId(1)))
+        assertEquals("An alarm was stopped", notification.title())
+        assertEquals(listOf("Open history"), notification.actionTitles())
+    }
+
+    @Test
     fun `reports use the warnings channel, which exists`() {
         notifications.showMissed(alarm())
         assertEquals(AppNotifications.WARNING_CHANNEL, posted(AlarmNotifications.missedId(1))?.channelId)

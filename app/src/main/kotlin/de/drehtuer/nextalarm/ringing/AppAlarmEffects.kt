@@ -43,6 +43,8 @@ class AppAlarmEffects(
 
     override fun showNextAlarm(alarm: AlarmInstance?) = nextAlarm.showNextAlarm(alarm)
 
+    override fun ringing(): List<AlarmInstance> = ringer.ringing()
+
     private fun leaveRinging(instanceId: Long) {
         ringer.leave(instanceId)
         removeAlarmNotifications(instanceId)
