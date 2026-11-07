@@ -149,6 +149,16 @@ class HomeTest {
         assertNull(home().failSafeBody)
     }
 
+    @Test
+    fun `the banner says so if the alarm calendar is gone`() {
+        val failed = PlanningRun(now, Duration.ZERO, null, PlanningFailure.CALENDAR_GONE)
+        assertEquals(
+            "Your alarm calendar was no longer on this phone at 20:00. The alarms below will still ring, but nothing new " +
+                "is added, and after 48 hours nothing rings. Choose another calendar in the settings.",
+            home(record = PlannerRecord(PlannerState.FailSafe, 1, 1, failed)).failSafeBody,
+        )
+    }
+
     private fun checkedAt(at: String) =
         planned.copy(lastRun = PlanningRun(Instant.parse(at), Duration.ZERO, 0, null))
 

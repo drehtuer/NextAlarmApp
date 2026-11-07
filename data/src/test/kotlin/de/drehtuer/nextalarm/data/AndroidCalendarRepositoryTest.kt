@@ -9,6 +9,7 @@ import android.net.Uri
 import android.provider.CalendarContract
 import androidx.test.core.app.ApplicationProvider
 import de.drehtuer.nextalarm.domain.CalendarEvent
+import de.drehtuer.nextalarm.domain.CalendarGoneException
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import java.time.Instant
@@ -26,6 +27,10 @@ class AndroidCalendarRepositoryTest {
     /** Stands in for the calendar provider. It never sees real calendar data. */
     class FakeCalendarProvider : ContentProvider() {
         var result: Cursor? = null
+
+        /** What asking for the chosen calendar gives. By default it exists. */
+        var chosenCalendar: Cursor? = MatrixCursor(arrayOf("_id")).apply { addRow(arrayOf<Any?>(7L)) }
+        var calendarArgs: List<String>? = null
         var failure: RuntimeException? = null
         var uri: Uri? = null
         var selection: String? = null
@@ -40,6 +45,10 @@ class AndroidCalendarRepositoryTest {
             selectionArgs: Array<out String>?,
             sortOrder: String?,
         ): Cursor? {
+            if (selection == "_id = ?") {
+                calendarArgs = selectionArgs?.toList()
+                return chosenCalendar
+            }
             this.uri = uri
             this.selection = selection
             this.selectionArgs = selectionArgs?.toList()
@@ -114,6 +123,21 @@ class AndroidCalendarRepositoryTest {
     fun `an empty calendar gives no events`() = runBlocking {
         provider.result = eventCursor()
         assertEquals(emptyList(), repository.events(calendar, from, to))
+    }
+
+    @Test
+    fun `a calendar that is gone is a failure, not an empty calendar`() = runBlocking<Unit> {
+        provider.chosenCalendar = MatrixCursor(arrayOf("_id"))
+        provider.result = eventCursor()
+        assertFailsWith<CalendarGoneException> { repository.events(calendar, from, to) }
+        assertEquals(listOf("7"), provider.calendarArgs)
+        assertEquals(null, provider.uri)
+    }
+
+    @Test
+    fun `asking for the calendar can fail like any read`() = runBlocking<Unit> {
+        provider.chosenCalendar = null
+        assertFailsWith<IllegalStateException> { repository.events(calendar, from, to) }
     }
 
     @Test

@@ -135,6 +135,10 @@ class DiagnosticsTest {
         val bodies = mapOf(
             PlanningFailure.NO_CALENDAR to listOf("no alarm calendar is chosen", "Choose an alarm calendar in the settings to fix it."),
             PlanningFailure.NO_PERMISSION to listOf("calendar permission was removed", "Allow calendar access again to fix it."),
+            PlanningFailure.CALENDAR_GONE to listOf(
+                "the alarm calendar is no longer on this phone",
+                "Choose another alarm calendar in the settings to fix it.",
+            ),
             PlanningFailure.READ_FAILED to listOf(
                 "the calendar couldn't be read",
                 "NextAlarm keeps trying. If this lasts, check that the calendar is still on this phone.",
@@ -184,6 +188,9 @@ class DiagnosticsTest {
         assertEquals("NextAlarm · DAVx⁵", calendarFact(davx.id, davx))
         assertEquals("None chosen. Nothing rings", calendarFact(null, null))
         assertEquals("Can't be read right now", calendarFact(davx.id, null))
+        assertEquals("Can't be read right now", calendarFact(davx.id, null, PlanningFailure.READ_FAILED))
+        assertEquals("No longer on this phone. Choose another", calendarFact(davx.id, null, PlanningFailure.CALENDAR_GONE))
+        assertEquals("NextAlarm · DAVx⁵", calendarFact(davx.id, davx, PlanningFailure.CALENDAR_GONE))
     }
 
     @Test

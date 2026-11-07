@@ -12,6 +12,18 @@ class AlarmTextsTest {
     private val zone = ZoneId.of("Europe/Berlin")
     private val at = Instant.parse("2026-11-07T05:45:00Z")
 
+    @Test
+    fun `the fail-safe warning names what it knows`() {
+        val general = "NextAlarm can't read your calendar. Alarms already planned will still ring."
+        assertEquals(general, failSafeWarningText(null).text)
+        assertEquals(general, failSafeWarningText(PlanningFailure.READ_FAILED).text)
+        assertEquals(
+            "Your alarm calendar is no longer on this phone. Alarms already planned will still ring. Choose another calendar.",
+            failSafeWarningText(PlanningFailure.CALENDAR_GONE).text,
+        )
+        assertEquals("New alarms aren't being added", failSafeWarningText(null).title)
+    }
+
     private fun alarm(
         reason: String?,
         triggerAt: Instant = at,

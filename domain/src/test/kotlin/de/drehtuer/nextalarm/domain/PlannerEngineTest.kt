@@ -34,6 +34,29 @@ class PlannerEngineTest {
     }
 
     @Test
+    fun `a calendar that is gone is a failed run that keeps every alarm, and the warning says why`() = runBlocking {
+        settingsRepo.settings = settings()
+        alarms.add(AlarmInstance(1, AlarmKey.forEvent(1, future), future, AlarmState.Scheduled, 0, false, snapshot()))
+        planning()
+        failFrom(CalendarGoneException(CalendarId(1)))
+        engine.runPlanning(1)
+        assertEquals(PlannerState.FailSafe, planner.record.state)
+        assertEquals(PlanningFailure.CALENDAR_GONE, planner.record.lastRun?.failure)
+        assertEquals(PlanningFailure.CALENDAR_GONE, effects.warnedAbout)
+        assertEquals(AlarmState.Scheduled, alarms.find(1)?.state)
+    }
+
+    @Test
+    fun `a calendar that exists and has no events is a valid empty result, which removes what it no longer holds`() = runBlocking {
+        settingsRepo.settings = settings()
+        alarms.add(AlarmInstance(1, AlarmKey.forEvent(1, future), future, AlarmState.Scheduled, 0, false, snapshot()))
+        planning()
+        engine.runPlanning(1)
+        assertEquals(PlannerState.Planned, planner.record.state)
+        assertEquals(AlarmState.Cancelled, alarms.find(1)?.state)
+    }
+
+    @Test
     fun `setup starts the first planning run`() = runBlocking {
         engine.setupCompleted()
         assertEquals(PlannerRecord(PlannerState.Planning, 1), planner.record)

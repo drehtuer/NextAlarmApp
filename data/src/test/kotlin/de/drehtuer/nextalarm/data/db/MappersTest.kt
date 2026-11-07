@@ -48,6 +48,15 @@ class MappersTest {
     }
 
     @Test
+    fun `every planning failure is stored by name and read back`() {
+        de.drehtuer.nextalarm.domain.PlanningFailure.entries.forEach { failure ->
+            val run = de.drehtuer.nextalarm.domain.PlanningRun(java.time.Instant.EPOCH, java.time.Duration.ZERO, null, failure)
+            assertEquals(failure.name, run.toColumns().failure)
+            assertEquals(run, run.toColumns().toDomain())
+        }
+    }
+
+    @Test
     fun `an unknown state is an error, not a default`() {
         assertFailsWith<IllegalArgumentException> { alarmStateFromColumn("RINGIN") }
         assertFailsWith<IllegalArgumentException> { plannerStateFromColumn("PLANNIN") }

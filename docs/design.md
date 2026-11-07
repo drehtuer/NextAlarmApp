@@ -178,6 +178,9 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
   - Title: "New alarms aren't being added"
   - Body: "NextAlarm couldn't read your calendar at 19:58. The alarms below will still ring. Anything you add or change in
     the calendar won't, and if this lasts 48 hours, nothing rings."
+  - Body if the alarm calendar is gone (`CALENDAR_GONE`): "Your alarm calendar was no longer on this phone at 19:58. The
+    alarms below will still ring, but nothing new is added, and after 48 hours nothing rings. Choose another calendar in
+    the settings."
   - Outlined button: "See what went wrong", which opens screen 7.
 - **Hero card** (`primaryContainer`, 28 dp corners, 24 dp padding):
   - A label: "Next alarm", "Next alarm · 2 alarms at 06:00" or "Snoozed".
@@ -354,13 +357,15 @@ Details decided while building this screen:
 |---------|------|-----|
 | `NO_PERMISSION` | "calendar permission was removed" | "Allow calendar access again to fix it." |
 | `NO_CALENDAR` | "no alarm calendar is chosen" | "Choose an alarm calendar in the settings to fix it." |
+| `CALENDAR_GONE` | "the alarm calendar is no longer on this phone" | "Choose another alarm calendar in the settings to fix it." |
 | `READ_FAILED` | "the calendar couldn't be read" | "NextAlarm keeps trying. If this lasts, check that the calendar is still on this phone." |
 | `APPLY_FAILED` | "the alarms couldn't be updated" | "NextAlarm keeps trying. If this lasts, restart the phone." |
 
 - "No alarms are planned, and changes in the calendar are not picked up." replaces the sentence about what still rings
   when nothing is waiting.
 - In the settings, "Diagnostics & history" says "Not checked yet" before the first finished check.
-- "Calendar" says "Can't be read right now" if the chosen calendar can't be found, for example without the permission.
+- "Calendar" says "Can't be read right now" if the chosen calendar can't be found, for example without the permission,
+  and "No longer on this phone. Choose another" if the last check found that it is gone.
   "Full-screen alarms" says "Allowed" or "Not allowed: alarms ring as a notification".
 - A past alarm is listed at the time of its event, not of its last snooze; a test alarm has no event, and shows its own
   time with its seconds. A `Done` alarm that rang late shows that rather than its snoozes. The newest comes first. An
@@ -449,6 +454,7 @@ accent colour (`setColor`).
 | Wake-up media, speech | "Speaking the title" (or "Speaking the titles") | The title being spoken | "Stop" |
 | Wake-up media, feed on its way | "Getting the news" | "tagesschau.de · stops by 06:16 at the latest" | "Stop" |
 | Fail-safe warning | "New alarms aren't being added" | "NextAlarm can't read your calendar. Alarms already planned will still ring." | "Open diagnostics" |
+| Fail-safe warning, calendar gone | "New alarms aren't being added" | "Your alarm calendar is no longer on this phone. Alarms already planned will still ring. Choose another calendar." | "Open diagnostics" |
 | Late alarm | "An alarm rang 7 min late" | "“Train to Cologne” was due at 06:45, but the phone was off." | "Open history" |
 | Missed alarm | "An alarm didn't ring" | "“Brunch with Lea” at 09:00 was missed because the phone was off." | "Open history" |
 | Alarm not answered | "An alarm wasn't answered" | "“Gym” at 06:30 rang twice with no response. It won't ring again." | "Open history" |

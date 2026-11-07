@@ -10,6 +10,16 @@ data class NotificationText(
     val text: String,
 )
 
+/** The "Fail-safe warning" notification. */
+fun failSafeWarningText(failure: PlanningFailure?): NotificationText = NotificationText(
+    "New alarms aren't being added",
+    if (failure == PlanningFailure.CALENDAR_GONE) {
+        "Your alarm calendar is no longer on this phone. Alarms already planned will still ring. Choose another calendar."
+    } else {
+        "NextAlarm can't read your calendar. Alarms already planned will still ring."
+    },
+)
+
 private const val NO_TITLE = "No title"
 private const val NO_TITLE_ALARM = "Alarm (event has no title)"
 

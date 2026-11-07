@@ -11,6 +11,8 @@ import de.drehtuer.nextalarm.MainActivity
 import de.drehtuer.nextalarm.R
 import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.PlannerEffects
+import de.drehtuer.nextalarm.domain.PlanningFailure
+import de.drehtuer.nextalarm.domain.failSafeWarningText
 import de.drehtuer.nextalarm.domain.nextAlarmText
 import java.time.Duration
 import java.time.Instant
@@ -36,14 +38,15 @@ class AppNotifications(
         )
     }
 
-    fun showFailSafeWarning() {
+    fun showFailSafeWarning(failure: PlanningFailure?) {
         ensureChannels()
+        val text = failSafeWarningText(failure)
         val notification = notificationBuilder(
             context,
             WARNING_CHANNEL,
-            "New alarms aren't being added",
-            "NextAlarm can't read your calendar. Alarms already planned will still ring.",
-        ).setOngoing(true).addAction(notificationAction(context, "Open diagnostics", openDiagnosticsIntent(context))).build()
+            text.title,
+            text.text,
+        ).setStyle(Notification.BigTextStyle().bigText(text.text)).setOngoing(true).addAction(notificationAction(context, "Open diagnostics", openDiagnosticsIntent(context))).build()
         manager.notify(FAIL_SAFE_ID, notification)
     }
 
@@ -111,7 +114,7 @@ class AppPlannerEffects(
     override fun cancelPlanningJob() = work.cancelPlanningJob()
     override fun startPlanningJob(generation: Long) = work.startPlanningJob(generation)
     override fun scheduleRetry(delay: Duration) = work.scheduleRetry(delay)
-    override fun showFailSafeWarning() = notifications.showFailSafeWarning()
+    override fun showFailSafeWarning(failure: PlanningFailure?) = notifications.showFailSafeWarning(failure)
     override fun removeFailSafeWarning() = notifications.removeFailSafeWarning()
     override fun showNextAlarm(alarm: AlarmInstance?) = notifications.showNextAlarm(alarm)
 }

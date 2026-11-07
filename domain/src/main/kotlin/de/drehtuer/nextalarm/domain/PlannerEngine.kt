@@ -9,7 +9,9 @@ interface PlannerEffects {
     fun cancelPlanningJob()
     fun startPlanningJob(generation: Long)
     fun scheduleRetry(delay: Duration)
-    fun showFailSafeWarning()
+
+    /** [failure] says what the warning is about. Empty if that is not known. */
+    fun showFailSafeWarning(failure: PlanningFailure?)
     fun removeFailSafeWarning()
 
     /** Shows the next alarm, or removes the notification if there is none. */
@@ -70,6 +72,7 @@ class PlannerEngine(
 
     private fun classify(failure: Throwable?): PlanningFailure = when (failure) {
         is NoCalendarChosen -> PlanningFailure.NO_CALENDAR
+        is CalendarGoneException -> PlanningFailure.CALENDAR_GONE
         is SecurityException -> PlanningFailure.NO_PERMISSION
         else -> PlanningFailure.READ_FAILED
     }
@@ -154,7 +157,7 @@ class PlannerEngine(
                 is PlannerAction.StartPlanningJob -> effects.startPlanningJob(action.generation)
                 PlannerAction.ApplyPlan -> Unit // Already done, because its outcome decides the next state.
                 PlannerAction.RemoveFailSafeWarning -> effects.removeFailSafeWarning()
-                PlannerAction.ShowFailSafeWarning -> effects.showFailSafeWarning()
+                PlannerAction.ShowFailSafeWarning -> effects.showFailSafeWarning(record.lastRun?.failure)
                 PlannerAction.ScheduleRetry -> effects.scheduleRetry(retryDelay(record.consecutiveFailures))
             }
         }

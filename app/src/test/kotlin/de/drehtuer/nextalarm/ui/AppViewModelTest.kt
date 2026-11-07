@@ -91,7 +91,7 @@ private class RecordingEffects : PlannerEffects {
     }
 
     override fun scheduleRetry(delay: Duration) = Unit
-    override fun showFailSafeWarning() = Unit
+    override fun showFailSafeWarning(failure: de.drehtuer.nextalarm.domain.PlanningFailure?) = Unit
     override fun removeFailSafeWarning() = Unit
     override fun showNextAlarm(alarm: AlarmInstance?) = Unit
 }
@@ -665,7 +665,7 @@ class AppNotificationsTest {
 
     @Test
     fun `the fail-safe warning can be shown and removed`() {
-        notifications.showFailSafeWarning()
+        notifications.showFailSafeWarning(null)
         val notification = assertNotNull(shown(AppNotifications.FAIL_SAFE_ID))
         assertEquals("New alarms aren't being added", notification.extras.getString(android.app.Notification.EXTRA_TITLE))
         val action = notification.actions.single()
@@ -676,6 +676,13 @@ class AppNotificationsTest {
         assertTrue(intent.flags and android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP != 0)
         notifications.removeFailSafeWarning()
         assertNull(shown(AppNotifications.FAIL_SAFE_ID))
+    }
+
+    @Test
+    fun `the fail-safe warning says so if the alarm calendar is gone`() {
+        notifications.showFailSafeWarning(de.drehtuer.nextalarm.domain.PlanningFailure.CALENDAR_GONE)
+        val text = shown(AppNotifications.FAIL_SAFE_ID)?.extras?.getString(android.app.Notification.EXTRA_TEXT).orEmpty()
+        assertTrue("no longer on this phone" in text, text)
     }
 
     @Test
@@ -713,7 +720,7 @@ class AppPlannerEffectsTest {
     @Test
     fun `notifications go to the notification manager`() {
         val manager = shadowOf(context.getSystemService(NotificationManager::class.java))
-        effects.showFailSafeWarning()
+        effects.showFailSafeWarning(null)
         assertEquals(1, manager.activeNotifications.size)
         effects.removeFailSafeWarning()
         effects.showNextAlarm(null)

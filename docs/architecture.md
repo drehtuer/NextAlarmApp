@@ -143,6 +143,11 @@ Notes:
   and sync problems show in the sync app (DAVx⁵, ICSx⁵).
 - A failed read is different from an empty result. If the provider returns no result or the calendar permission was
   revoked, the run ends with `PlanFailed` and the planned alarms stay (fail-safe).
+- **A calendar that is gone is a failed read, not an empty result.** `Instances` selects by calendar id, so a calendar
+  that was deleted or re-created under a new id gives an empty cursor, like one without events. `AndroidCalendarRepository`
+  therefore checks in `Calendars` that the id exists before it reads the events, and throws `CalendarGoneException`. The
+  run ends with `PlanFailed` and the failure `CALENDAR_GONE`; the planned alarms stay, and the home banner, the diagnostics
+  and the notification say to choose another calendar. The failure is stored by name, so the new value needs no migration.
 - Every event instance in the horizon becomes an alarm at its start time. The title is the alarm's reason; the
   description and all other fields are ignored. All-day events have no wake-up time and are ignored
   silently. Cancelled events (`STATUS_CANCELED`) are ignored as well.

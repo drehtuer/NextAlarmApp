@@ -208,7 +208,7 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
                     alarms,
                     now,
                     zone,
-                    calendarFact(selected, calendar),
+                    calendarFact(selected, calendar, record.lastRun?.failure),
                     phone.fullScreenAllowed(),
                 ),
             )

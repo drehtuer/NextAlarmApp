@@ -44,7 +44,7 @@ transitions that change something.
 | `SetupCompleted`             | Onboarding finished (or re-run) with the required permissions |
 | `ReplanRequested`            | Any [re-planning trigger](architecture.md#re-planning-triggers) |
 | `PlanSucceeded(generation)`  | Planning job finished                                         |
-| `PlanFailed(generation)`     | Planning job threw (e.g. calendar permission revoked, provider error) |
+| `PlanFailed(generation)`     | Planning job threw (e.g. calendar permission revoked, alarm calendar gone, provider error) |
 
 `generation` identifies the planning run. A result whose `generation` differs from the current one is stale.
 

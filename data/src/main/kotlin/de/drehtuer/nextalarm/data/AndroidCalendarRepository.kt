@@ -8,6 +8,7 @@ import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
 import android.provider.CalendarContract.Instances
 import de.drehtuer.nextalarm.domain.CalendarEvent
+import de.drehtuer.nextalarm.domain.CalendarGoneException
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.CalendarRepository
 import de.drehtuer.nextalarm.domain.DeviceCalendar
@@ -46,6 +47,7 @@ class AndroidCalendarRepository(
 
     override suspend fun events(calendar: CalendarId, from: Instant, to: Instant): List<CalendarEvent> =
         withContext(ioDispatcher) {
+            requireCalendar(calendar)
             val uri = Instances.CONTENT_URI.buildUpon().also {
                 ContentUris.appendId(it, from.toEpochMilli())
                 ContentUris.appendId(it, to.toEpochMilli())
@@ -68,6 +70,20 @@ class AndroidCalendarRepository(
                 )
             }
         }
+
+    /**
+     * The instances of a calendar that no longer exists are as empty as those of one without events. Taking that for "no
+     * alarms" would remove every planned alarm, so the calendar's existence is checked on its own.
+     */
+    private fun requireCalendar(calendar: CalendarId) {
+        val found = query(
+            Calendars.CONTENT_URI,
+            arrayOf(Calendars._ID),
+            "${Calendars._ID} = ?",
+            arrayOf(calendar.value.toString()),
+        ) { it.getLong(0) }
+        if (found.isEmpty()) throw CalendarGoneException(calendar)
+    }
 
     /** A missing cursor means that the read failed. Treating it as empty would remove every planned alarm. */
     private fun <T> query(

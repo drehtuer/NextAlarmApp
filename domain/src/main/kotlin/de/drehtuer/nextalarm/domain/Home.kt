@@ -171,6 +171,10 @@ private fun emptyBody(now: Instant, zone: ZoneId, calendar: DeviceCalendar?): St
 
 private fun failSafeBody(record: PlannerRecord, zone: ZoneId): String {
     val at = record.lastRun?.let { " at ${it.startedAt.atZone(zone).format(TIME)}" }.orEmpty()
+    if (record.lastRun?.failure == PlanningFailure.CALENDAR_GONE) {
+        return "Your alarm calendar was no longer on this phone$at. The alarms below will still ring, but nothing new is " +
+            "added, and after 48 hours nothing rings. Choose another calendar in the settings."
+    }
     return "NextAlarm couldn't read your calendar$at. The alarms below will still ring. Anything you add or change " +
         "in the calendar won't, and if this lasts 48 hours, nothing rings."
 }

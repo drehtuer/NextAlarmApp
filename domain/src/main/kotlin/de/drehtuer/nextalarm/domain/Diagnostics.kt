@@ -74,6 +74,7 @@ private fun seconds(duration: Duration): String =
 
 private fun failureReason(failure: PlanningFailure): String = when (failure) {
     PlanningFailure.NO_CALENDAR -> "no alarm calendar is chosen"
+    PlanningFailure.CALENDAR_GONE -> "the alarm calendar is no longer on this phone"
     PlanningFailure.NO_PERMISSION -> "calendar permission was removed"
     PlanningFailure.READ_FAILED -> "the calendar couldn't be read"
     PlanningFailure.APPLY_FAILED -> "the alarms couldn't be updated"
@@ -81,6 +82,7 @@ private fun failureReason(failure: PlanningFailure): String = when (failure) {
 
 private fun failureFix(failure: PlanningFailure): String = when (failure) {
     PlanningFailure.NO_CALENDAR -> "Choose an alarm calendar in the settings to fix it."
+    PlanningFailure.CALENDAR_GONE -> "Choose another alarm calendar in the settings to fix it."
     PlanningFailure.NO_PERMISSION -> "Allow calendar access again to fix it."
     PlanningFailure.READ_FAILED ->
         "NextAlarm keeps trying. If this lasts, check that the calendar is still on this phone."
@@ -140,8 +142,11 @@ fun diagnosticsSummary(record: PlannerRecord, zone: ZoneId): String {
 }
 
 /** A chosen calendar that cannot be found is not the same as none chosen: the permission may be gone. */
-fun calendarFact(selected: CalendarId?, calendar: DeviceCalendar?): String =
-    if (selected != null && calendar == null) "Can't be read right now" else calendarSummary(calendar)
+fun calendarFact(selected: CalendarId?, calendar: DeviceCalendar?, lastFailure: PlanningFailure? = null): String = when {
+    selected == null || calendar != null -> calendarSummary(calendar)
+    lastFailure == PlanningFailure.CALENDAR_GONE -> "No longer on this phone. Choose another"
+    else -> "Can't be read right now"
+}
 
 fun fullScreenFact(allowed: Boolean): String = if (allowed) "Allowed" else "Not allowed: alarms ring as a notification"
 

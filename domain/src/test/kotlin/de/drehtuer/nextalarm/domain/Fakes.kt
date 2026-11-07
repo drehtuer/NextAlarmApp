@@ -90,6 +90,7 @@ class FakeCalendarRepository : CalendarRepository {
 
 class FakePlannerEffects : PlannerEffects {
     val calls = mutableListOf<String>()
+    var warnedAbout: PlanningFailure? = null
 
     override fun cancelPlanningJob() {
         calls += "cancel"
@@ -103,8 +104,9 @@ class FakePlannerEffects : PlannerEffects {
         calls += "retry:${delay.toMinutes()}"
     }
 
-    override fun showFailSafeWarning() {
+    override fun showFailSafeWarning(failure: PlanningFailure?) {
         calls += "showWarning"
+        warnedAbout = failure
     }
 
     override fun removeFailSafeWarning() {
