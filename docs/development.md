@@ -71,6 +71,30 @@ SonarCloud can only import coverage from a CI analysis, so this needs two settin
 
 The SDK versions in the workflow must match those in `.devcontainer/Dockerfile`.
 
+## Dependency updates and security
+
+| What | Where | What it does |
+| --- | --- | --- |
+| Dependabot updates | `.github/dependabot.yml` | Weekly pull requests for Gradle dependencies and GitHub Actions, monthly ones for the dev container's base image and features. A release is only proposed after 14 days. Minor and patch updates of Gradle dependencies come in one pull request. |
+| Dependabot alerts and security updates | Repository settings | Alerts for dependencies with a known vulnerability, and pull requests that fix them. |
+| Dependency submission | `.github/workflows/dependency-submission.yml` | On every push to `main`, sends the resolved Gradle dependencies to GitHub's dependency graph, which cannot read them from the build files. The alerts for Gradle dependencies depend on it. |
+| CodeQL | `.github/workflows/codeql.yml` | Code scanning with the security and quality queries, for the Kotlin code and the workflows, on pull requests, on `main` and weekly. Findings are under **Security → Code scanning**. |
+| OpenSSF Scorecard | `.github/workflows/scorecard.yml` | Checks the repository's security practices on `main` and weekly, and publishes the score shown in the README. |
+| Secret scanning | Repository settings | Finds committed secrets and blocks pushes that contain them. |
+| Private vulnerability reporting | Repository settings | How [SECURITY.md](SECURITY.md) asks for vulnerabilities to be reported. |
+
+**Dependabot's Gradle pull requests fail until the checksums are added.** Dependabot does not update
+`gradle/verification-metadata.xml`, so the build refuses the new artifacts. Check out the pull request's branch,
+regenerate the file as described in [Updating dependencies](#updating-dependencies), review the change and push it to
+the branch. Dependabot keeps rebasing the branch only as long as nobody else has pushed to it.
+
+The Android SDK versions in `.devcontainer/Dockerfile` and in the workflows are not updated by Dependabot; see
+[Updating SDK versions](#updating-sdk-versions). Keep them in line in `build.yml`, `codeql.yml` and
+`dependency-submission.yml`.
+
+CodeQL runs as a workflow (advanced setup), because Kotlin is only analysed while it is compiled. The default setup
+under **Settings → Code security** must stay off, as the two cannot run side by side.
+
 ## Documentation site
 
 [`.github/workflows/pages.yml`](../.github/workflows/pages.yml) publishes `README.md` and `docs/` as the GitHub Pages site
