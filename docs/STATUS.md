@@ -20,6 +20,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | Concept and architecture documents        | `Done` | Later decisions are updated as they come. |
 | [Dev container](development.md)           | `Done` | Merged in #4.                           |
 | [Documentation site](development.md#documentation-site) | `Done` | Built with Jekyll and published to GitHub Pages on every release. |
+| [Dependency updates and security](development.md#dependency-updates-and-security) | `Done` | Dependabot, CodeQL, OpenSSF Scorecard, [security policy](SECURITY.md). |
 
 ## Device checks
 

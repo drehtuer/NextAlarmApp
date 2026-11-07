@@ -1,5 +1,13 @@
 # NextAlarm
 
+[![Build](https://github.com/drehtuer/NextAlarmApp/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/drehtuer/NextAlarmApp/actions/workflows/build.yml)
+[![CodeQL](https://github.com/drehtuer/NextAlarmApp/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/drehtuer/NextAlarmApp/actions/workflows/codeql.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=drehtuer_NextAlarmApp&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=drehtuer_NextAlarmApp)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=drehtuer_NextAlarmApp&metric=coverage)](https://sonarcloud.io/component_measures?id=drehtuer_NextAlarmApp&metric=coverage)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/drehtuer/NextAlarmApp/badge)](https://scorecard.dev/viewer/?uri=github.com/drehtuer/NextAlarmApp)
+[![Documentation](https://github.com/drehtuer/NextAlarmApp/actions/workflows/pages.yml/badge.svg)](https://drehtuer.github.io/NextAlarmApp/)
+[![License: GPL-3.0](https://img.shields.io/github/license/drehtuer/NextAlarmApp)](LICENSE)
+
 > An Android alarm clock that is controlled by your calendar.
 
 The stock Android alarm clock rings whether or not you have a holiday, are on vacation, or need to get up early for a flight. NextAlarm takes its alarms from dedicated alarm calendars instead: alarms are set, moved and deleted in your calendar app, and the app rings them.
@@ -69,6 +77,7 @@ There is no public distribution yet. If the app is published later, it will be o
 - [Development](docs/development.md): dev container, SDK versions, running on the phone
 - [TODO](docs/TODO.md): the implementation steps, in order
 - [Status](docs/STATUS.md): the implementation status of each step
+- [Security policy](docs/SECURITY.md): how to report a vulnerability
 
 ## License
 
