@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Reads the calendar provider. It queries the instances URI directly, because `Instances.query()` only returns
- * calendars marked as visible: hiding the alarm calendar in a calendar app must not silence its alarms.
+ * calendars marked as visible: hiding an alarm calendar in a calendar app must not silence its alarms.
  */
 class AndroidCalendarRepository(
     private val resolver: ContentResolver,
@@ -45,9 +45,10 @@ class AndroidCalendarRepository(
         }
     }
 
-    override suspend fun events(calendar: CalendarId, from: Instant, to: Instant): List<CalendarEvent> =
+    override suspend fun events(calendars: Set<CalendarId>, from: Instant, to: Instant): List<CalendarEvent> =
         withContext(ioDispatcher) {
-            requireCalendar(calendar)
+            require(calendars.isNotEmpty()) { "No calendars to read" }
+            requireCalendars(calendars)
             val uri = Instances.CONTENT_URI.buildUpon().also {
                 ContentUris.appendId(it, from.toEpochMilli())
                 ContentUris.appendId(it, to.toEpochMilli())
@@ -59,8 +60,8 @@ class AndroidCalendarRepository(
                 Instances.ALL_DAY,
                 Instances.STATUS,
             )
-            val selection = "${Instances.CALENDAR_ID} = ?"
-            query(uri, projection, selection, arrayOf(calendar.value.toString())) { cursor ->
+            val selection = "${Instances.CALENDAR_ID} IN (${placeholders(calendars)})"
+            query(uri, projection, selection, selectionArgs(calendars)) { cursor ->
                 CalendarEvent(
                     eventId = cursor.getLong(0),
                     instanceBegin = Instant.ofEpochMilli(cursor.getLong(1)),
@@ -73,17 +74,24 @@ class AndroidCalendarRepository(
 
     /**
      * The instances of a calendar that no longer exists are as empty as those of one without events. Taking that for "no
-     * alarms" would remove every planned alarm, so the calendar's existence is checked on its own.
+     * alarms" would remove its planned alarms, so the existence of every calendar is checked on its own.
      */
-    private fun requireCalendar(calendar: CalendarId) {
+    private fun requireCalendars(calendars: Set<CalendarId>) {
         val found = query(
             Calendars.CONTENT_URI,
             arrayOf(Calendars._ID),
-            "${Calendars._ID} = ?",
-            arrayOf(calendar.value.toString()),
-        ) { it.getLong(0) }
-        if (found.isEmpty()) throw CalendarGoneException(calendar)
+            "${Calendars._ID} IN (${placeholders(calendars)})",
+            selectionArgs(calendars),
+        ) { CalendarId(it.getLong(0)) }
+        val gone = calendars - found.toSet()
+        if (gone.isNotEmpty()) throw CalendarGoneException(gone)
     }
+
+    /** One `?` for each calendar. The ids themselves only ever go in as [selectionArgs]. */
+    private fun placeholders(calendars: Set<CalendarId>): String = calendars.joinToString(", ") { "?" }
+
+    private fun selectionArgs(calendars: Set<CalendarId>): Array<String> =
+        calendars.map { it.value.toString() }.toTypedArray()
 
     /** A missing cursor means that the read failed. Treating it as empty would remove every planned alarm. */
     private fun <T> query(

@@ -56,12 +56,38 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 }
 
 /**
+ * Version 3 stores a set of alarm calendars instead of one, and whichever calendar was chosen stays chosen. SQLite can only
+ * change a column by building the table again, and the new table has to match the schema exactly: see 3.json.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE `settings_new` (`id` INTEGER NOT NULL, `alarmCalendarIds` TEXT NOT NULL, `soundFile` TEXT, " +
+                "`vibrate` INTEGER NOT NULL, `volumeRampSeconds` INTEGER NOT NULL, `maxVolume` REAL, " +
+                "`ringTimeoutMinutes` INTEGER NOT NULL, `snoozeMinutes` INTEGER NOT NULL, " +
+                "`speakReason` INTEGER NOT NULL, `news_type` TEXT, `news_url` TEXT, `news_maxMinutes` INTEGER, " +
+                "PRIMARY KEY(`id`))",
+        )
+        db.execSQL(
+            "INSERT INTO `settings_new` (`id`, `alarmCalendarIds`, `soundFile`, `vibrate`, `volumeRampSeconds`, " +
+                "`maxVolume`, `ringTimeoutMinutes`, `snoozeMinutes`, `speakReason`, `news_type`, `news_url`, " +
+                "`news_maxMinutes`) " +
+                "SELECT `id`, COALESCE(CAST(`alarmCalendarId` AS TEXT), ''), `soundFile`, `vibrate`, " +
+                "`volumeRampSeconds`, `maxVolume`, `ringTimeoutMinutes`, `snoozeMinutes`, `speakReason`, `news_type`, " +
+                "`news_url`, `news_maxMinutes` FROM `settings`",
+        )
+        db.execSQL("DROP TABLE `settings`")
+        db.execSQL("ALTER TABLE `settings_new` RENAME TO `settings`")
+    }
+}
+
+/**
  * All app data. The database lives in device-protected storage, so that alarms can ring before the first unlock
  * after a reboot. See docs/architecture.md#direct-boot.
  */
 @Database(
     entities = [AlarmInstanceEntity::class, SettingsEntity::class, PlannerEntity::class],
-    version = 2,
+    version = 3,
 )
 abstract class NextAlarmDatabase : RoomDatabase() {
     abstract fun alarms(): AlarmDao
@@ -73,7 +99,7 @@ abstract class NextAlarmDatabase : RoomDatabase() {
 
         fun open(context: Context): NextAlarmDatabase = Room
             .databaseBuilder(context.createDeviceProtectedStorageContext(), NextAlarmDatabase::class.java, NAME)
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
     }
 }

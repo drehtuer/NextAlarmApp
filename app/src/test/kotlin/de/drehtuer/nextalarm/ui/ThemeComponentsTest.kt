@@ -3,6 +3,7 @@ package de.drehtuer.nextalarm.ui
 import android.app.Application
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.ButtonColors
+import androidx.compose.material3.CheckboxColors
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButtonColors
@@ -15,6 +16,7 @@ import de.drehtuer.nextalarm.ui.theme.DarkColors
 import de.drehtuer.nextalarm.ui.theme.LightColors
 import de.drehtuer.nextalarm.ui.theme.NextAlarmTheme
 import de.drehtuer.nextalarm.ui.theme.filledButtonColors
+import de.drehtuer.nextalarm.ui.theme.nextAlarmCheckboxColors
 import de.drehtuer.nextalarm.ui.theme.nextAlarmRadioColors
 import de.drehtuer.nextalarm.ui.theme.nextAlarmSwitchColors
 import de.drehtuer.nextalarm.ui.theme.outlinedButtonBorder
@@ -41,6 +43,7 @@ class ThemeComponentsTest {
         val disabledBorder: BorderStroke,
         val switch: SwitchColors,
         val radio: RadioButtonColors,
+        val checkbox: CheckboxColors,
     )
 
     private fun seen(dark: Boolean): Seen {
@@ -55,6 +58,7 @@ class ThemeComponentsTest {
                     outlinedButtonBorder(enabled = false),
                     nextAlarmSwitchColors(),
                     nextAlarmRadioColors(),
+                    nextAlarmCheckboxColors(),
                 )
             }
         }
@@ -78,6 +82,8 @@ class ThemeComponentsTest {
         assertEquals(expected.primary, seen.switch.checkedTrackColor)
         assertEquals(expected.outline, seen.radio.unselectedColor)
         assertEquals(expected.primary, seen.radio.selectedColor)
+        assertEquals(expected.outline, seen.checkbox.uncheckedBorderColor)
+        assertEquals(expected.primary, seen.checkbox.checkedBoxColor)
     }
 
     @Test

@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
 import android.database.MatrixCursor
+import android.database.sqlite.SQLiteDatabase
 import android.net.Uri
 import android.provider.CalendarContract
 import androidx.test.core.app.ApplicationProvider
@@ -28,9 +29,13 @@ class AndroidCalendarRepositoryTest {
     class FakeCalendarProvider : ContentProvider() {
         var result: Cursor? = null
 
-        /** What asking for the chosen calendar gives. By default it exists. */
-        var chosenCalendar: Cursor? = MatrixCursor(arrayOf("_id")).apply { addRow(arrayOf<Any?>(7L)) }
+        /** What asking for the chosen calendars gives. By default calendar 7 exists. */
+        var chosenCalendars: Cursor? = MatrixCursor(arrayOf("_id")).apply { addRow(arrayOf<Any?>(7L)) }
+        var calendarSelection: String? = null
         var calendarArgs: List<String>? = null
+
+        /** If set, the queries run for real against these tables, as they do in the calendar provider. */
+        var tables: SQLiteDatabase? = null
         var failure: RuntimeException? = null
         var uri: Uri? = null
         var selection: String? = null
@@ -45,15 +50,21 @@ class AndroidCalendarRepositoryTest {
             selectionArgs: Array<out String>?,
             sortOrder: String?,
         ): Cursor? {
-            if (selection == "_id = ?") {
+            val askingForChosen = selection?.startsWith("_id IN") == true
+            if (askingForChosen) {
+                calendarSelection = selection
                 calendarArgs = selectionArgs?.toList()
-                return chosenCalendar
+            } else {
+                this.uri = uri
+                this.selection = selection
+                this.selectionArgs = selectionArgs?.toList()
+                failure?.let { throw it }
             }
-            this.uri = uri
-            this.selection = selection
-            this.selectionArgs = selectionArgs?.toList()
-            failure?.let { throw it }
-            return result
+            tables?.let { db ->
+                val table = if (uri.pathSegments.first() == "calendars") "calendars" else "instances"
+                return db.query(table, projection, selection, selectionArgs?.toList()?.toTypedArray(), null, null, null)
+            }
+            return if (askingForChosen) chosenCalendars else result
         }
 
         override fun getType(uri: Uri): String? = null
@@ -69,7 +80,7 @@ class AndroidCalendarRepositoryTest {
 
     private val from = Instant.ofEpochMilli(1_000)
     private val to = Instant.ofEpochMilli(2_000)
-    private val calendar = CalendarId(7)
+    private val calendar = setOf(CalendarId(7))
 
     private fun eventCursor(vararg rows: Array<Any?>) =
         MatrixCursor(arrayOf("event_id", "begin", "title", "allDay", "eventStatus")).apply { rows.forEach(::addRow) }
@@ -79,7 +90,7 @@ class AndroidCalendarRepositoryTest {
         provider.result = eventCursor()
         repository.events(calendar, from, to)
         assertEquals(listOf("instances", "when", "1000", "2000"), provider.uri?.pathSegments)
-        assertEquals("calendar_id = ?", provider.selection)
+        assertEquals("calendar_id IN (?)", provider.selection)
         assertEquals(listOf("7"), provider.selectionArgs)
     }
 
@@ -127,7 +138,7 @@ class AndroidCalendarRepositoryTest {
 
     @Test
     fun `a calendar that is gone is a failure, not an empty calendar`() = runBlocking<Unit> {
-        provider.chosenCalendar = MatrixCursor(arrayOf("_id"))
+        provider.chosenCalendars = MatrixCursor(arrayOf("_id"))
         provider.result = eventCursor()
         assertFailsWith<CalendarGoneException> { repository.events(calendar, from, to) }
         assertEquals(listOf("7"), provider.calendarArgs)
@@ -136,8 +147,95 @@ class AndroidCalendarRepositoryTest {
 
     @Test
     fun `asking for the calendar can fail like any read`() = runBlocking<Unit> {
-        provider.chosenCalendar = null
+        provider.chosenCalendars = null
         assertFailsWith<IllegalStateException> { repository.events(calendar, from, to) }
+    }
+
+    /**
+     * Tables as in the calendar provider, in real SQLite, so that the selections and their arguments really run. Calendar 1
+     * is shown in calendar apps and has an event, 2 is hidden and has an event, 3 has no events, and 4 is not chosen.
+     */
+    private fun providerWithCalendars(): SQLiteDatabase = SQLiteDatabase.create(null).also { db ->
+        db.execSQL("CREATE TABLE calendars (_id INTEGER PRIMARY KEY, visible INTEGER NOT NULL)")
+        db.execSQL(
+            "CREATE TABLE instances (event_id INTEGER, begin INTEGER, title TEXT, allDay INTEGER, eventStatus INTEGER, " +
+                "calendar_id INTEGER, visible INTEGER NOT NULL)",
+        )
+        listOf(1 to 1, 2 to 0, 3 to 1, 4 to 1).forEach { (id, visible) ->
+            db.execSQL("INSERT INTO calendars VALUES ($id, $visible)")
+        }
+        db.execSQL("INSERT INTO instances VALUES (10, 1500, 'Special case', 0, NULL, 1, 1)")
+        db.execSQL("INSERT INTO instances VALUES (20, 1600, 'Wake up for work', 0, NULL, 2, 0)")
+        db.execSQL("INSERT INTO instances VALUES (40, 1700, 'A meeting', 0, NULL, 4, 1)")
+        provider.tables = db
+    }
+
+    @Test
+    fun `one query reads all the chosen calendars, with their ids only as arguments`() = runBlocking<Unit> {
+        provider.chosenCalendars = MatrixCursor(arrayOf("_id")).apply {
+            addRow(arrayOf<Any?>(1L))
+            addRow(arrayOf<Any?>(2L))
+        }
+        provider.result = eventCursor()
+        repository.events(setOf(CalendarId(1), CalendarId(2)), from, to)
+        assertEquals("_id IN (?, ?)", provider.calendarSelection)
+        assertEquals(listOf("1", "2"), provider.calendarArgs)
+        assertEquals(listOf("instances", "when", "1000", "2000"), provider.uri?.pathSegments)
+        assertEquals("calendar_id IN (?, ?)", provider.selection)
+        assertEquals(listOf("1", "2"), provider.selectionArgs)
+    }
+
+    @Test
+    fun `a hidden calendar counts like a visible one, an empty one adds nothing, and others stay out`() = runBlocking {
+        providerWithCalendars().use {
+            val events = repository.events(setOf(CalendarId(1), CalendarId(2), CalendarId(3)), from, to)
+            assertEquals(listOf(10L, 20L), events.map { it.eventId }.sorted())
+            assertEquals(setOf("Special case", "Wake up for work"), events.map { it.title }.toSet())
+        }
+        assertTrue(provider.selection?.contains("visible") == false)
+    }
+
+    @Test
+    fun `only a hidden calendar still gives its events`() = runBlocking {
+        providerWithCalendars().use {
+            assertEquals(listOf(20L), repository.events(setOf(CalendarId(2)), from, to).map { it.eventId })
+        }
+    }
+
+    @Test
+    fun `calendars that all exist and are all empty are a valid empty result`() = runBlocking {
+        providerWithCalendars().use {
+            assertEquals(emptyList(), repository.events(setOf(CalendarId(3)), from, to))
+        }
+    }
+
+    @Test
+    fun `one missing calendar among several fails the read, and says which`() = runBlocking {
+        providerWithCalendars().use {
+            val failure = assertFailsWith<CalendarGoneException> {
+                repository.events(setOf(CalendarId(1), CalendarId(2), CalendarId(9)), from, to)
+            }
+            assertEquals(setOf(CalendarId(9)), failure.calendars)
+            assertEquals(null, provider.uri)
+        }
+    }
+
+    @Test
+    fun `all of several missing calendars are named`() = runBlocking {
+        providerWithCalendars().use {
+            val failure = assertFailsWith<CalendarGoneException> {
+                repository.events(setOf(CalendarId(8), CalendarId(9)), from, to)
+            }
+            assertEquals(setOf(CalendarId(8), CalendarId(9)), failure.calendars)
+            assertTrue("8" in failure.message.orEmpty() && "9" in failure.message.orEmpty(), failure.message)
+        }
+    }
+
+    @Test
+    fun `asking for no calendars is an error, not an empty result`() = runBlocking<Unit> {
+        assertFailsWith<IllegalArgumentException> { repository.events(emptySet(), from, to) }
+        assertEquals(null, provider.calendarArgs)
+        assertEquals(null, provider.uri)
     }
 
     @Test

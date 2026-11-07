@@ -21,6 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import de.drehtuer.nextalarm.R
+import de.drehtuer.nextalarm.domain.ALARM_CALENDARS_TITLE
+import de.drehtuer.nextalarm.domain.SETUP_SUMMARY
 
 /** Where the rows of screen 3 lead. */
 class SettingsTargets(
@@ -49,10 +51,10 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            SettingsRow("Alarm calendar", calendarSummary, targets.onAlarmCalendar)
+            SettingsRow(ALARM_CALENDARS_TITLE, calendarSummary, targets.onAlarmCalendar)
             SettingsRow("Alarm settings", "Sound, snooze, speech and news", targets.onAlarmSettings)
             SettingsRow("Diagnostics & history", diagnosticsSummary, targets.onDiagnostics)
-            SettingsRow("Run setup again", "Explanation, permissions and calendar", targets.onRunSetup)
+            SettingsRow("Run setup again", SETUP_SUMMARY, targets.onRunSetup)
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
             Text(
                 "About",

@@ -30,8 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import de.drehtuer.nextalarm.R
+import de.drehtuer.nextalarm.domain.CALENDAR_EXPLANATION
+import de.drehtuer.nextalarm.domain.CHOOSE_CALENDARS_LEAD
+import de.drehtuer.nextalarm.domain.CHOOSE_CALENDARS_TITLE
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.DeviceCalendar
+import de.drehtuer.nextalarm.domain.PERMISSIONS_LEAD
 import de.drehtuer.nextalarm.ui.theme.LocalExtraColors
 import de.drehtuer.nextalarm.ui.theme.filledButtonColors
 import de.drehtuer.nextalarm.ui.theme.outlinedButtonBorder
@@ -58,14 +62,14 @@ fun OnboardingScreen(
     onStepChange: (Int) -> Unit,
     permissions: List<PermissionCard>,
     calendars: List<DeviceCalendar>,
-    selected: CalendarId?,
-    onSelect: (CalendarId) -> Unit,
+    selected: Set<CalendarId>,
+    onToggle: (CalendarId, Boolean) -> Unit,
     onDone: () -> Unit,
 ) {
     val canGoOn = when (step) {
         0 -> true
         1 -> permissions.filter { it.required }.all { it.granted }
-        else -> selected != null
+        else -> selected.isNotEmpty()
     }
     Surface(Modifier.fillMaxSize()) {
         Column(
@@ -85,7 +89,7 @@ fun OnboardingScreen(
                 when (step) {
                     0 -> Explanation()
                     1 -> Permissions(permissions)
-                    else -> ChooseCalendar(calendars, selected, onSelect)
+                    else -> ChooseCalendars(calendars, selected, onToggle)
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -128,7 +132,7 @@ private fun Explanation() {
     ExplanationRow(
         R.drawable.ic_calendar,
         "Every event is an alarm",
-        "Each timed event in the calendar you choose rings at its start time.",
+        CALENDAR_EXPLANATION,
     )
     ExplanationRow(
         R.drawable.ic_repeat,
@@ -160,7 +164,7 @@ private fun ExplanationRow(@DrawableRes icon: Int, title: String, body: String) 
 
 @Composable
 private fun Permissions(permissions: List<PermissionCard>) {
-    Heading("Allow three things", "NextAlarm only reads the one calendar you choose next. Nothing leaves your phone.")
+    Heading("Allow three things", PERMISSIONS_LEAD)
     permissions.forEach { Permission(it) }
 }
 
@@ -200,10 +204,11 @@ private fun DeniedNote(card: PermissionCard) {
 }
 
 @Composable
-private fun ChooseCalendar(calendars: List<DeviceCalendar>, selected: CalendarId?, onSelect: (CalendarId) -> Unit) {
-    Heading(
-        "Choose the alarm calendar",
-        "Every timed event in it will ring. Use a calendar just for alarms, so meetings don't wake you.",
-    )
-    CalendarList(calendars, selected, onSelect)
+private fun ChooseCalendars(
+    calendars: List<DeviceCalendar>,
+    selected: Set<CalendarId>,
+    onToggle: (CalendarId, Boolean) -> Unit,
+) {
+    Heading(CHOOSE_CALENDARS_TITLE, CHOOSE_CALENDARS_LEAD)
+    CalendarList(calendars, selected, onToggle)
 }

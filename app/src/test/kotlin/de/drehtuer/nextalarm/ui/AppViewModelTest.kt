@@ -80,7 +80,7 @@ private class FakeCalendars(var result: () -> List<DeviceCalendar> = { listOf(CA
         return result()
     }
 
-    override suspend fun events(calendar: CalendarId, from: Instant, to: Instant) = emptyList<CalendarEvent>()
+    override suspend fun events(calendars: Set<CalendarId>, from: Instant, to: Instant) = emptyList<CalendarEvent>()
 }
 
 private class RecordingEffects : PlannerEffects {
@@ -174,17 +174,17 @@ class AppViewModelTest {
         val state = load()
         assertTrue(state.loaded)
         assertFalse(state.setupDone)
-        assertNull(state.selectedCalendar)
+        assertEquals(emptySet(), state.selectedCalendars)
         assertEquals(listOf(CALENDAR), state.calendars)
     }
 
     @Test
     fun `home shows the waiting alarms and the chosen calendar`() = runBlocking {
         val at = NOW.plus(Duration.ofHours(10))
-        data.settings.save(Settings.DEFAULT.copy(alarmCalendar = CALENDAR.id))
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id)))
         data.alarms.create(AlarmKey.forEvent(1, at), at, Settings.DEFAULT.snapshotFor("Flight"))
         val state = load()
-        assertEquals(CALENDAR.id, state.selectedCalendar)
+        assertEquals(setOf(CALENDAR.id), state.selectedCalendars)
         assertEquals("Flight", state.home.hero?.title)
         assertEquals("From the calendar “NextAlarm” (DAVx⁵).", state.home.footer)
     }
@@ -221,16 +221,53 @@ class AppViewModelTest {
     }
 
     @Test
-    fun `choosing a calendar saves it, and re-plans once setup is done`() = runBlocking {
-        viewModel.chooseCalendar(CALENDAR.id)
-        awaitState { it.selectedCalendar == CALENDAR.id }
+    fun `ticking a calendar saves it, and re-plans once setup is done`() = runBlocking {
+        viewModel.setCalendarTicked(CALENDAR.id, true)
+        awaitState { it.selectedCalendars == setOf(CALENDAR.id) }
         assertTrue(effects.started.isEmpty())
 
         engine.setupCompleted()
-        viewModel.chooseCalendar(CalendarId(2))
-        awaitState { it.selectedCalendar == CalendarId(2) }
+        viewModel.setCalendarTicked(CalendarId(2), true)
+        awaitState { it.selectedCalendars == setOf(CALENDAR.id, CalendarId(2)) }
         assertEquals(listOf(1L, 2L), effects.started)
         assertEquals(PlannerState.Planning, data.planner.load().state)
+        assertEquals(setOf(CALENDAR.id, CalendarId(2)), data.settings.load().alarmCalendars)
+    }
+
+    @Test
+    fun `unticking a calendar saves it, and re-plans`() = runBlocking {
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id, CalendarId(2))))
+        engine.setupCompleted()
+        viewModel.setCalendarTicked(CalendarId(2), false)
+        awaitState { it.selectedCalendars == setOf(CALENDAR.id) }
+        assertEquals(listOf(1L, 2L), effects.started)
+        assertEquals(setOf(CALENDAR.id), data.settings.load().alarmCalendars)
+    }
+
+    @Test
+    fun `quick ticks of different calendars are all kept`() = runBlocking {
+        (1L..5L).forEach { viewModel.setCalendarTicked(CalendarId(it), true) }
+        awaitState { it.selectedCalendars.size == 5 }
+        assertEquals((1L..5L).map(::CalendarId).toSet(), data.settings.load().alarmCalendars)
+    }
+
+    @Test
+    fun `home and diagnostics follow several chosen calendars`() = runBlocking {
+        val special = DeviceCalendar(CalendarId(2), "Special cases", null, "LOCAL", null)
+        val other = DeviceCalendar(CalendarId(3), "Meetings", null, "LOCAL", null)
+        calendars.result = { listOf(CALENDAR, special, other) }
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id, special.id)))
+        val state = load()
+        assertEquals("From the calendars “NextAlarm” (DAVx⁵) and “Special cases”.", state.home.footer)
+        assertEquals("2 calendars: NextAlarm, Special cases", state.diagnostics.calendar)
+    }
+
+    @Test
+    fun `diagnostics say when one of several chosen calendars is gone`() = runBlocking {
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id, CalendarId(9))))
+        val state = load()
+        assertEquals("From the calendar “NextAlarm” (DAVx⁵).", state.home.footer)
+        assertEquals("NextAlarm · DAVx⁵. 1 no longer on this phone", state.diagnostics.calendar)
     }
 
     @Test
@@ -482,7 +519,7 @@ class AppViewModelTest {
         val at = NOW.minus(Duration.ofDays(1))
         val done = data.alarms.create(AlarmKey.forEvent(1, at), at, Settings.DEFAULT.snapshotFor("Gym"))
         data.alarms.update(done.copy(state = AlarmState.Done))
-        data.settings.save(Settings.DEFAULT.copy(alarmCalendar = CALENDAR.id))
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id)))
         val run = PlanningRun(NOW, Duration.ofMillis(400), 4, null)
         data.planner.save(PlannerRecord(PlannerState.Planned, 1, lastRun = run))
         fullScreen = false
@@ -562,7 +599,7 @@ class AppViewModelTest {
         viewModel.ringTestAlarm()
         awaitCondition { data.alarms.all().isNotEmpty() }
         engine.setupCompleted()
-        data.settings.save(Settings.DEFAULT.copy(alarmCalendar = CALENDAR.id))
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id)))
         engine.runPlanning(data.planner.load().generation)
         assertEquals(PlannerState.Planned, data.planner.load().state)
         assertEquals(AlarmState.Scheduled, data.alarms.all().single().state)

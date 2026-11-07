@@ -63,6 +63,29 @@ data class NextAlarmTile(
     val active: Boolean,
 )
 
+/** The titles of screen 4 and of the last step of onboarding. */
+const val ALARM_CALENDARS_TITLE = "Alarm calendars"
+const val CHOOSE_CALENDARS_TITLE = "Choose the alarm calendars"
+
+/** The part about other calendars is a warning: ticking a normal one by accident means an alarm for every meeting. */
+const val ALARM_CALENDARS_LEAD = "Every timed event in the ticked calendars rings at its start time. Don't tick a " +
+    "calendar you use for anything else: every meeting in it would ring too. A calendar hidden in a calendar app " +
+    "still rings. No other calendar is read."
+const val CHOOSE_CALENDARS_LEAD = "Every timed event in the ticked calendars will ring. Don't tick a calendar you use " +
+    "for anything else: every meeting in it would ring too. Use calendars just for alarms. A calendar hidden in a " +
+    "calendar app still rings."
+
+const val CALENDAR_EXPLANATION = "Each timed event in the calendars you choose rings at its start time."
+const val PERMISSIONS_LEAD = "NextAlarm only reads the calendars you choose next. Nothing leaves your phone."
+const val READ_CALENDARS_DESCRIPTION = "To see the events in your alarm calendars. Only those calendars are read."
+const val SETUP_SUMMARY = "Explanation, permissions and calendars"
+
+val NO_CALENDAR_CHOSEN_BANNER = BannerText("No calendar chosen.", "Until you choose one, no alarm rings.")
+
+/** The group and the rows of chosen calendars that are gone. Their names went with them. See [missingCalendars]. */
+const val MISSING_CALENDARS_HEADER = "No longer on this phone"
+const val MISSING_CALENDAR_ROW = "Missing calendar. Untick it to carry on"
+
 data class CalendarGroup(
     val label: String,
     val calendars: List<DeviceCalendar>,
@@ -100,7 +123,7 @@ fun buildHome(
     zone: ZoneId,
     alarms: List<AlarmInstance>,
     record: PlannerRecord,
-    calendar: DeviceCalendar?,
+    calendars: List<DeviceCalendar>,
     notificationsAllowed: Boolean = true,
 ): HomeModel {
     val waiting = waitingAlarms(alarms, now)
@@ -110,9 +133,9 @@ fun buildHome(
         days = waiting
             .groupBy { it.triggerAt.atZone(zone).toLocalDate() }
             .map { (date, group) -> HomeDay(dayHeader(date, today), group.map { homeRow(it, zone) }) },
-        emptyBody = if (waiting.isEmpty()) emptyBody(now, zone, calendar) else null,
+        emptyBody = if (waiting.isEmpty()) emptyBody(now, zone, calendars) else null,
         failSafeBody = if (record.state == PlannerState.FailSafe) failSafeBody(record, zone) else null,
-        footer = homeFooter(now, zone, record, calendar),
+        footer = homeFooter(now, zone, record, calendars),
         notificationsOff = notificationsOffBanner(notificationsAllowed),
     )
 }
@@ -174,24 +197,47 @@ private fun formatDuration(duration: Duration): String {
     }
 }
 
-private fun emptyBody(now: Instant, zone: ZoneId, calendar: DeviceCalendar?): String {
+private fun emptyBody(now: Instant, zone: ZoneId, calendars: List<DeviceCalendar>): String {
     val until = now.plus(PLANNING_HORIZON).atZone(zone).format(WEEKDAY_AND_TIME)
-    val target = if (calendar != null) "the ${calendar.name} calendar" else "your alarm calendar"
+    val target = when (calendars.size) {
+        0 -> "an alarm calendar"
+        1 -> "the ${calendars.single().name} calendar"
+        else -> "one of your alarm calendars"
+    }
     return "Nothing is planned until $until. To set one, add a timed event to $target in your calendar app."
 }
 
 private fun failSafeBody(record: PlannerRecord, zone: ZoneId): String {
     val at = record.lastRun?.let { " at ${it.startedAt.atZone(zone).format(TIME)}" }.orEmpty()
-    if (record.lastRun?.failure == PlanningFailure.CALENDAR_GONE) {
-        return "Your alarm calendar was no longer on this phone$at. The alarms below will still ring, but nothing new is " +
-            "added, and after 48 hours nothing rings. Choose another calendar in the settings."
+    val stillRing = "The alarms below will still ring, but nothing new is added, and after 48 hours nothing rings."
+    return when (record.lastRun?.failure) {
+        PlanningFailure.CALENDAR_GONE ->
+            "An alarm calendar was no longer on this phone$at. $stillRing Untick it under $ALARM_CALENDARS_TITLE in the settings."
+        PlanningFailure.NO_CALENDAR -> "No alarm calendar was chosen$at. $stillRing Choose one in the settings."
+        else -> "NextAlarm couldn't read your calendar$at. The alarms below will still ring. Anything you add or change " +
+            "in the calendar won't, and if this lasts 48 hours, nothing rings."
     }
-    return "NextAlarm couldn't read your calendar$at. The alarms below will still ring. Anything you add or change " +
-        "in the calendar won't, and if this lasts 48 hours, nothing rings."
 }
 
-private fun homeFooter(now: Instant, zone: ZoneId, record: PlannerRecord, calendar: DeviceCalendar?): String? {
-    val source = calendar?.let { "From the calendar “${it.name}”${calendarSource(it)?.let { name -> " ($name)" }.orEmpty()}." }
+/** Like "“A” (DAVx⁵), “B” and “C”", or "“A”, “B”, “C” and 2 more" if there are too many to name them all. */
+private fun quotedCalendars(calendars: List<DeviceCalendar>): String {
+    val named = byName(calendars).take(MAX_NAMED_CALENDARS).map { calendar ->
+        "“${calendar.name}”${calendarSource(calendar)?.let { " ($it)" }.orEmpty()}"
+    }
+    val more = calendars.size - named.size
+    return when {
+        more > 0 -> "${named.joinToString(", ")} and $more more"
+        named.size == 1 -> named.single()
+        else -> "${named.dropLast(1).joinToString(", ")} and ${named.last()}"
+    }
+}
+
+private fun homeFooter(now: Instant, zone: ZoneId, record: PlannerRecord, calendars: List<DeviceCalendar>): String? {
+    val source = when (calendars.size) {
+        0 -> null
+        1 -> "From the calendar ${quotedCalendars(calendars)}."
+        else -> "From the calendars ${quotedCalendars(calendars)}."
+    }
     val checked = record.lastRun?.let {
         "Checked ${relativeDayAndTime(it.startedAt, now.atZone(zone).toLocalDate(), zone)}."
     }
@@ -249,12 +295,38 @@ fun groupCalendars(calendars: List<DeviceCalendar>): List<CalendarGroup> = calen
     .map { (label, group) -> CalendarGroup(label, group.sortedBy { it.name.lowercase(Locale.ENGLISH) }) }
     .sortedBy { it.label.lowercase(Locale.ENGLISH) }
 
-/** The line under "Alarm calendar" in the settings. */
-fun calendarSummary(calendar: DeviceCalendar?): String {
-    if (calendar == null) return "None chosen. Nothing rings"
-    val source = calendarSource(calendar) ?: calendar.accountName
-    return if (source != null) "${calendar.name} · $source" else calendar.name
+/** The chosen calendars that are on this phone. */
+fun chosenCalendars(selected: Set<CalendarId>, calendars: List<DeviceCalendar>): List<DeviceCalendar> =
+    calendars.filter { it.id in selected }
+
+/**
+ * The chosen calendars that are not on this phone, which the calendar list has to offer for unticking: as long as one of
+ * them stays chosen, every planning run fails. An empty [calendars] says nothing, because that is also how a list without
+ * the permission looks, and unticking would then lose a choice that is still good.
+ */
+fun missingCalendars(selected: Set<CalendarId>, calendars: List<DeviceCalendar>): List<CalendarId> =
+    if (calendars.isEmpty()) emptyList() else (selected - calendars.map { it.id }.toSet()).sortedBy { it.value }
+
+/** Sorted by name, so that the same calendars always read the same. */
+private fun byName(calendars: List<DeviceCalendar>): List<DeviceCalendar> =
+    calendars.sortedWith(compareBy({ it.name.lowercase(Locale.ENGLISH) }, { it.id.value }))
+
+/**
+ * The line under "Alarm calendars" in the settings, about the chosen calendars that are on this phone: the calendar and
+ * its source, or "2 calendars: NextAlarm, Special cases". Long lists are cut short: "5 calendars: A, B, C and 2 more".
+ */
+fun calendarSummary(calendars: List<DeviceCalendar>): String {
+    val only = calendars.singleOrNull()
+    if (only != null) {
+        val source = calendarSource(only) ?: only.accountName
+        return if (source != null) "${only.name} · $source" else only.name
+    }
+    if (calendars.isEmpty()) return "None chosen. Nothing rings"
+    val names = byName(calendars).take(MAX_NAMED_CALENDARS).joinToString(", ") { it.name }
+    val more = calendars.size - MAX_NAMED_CALENDARS
+    return "${calendars.size} calendars: $names${if (more > 0) " and $more more" else ""}"
 }
 
+private const val MAX_NAMED_CALENDARS = 3
 private const val SECONDS_PER_MINUTE = 60L
 private const val MINUTES_PER_HOUR = 60L

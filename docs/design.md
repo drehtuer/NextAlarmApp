@@ -143,16 +143,16 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
 1. **Explanation.** Title "Your calendar sets the alarms". Lead "NextAlarm has no alarm editor. You plan alarms in your
    calendar app, and this phone rings them." Three rows, each a 40 dp `primaryContainer` icon disc with a bold line and
    a secondary line:
-   - Calendar icon: "Every event is an alarm" / "Each timed event in the calendar you choose rings at its start time."
+   - Calendar icon: "Every event is an alarm" / "Each timed event in the calendars you choose rings at its start time."
    - Repeat icon: "Regular alarms repeat" / "For a weekday alarm, make a recurring event. Skip a day by deleting that one
      occurrence."
    - Bin icon: "Change or delete in the calendar" / "Move an event and its alarm moves. Delete it and the alarm is gone."
 
    The main button is "Get started".
-2. **Permissions.** Title "Allow three things". Lead "NextAlarm only reads the one calendar you choose next. Nothing
+2. **Permissions.** Title "Allow three things". Lead "NextAlarm only reads the calendars you choose next. Nothing
    leaves your phone." Below that, one `surfaceContainer` card per permission, with the title, a description, and on the
    right either an "Allow" button or a green check with "Allowed":
-   - "Read your calendars" / "To see the events in your alarm calendar. Only that one calendar is read."
+   - "Read your calendars" / "To see the events in your alarm calendars. Only those calendars are read."
    - "Send notifications" / "To show the next alarm, and to ring when the phone is locked."
    - "Show alarms full screen" / "So a ringing alarm fills the screen, even when the phone is locked."
 
@@ -168,8 +168,10 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
    notification. Full-screen alarms are optional.
 
    The main button is "Continue".
-3. **Calendar.** Title "Choose the alarm calendar". Lead "Every timed event in it will ring. Use a calendar just for
-   alarms, so meetings don't wake you." The same list as screen 4. The main button is "Done".
+3. **Calendars.** Title "Choose the alarm calendars". Lead "Every timed event in the ticked calendars will ring. Don't
+   tick a calendar you use for anything else: every meeting in it would ring too. Use calendars just for alarms. A
+   calendar hidden in a calendar app still rings." The same list as screen 4. The main button is "Done", which needs at
+   least one ticked calendar.
 
 ### 2 Home
 
@@ -178,9 +180,11 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
   - Title: "New alarms aren't being added"
   - Body: "NextAlarm couldn't read your calendar at 19:58. The alarms below will still ring. Anything you add or change in
     the calendar won't, and if this lasts 48 hours, nothing rings."
-  - Body if the alarm calendar is gone (`CALENDAR_GONE`): "Your alarm calendar was no longer on this phone at 19:58. The
-    alarms below will still ring, but nothing new is added, and after 48 hours nothing rings. Choose another calendar in
-    the settings."
+  - Body if an alarm calendar is gone (`CALENDAR_GONE`): "An alarm calendar was no longer on this phone at 19:58. The
+    alarms below will still ring, but nothing new is added, and after 48 hours nothing rings. Untick it under Alarm
+    calendars in the settings."
+  - Body if none is chosen (`NO_CALENDAR`): "No alarm calendar was chosen at 19:58. The alarms below will still ring, but
+    nothing new is added, and after 48 hours nothing rings. Choose one in the settings."
   - Outlined button: "See what went wrong", which opens screen 7.
 - **Notifications-off banner** (`errorContainer`, warning icon, above the fail-safe banner, only while the app's
   notifications or its "Alarm" channel are off):
@@ -200,8 +204,11 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
 - **Empty state** (`surfaceContainer` card, calendar icon):
   - Title: "No alarms in the next 48 hours"
   - Body: "Nothing is planned until Sunday 20:00. To set one, add a timed event to the NextAlarm calendar in your calendar
-    app."
-- **Footer** (`bodySmall`, `onSurfaceVariant`): "From the calendar “NextAlarm” (DAVx⁵). Checked today at 19:58."
+    app." With several calendars: "... to one of your alarm calendars in your calendar app." If none is known: "... to an
+    alarm calendar in your calendar app."
+- **Footer** (`bodySmall`, `onSurfaceVariant`): "From the calendar “NextAlarm” (DAVx⁵). Checked today at 19:58." With
+  several calendars, sorted by name: "From the calendars “NextAlarm” (DAVx⁵) and “Special cases”." At most three are named:
+  "From the calendars “A”, “B”, “C” and 2 more." It names the chosen calendars that are on this phone.
 
 ### 3 Settings
 
@@ -209,10 +216,10 @@ The top bar has a back button and "Settings". Each row has a title, a secondary 
 
 | Row | Secondary line |
 |-----|----------------|
-| "Alarm calendar" | The calendar and its account ("NextAlarm · DAVx⁵"), or "None chosen. Nothing rings" |
+| "Alarm calendars" | The same as "Calendar" on screen 7: the calendar and its account ("NextAlarm · DAVx⁵"), several calendars by name, sorted ("2 calendars: NextAlarm, Special cases", at most three names: "5 calendars: A, B, C and 2 more"), or "None chosen. Nothing rings" |
 | "Alarm settings" | "Sound, snooze, speech and news" |
 | "Diagnostics & history" | "Last check 19:58 · all good", or "Last check failed" |
-| "Run setup again" | "Explanation, permissions and calendar" |
+| "Run setup again" | "Explanation, permissions and calendars" |
 
 Below the rows come a divider and a section headed "About". It is always present:
 
@@ -222,15 +229,19 @@ Below the rows come a divider and a section headed "About". It is always present
   external-link icon. Tapping the row opens `https://github.com/drehtuer/NextAlarmApp` in the browser
   (`Intent.ACTION_VIEW`).
 
-### 4 Alarm calendar
+### 4 Alarm calendars
 
-- **Top bar:** "Alarm calendar".
-- **Lead:** "Every timed event in this calendar rings at its start time. No other calendar is read."
+- **Top bar:** "Alarm calendars".
+- **Lead:** "Every timed event in the ticked calendars rings at its start time. Don't tick a calendar you use for anything
+  else: every meeting in it would ring too. A calendar hidden in a calendar app still rings. No other calendar is read."
 - **Calendars:** grouped by account, with the account name as a `primary` header ("DAVx⁵ · me@cloud.example",
-  "ICSx⁵ · Holidays", "On this phone"). Each row is a radio button, the calendar's own colour as a 12 dp square, and its
-  name. A calendar without a colour leaves the square's place empty, so that the names line up. The selected row has a
-  `surfaceContainer` background.
-- **None selected** (`errorContainer` banner): "**No calendar chosen.** Until you choose one, no alarm rings."
+  "ICSx⁵ · Holidays", "On this phone"). Each row is a checkbox, the calendar's own colour as a 12 dp square, and its
+  name. Any number can be ticked. A calendar without a colour leaves the square's place empty, so that the names line up.
+  A ticked row has a `surfaceContainer` background.
+- **Chosen calendars that are gone:** after the other groups, under the header "No longer on this phone", one ticked row
+  each: "Missing calendar. Untick it to carry on". Their names are not known any more. Not shown while there are no
+  calendars to list, because a missing permission looks the same.
+- **None ticked** (`errorContainer` banner): "**No calendar chosen.** Until you choose one, no alarm rings."
 - **No calendars:**
   - Title: "No calendars on this phone"
   - Body: "Sync one from your Nextcloud with an app such as DAVx⁵, or create a local calendar in your calendar app. Then
@@ -366,15 +377,17 @@ Details decided while building this screen:
 |---------|------|-----|
 | `NO_PERMISSION` | "calendar permission was removed" | "Allow calendar access again to fix it." |
 | `NO_CALENDAR` | "no alarm calendar is chosen" | "Choose an alarm calendar in the settings to fix it." |
-| `CALENDAR_GONE` | "the alarm calendar is no longer on this phone" | "Choose another alarm calendar in the settings to fix it." |
+| `CALENDAR_GONE` | "an alarm calendar is no longer on this phone" | "Untick it under Alarm calendars in the settings to fix it." |
 | `READ_FAILED` | "the calendar couldn't be read" | "NextAlarm keeps trying. If this lasts, check that the calendar is still on this phone." |
 | `APPLY_FAILED` | "the alarms couldn't be updated" | "NextAlarm keeps trying. If this lasts, restart the phone." |
 
 - "No alarms are planned, and changes in the calendar are not picked up." replaces the sentence about what still rings
   when nothing is waiting.
 - In the settings, "Diagnostics & history" says "Not checked yet" before the first finished check.
-- "Calendar" says "Can't be read right now" if the chosen calendar can't be found, for example without the permission,
-  and "No longer on this phone. Choose another" if the last check found that it is gone.
+- "Calendar" sums up the chosen calendars as under "Alarm calendars" on screen 3. It says "Can't be read right now" if none
+  of them can be found, for example without the permission, and "No longer on this phone. Untick and choose again" if the
+  last check found that they are gone. If only some are gone, it says so after the others: "NextAlarm · DAVx⁵. 1 no longer
+  on this phone".
   "Full-screen alarms" says "Allowed" or "Not allowed: alarms ring as a notification".
 - A past alarm is listed at the time of its event, not of its last snooze; a test alarm has no event, and shows its own
   time with its seconds. A `Done` alarm that rang late shows that rather than its snoozes. The newest comes first. An
@@ -465,7 +478,8 @@ accent colour (`setColor`).
 | Wake-up media, speech | "Speaking the title" (or "Speaking the titles") | The title being spoken | "Stop" |
 | Wake-up media, feed on its way | "Getting the news" | "tagesschau.de · stops by 06:16 at the latest" | "Stop" |
 | Fail-safe warning | "New alarms aren't being added" | "NextAlarm can't read your calendar. Alarms already planned will still ring." | "Open diagnostics" |
-| Fail-safe warning, calendar gone | "New alarms aren't being added" | "Your alarm calendar is no longer on this phone. Alarms already planned will still ring. Choose another calendar." | "Open diagnostics" |
+| Fail-safe warning, calendar gone | "New alarms aren't being added" | "An alarm calendar is no longer on this phone. Alarms already planned will still ring. Untick it under Alarm calendars." | "Open diagnostics" |
+| Fail-safe warning, none chosen | "New alarms aren't being added" | "No alarm calendar is chosen. Alarms already planned will still ring. Choose one in the settings." | "Open diagnostics" |
 | Late alarm | "An alarm rang 7 min late" | "“Train to Cologne” was due at 06:45, but the phone was off." | "Open history" |
 | Missed alarm | "An alarm didn't ring" | "“Brunch with Lea” at 09:00 was missed because the phone was off." | "Open history" |
 | Alarm not answered | "An alarm wasn't answered" | "“Gym” at 06:30 rang twice with no response. It won't ring again." | "Open history" |

@@ -65,7 +65,7 @@ into the relevant document.
 |------|------|---------------|
 | 3.1  | Room database in device-protected storage. | [Direct boot](architecture.md#direct-boot) |
 | 3.2  | `SettingsRepository` and `AlarmRepository`, including persisted state machine states. | [Modules](architecture.md#modules) |
-| 3.3  | `CalendarRepository`: list the device calendars and read event instances of the alarm calendar only. | [Calendar source](architecture.md#calendar-source) |
+| 3.3  | `CalendarRepository`: list the device calendars and read event instances of the alarm calendars only. | [Calendar source](architecture.md#calendar-source) |
 | 3.4  | `AlarmScheduler`: register and cancel alarms with `setAlarmClock()`, behind an interface. | [Ringing](architecture.md#ringing) |
 | 3.5  | Alarm sound storage: copy the picked file into device-protected storage, reject unusable files, bundle the fallback sound, use the phone's default alarm sound by default. | [Ringing](architecture.md#ringing) |
 
@@ -85,7 +85,7 @@ These come before ringing, so that the app can be configured on the phone from t
 |------|------|---------------|
 | 5.1  | Set up the Compose theme from the delivered design, and the navigation. The Compose and window themes must match, and screens must keep clear of the system bars, because Android 17 draws apps edge to edge. | [Design](design.md) |
 | 5.2  | Onboarding and permissions (screen 1), sends `SetupCompleted`. | [Screen list](screens.md#screen-list) |
-| 5.3  | Alarm calendar selection (screen 4), sends `ReplanRequested`. | [Screen list](screens.md#screen-list) |
+| 5.3  | Alarm calendars selection (screen 4), sends `ReplanRequested`. | [Screen list](screens.md#screen-list) |
 | 5.4  | Home with the 48 h preview, empty state and `FailSafe` banner (screen 2); times shown in the device time zone. | [Screen list](screens.md#screen-list) |
 | 5.5  | "Next alarm" and "Fail-safe warning" notifications. | [Notifications](screens.md#notifications) |
 

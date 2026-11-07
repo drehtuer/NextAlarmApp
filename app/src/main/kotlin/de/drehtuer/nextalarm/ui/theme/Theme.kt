@@ -6,6 +6,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonColors
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CheckboxColors
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.RadioButtonColors
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Shapes
@@ -179,6 +181,10 @@ fun nextAlarmSwitchColors(): SwitchColors =
 @Composable
 fun nextAlarmRadioColors(): RadioButtonColors =
     RadioButtonDefaults.colors(unselectedColor = MaterialTheme.colorScheme.outline)
+
+@Composable
+fun nextAlarmCheckboxColors(): CheckboxColors =
+    CheckboxDefaults.colors(uncheckedColor = MaterialTheme.colorScheme.outline)
 
 private const val DISABLED_BORDER_ALPHA = 0.38f
 

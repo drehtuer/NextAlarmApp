@@ -29,7 +29,7 @@ Related documents:
 
 1. **Fail-safe first.** A failure (calendar unreadable, crash in planning) must never remove an alarm. It can only
    keep the existing ones.
-2. **Calendar only.** Every event in the alarm calendar is an alarm; there are no other criteria (no description
+2. **Calendar only.** Every timed event in the alarm calendars is an alarm; there are no other criteria (no description
    format, no veto rules). The app has no alarm schedule of its own; regular alarms are recurring events. Alarms
    are set, moved and deleted only in the calendar app. The app never adds or removes alarms on its own.
 3. **Pure core.** The planner and both state machines are pure Kotlin functions in the `domain` module with no
@@ -86,9 +86,10 @@ interfaces are declared in `domain` and implemented in `data`, so that the code 
 - The app reads only the Android calendar provider (`CalendarContract`). The provider is a local database on the
   phone; sync adapters (DAVx⁵, ICSx⁵) and calendar apps such as aCalendar keep their copy of the events there.
   Planning therefore works without network access, using whatever was synced last.
-- The user chooses one calendar as the alarm calendar. Any calendar works: a local one (e.g. aCalendar's "phone"
-  calendars, which are never synced), a CalDAV calendar via DAVx⁵ or a subscribed one via ICSx⁵. All other
-  calendars are never read.
+- The user ticks any number of calendars as alarm calendars, for example one for regular alarms that is hidden in the
+  calendar app, and one for special cases that stays visible. Hidden and visible calendars work the same. Any calendar
+  works: a local one (e.g. aCalendar's "phone" calendars, which are never synced), a CalDAV calendar via DAVx⁵ or a
+  subscribed one via ICSx⁵. The events of all other calendars are never read.
 - The app is independent of Google: it does not read or create alarms in the Google Clock app, does not use calendar
   reminders (`CalendarContract.Reminders`) and does not need Google Play Services.
 - The app does not check whether a sync adapter synced recently, and there is no automatic warning about stale
@@ -117,7 +118,7 @@ fun plan(now: Instant, events: List<CalendarEvent>, settings: Settings): Plan
 fun diff(plan: Plan, existing: List<AlarmInstance>, now: Instant): List<PlanCommand>
 ```
 
-`events` are the event instances of the alarm calendar. The planner produces a `Plan` with one entry per event
+`events` are the event instances of all the alarm calendars. The planner produces a `Plan` with one entry per event
 instance in the planning horizon. `diff` compares it with the existing alarm instances and returns what to send to
 the alarm state machines.
 
@@ -126,7 +127,7 @@ the daily re-planning trigger guarantees that every alarm is planned at least 24
 
 ```mermaid
 flowchart TD
-    A[Read event instances in now .. now + 48 h<br/>from the alarm calendar] --> B[Drop cancelled and all-day events]
+    A[Read event instances in now .. now + 48 h<br/>from the alarm calendars] --> B[Drop cancelled and all-day events]
     B --> N[Plan: one entry per event instance<br/>trigger = start in UTC, reason = title]
     N --> O[Diff against existing alarm instances]
     O --> P[Create / Refresh / Remove events<br/>to alarm state machines]
@@ -134,20 +135,29 @@ flowchart TD
 
 Notes:
 
-- Events are read via `CalendarContract.Instances`, which expands recurring events. The app queries the instances
-  URI directly with a selection on the calendar id, because `Instances.query()` only returns calendars marked as
-  visible: hiding the alarm calendar in a calendar app must not silence its alarms. Its alarms still appear in the
-  48 h preview on the home screen.
-- An empty result is valid. If the calendar has no events in the horizon, the planned alarms that have not started
-  are removed. The app does not try to tell this apart from a sync problem: missing alarms show in the 48 h preview,
+- Events are read via `CalendarContract.Instances`, which expands recurring events. One query reads all the alarm
+  calendars: the app queries the instances URI directly with the selection `calendar_id IN (?, ...)` and the ids as
+  selection arguments, because `Instances.query()` only returns calendars marked as visible: hiding an alarm calendar in
+  a calendar app must not silence its alarms. Its alarms still appear in the 48 h preview on the home screen.
+- An alarm's key holds the event id and the start time. Event ids are unique across calendars, so the key needs no
+  calendar, and the alarms planned from one calendar kept their keys when several became possible.
+- An empty result is valid. If an alarm calendar has no events in the horizon, its planned alarms that have not started
+  are removed. The same goes for unticking a calendar, through the normal diff: its alarms that have not started are
+  removed, and one that has started goes on. The app does not try to tell this apart from a sync problem: missing alarms show in the 48 h preview,
   and sync problems show in the sync app (DAVx⁵, ICSx⁵).
 - A failed read is different from an empty result. If the provider returns no result or the calendar permission was
   revoked, the run ends with `PlanFailed` and the planned alarms stay (fail-safe).
 - **A calendar that is gone is a failed read, not an empty result.** `Instances` selects by calendar id, so a calendar
   that was deleted or re-created under a new id gives an empty cursor, like one without events. `AndroidCalendarRepository`
-  therefore checks in `Calendars` that the id exists before it reads the events, and throws `CalendarGoneException`. The
-  run ends with `PlanFailed` and the failure `CALENDAR_GONE`; the planned alarms stay, and the home banner, the diagnostics
-  and the notification say to choose another calendar. The failure is stored by name, so the new value needs no migration.
+  therefore checks in `Calendars` that every id exists before it reads the events, and throws `CalendarGoneException` if
+  any does not. The run ends with `PlanFailed` and the failure `CALENDAR_GONE`; all planned alarms stay, also those of the
+  calendars that are still there, and the home banner, the diagnostics and the notification say to untick it. Screen 4
+  lists a chosen calendar that is gone, so that it can be unticked: it would otherwise stay chosen for good, and every run
+  would fail. Without any calendars to list, which is also how a missing permission looks, it does not. The failure is
+  stored by name, so the value needs no migration.
+- **No calendar chosen is a failed run too.** Unticking every calendar ends the run with `PlanFailed` and the failure
+  `NO_CALENDAR`, without reading anything. The planned alarms stay, so that a moment between unticking one and ticking
+  another costs nothing, and the same three places say that none is chosen.
 - Every event instance in the horizon becomes an alarm at its start time. The title is the alarm's reason; the
   description and all other fields are ignored. All-day events have no wake-up time and are ignored
   silently. Cancelled events (`STATUS_CANCELED`) are ignored as well.
@@ -200,7 +210,7 @@ Planning runs in a unique WorkManager job (`REPLACE` policy), so concurrent trig
 | Trigger                                   | Mechanism                                                                    |
 |-------------------------------------------|------------------------------------------------------------------------------|
 | Calendar data changed (sync, edit)        | WorkManager content-URI trigger on `CalendarContract.CONTENT_URI`, re-armed at the start of each run, before it reads the calendar |
-| Settings changed in the app               | Direct call from the UI (alarm calendar or alarm settings changed)           |
+| Settings changed in the app               | Direct call from the UI (alarm calendars or alarm settings changed)         |
 | Device boot / user unlock                 | `LOCKED_BOOT_COMPLETED` (restore alarms), `BOOT_COMPLETED` (re-plan)        |
 | Time or time zone changed                 | `TIME_SET`, `TIMEZONE_CHANGED`                                               |
 | App updated                               | `MY_PACKAGE_REPLACED`                                                        |
@@ -532,7 +542,7 @@ alarm with a trigger in the future (it is the only way to dismiss that alarm) an
 ```mermaid
 classDiagram
     class Settings {
-        alarmCalendar: CalendarId
+        alarmCalendars: Set~CalendarId~
         sound: SoundRef
         vibrate: Boolean
         volumeRampSeconds: Int
@@ -573,12 +583,14 @@ classDiagram
     PlanEntry ..> AlarmInstance : creates / updates
 ```
 
-Until the user changes them, the settings are: no alarm calendar, the phone's default alarm sound, no vibration, no volume ramp, the
+Until the user changes them, the settings are: no alarm calendars, the phone's default alarm sound, no vibration, no volume ramp, the
 system's alarm volume left as it is, a ring timeout of 3 minutes, a snooze of 10 minutes, no spoken title and no news.
 
 Every version of the database schema is kept in `data/schemas/`, as the basis for migrations. Phones hold real data, so
 a schema change gets a new version with a real migration, never a destructive fallback. Version 2 adds the nullable
-column `lateBy` (in milliseconds) to `alarm_instance`.
+column `lateBy` (in milliseconds) to `alarm_instance`. Version 3 replaces `alarmCalendarId` of `settings` with
+`alarmCalendarIds`, the sorted ids separated by commas (`3,9`), and empty if none is chosen. They stay in the single row of
+the settings, so that a choice is saved as one write. The migration keeps the chosen calendar.
 
 ## Future: Philips Hue (not in the MVP)
 

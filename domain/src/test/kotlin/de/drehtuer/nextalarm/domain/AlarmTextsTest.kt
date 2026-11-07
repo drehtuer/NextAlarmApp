@@ -36,8 +36,12 @@ class AlarmTextsTest {
         assertEquals(general, failSafeWarningText(null).text)
         assertEquals(general, failSafeWarningText(PlanningFailure.READ_FAILED).text)
         assertEquals(
-            "Your alarm calendar is no longer on this phone. Alarms already planned will still ring. Choose another calendar.",
+            "An alarm calendar is no longer on this phone. Alarms already planned will still ring. Untick it under Alarm calendars.",
             failSafeWarningText(PlanningFailure.CALENDAR_GONE).text,
+        )
+        assertEquals(
+            "No alarm calendar is chosen. Alarms already planned will still ring. Choose one in the settings.",
+            failSafeWarningText(PlanningFailure.NO_CALENDAR).text,
         )
         assertEquals("New alarms aren't being added", failSafeWarningText(null).title)
     }

@@ -13,10 +13,13 @@ data class NotificationText(
 /** The "Fail-safe warning" notification. */
 fun failSafeWarningText(failure: PlanningFailure?): NotificationText = NotificationText(
     "New alarms aren't being added",
-    if (failure == PlanningFailure.CALENDAR_GONE) {
-        "Your alarm calendar is no longer on this phone. Alarms already planned will still ring. Choose another calendar."
-    } else {
-        "NextAlarm can't read your calendar. Alarms already planned will still ring."
+    when (failure) {
+        PlanningFailure.CALENDAR_GONE ->
+            "An alarm calendar is no longer on this phone. Alarms already planned will still ring. Untick it under " +
+                "$ALARM_CALENDARS_TITLE."
+        PlanningFailure.NO_CALENDAR ->
+            "No alarm calendar is chosen. Alarms already planned will still ring. Choose one in the settings."
+        else -> "NextAlarm can't read your calendar. Alarms already planned will still ring."
     },
 )
 

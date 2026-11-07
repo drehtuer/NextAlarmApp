@@ -33,9 +33,11 @@ import de.drehtuer.nextalarm.domain.buildLogExport
 import de.drehtuer.nextalarm.domain.buildNews
 import de.drehtuer.nextalarm.domain.calendarFact
 import de.drehtuer.nextalarm.domain.calendarSummary
+import de.drehtuer.nextalarm.domain.chosenCalendars
 import de.drehtuer.nextalarm.domain.diagnosticsSummary
 import de.drehtuer.nextalarm.domain.soundRejectionText
 import de.drehtuer.nextalarm.domain.testAlarmEntry
+import de.drehtuer.nextalarm.domain.withAlarmCalendar
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -88,7 +90,7 @@ data class AppState(
     val setupDone: Boolean = false,
     val home: HomeModel = HomeModel(null, emptyList(), null, null, null),
     val calendars: List<DeviceCalendar> = emptyList(),
-    val selectedCalendar: CalendarId? = null,
+    val selectedCalendars: Set<CalendarId> = emptySet(),
     val alarmSettings: AlarmSettingsModel = buildAlarmSettings(Settings.DEFAULT, null, null, null),
     val news: NewsModel = buildNews(NewsDraft(), null, Instant.EPOCH, ZoneOffset.UTC),
     val diagnosticsSummary: String = diagnosticsSummary(PlannerRecord.INITIAL, ZoneOffset.UTC),
@@ -97,7 +99,7 @@ data class AppState(
         emptyList(),
         Instant.EPOCH,
         ZoneOffset.UTC,
-        calendarSummary(null),
+        calendarSummary(emptyList()),
         false,
     ),
     /** True from asking for a test alarm until it rings. */
@@ -188,8 +190,8 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         val record: PlannerRecord = ports.planner.load()
         val calendars = readCalendars()
         val alarms = ports.alarms.all()
-        val selected = settings.alarmCalendar
-        val calendar = calendars.find { it.id == selected }
+        val selected = settings.alarmCalendars
+        val chosen = chosenCalendars(selected, calendars)
         val now = ports.now()
         val zone = ports.zone()
         val phone = ports.phone
@@ -200,9 +202,9 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
             it.copy(
                 loaded = true,
                 setupDone = record.state != PlannerState.Unconfigured,
-                home = buildHome(now, zone, alarms, record, calendar, notificationsAllowed),
+                home = buildHome(now, zone, alarms, record, chosen, notificationsAllowed),
                 calendars = calendars,
-                selectedCalendar = selected,
+                selectedCalendars = selected,
                 alarmSettings = buildAlarmSettings(settings, soundName, volume, soundRejection),
                 diagnosticsSummary = diagnosticsSummary(record, zone),
                 diagnostics = buildDiagnostics(
@@ -210,7 +212,7 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
                     alarms,
                     now,
                     zone,
-                    calendarFact(selected, calendar, record.lastRun?.failure),
+                    calendarFact(selected, chosen, record.lastRun?.failure),
                     phone.fullScreenAllowed(),
                     notificationsAllowed,
                 ),
@@ -218,8 +220,9 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         }
     }
 
-    /** Choosing a calendar counts at once. Before setup is finished, the planner ignores the request. */
-    fun chooseCalendar(calendar: CalendarId) = changeSettings { it.copy(alarmCalendar = calendar) }
+    /** Ticking or unticking a calendar counts at once. Before setup is finished, the planner ignores the request. */
+    fun setCalendarTicked(calendar: CalendarId, ticked: Boolean) =
+        changeSettings { it.withAlarmCalendar(calendar, ticked) }
 
     fun completeSetup() {
         viewModelScope.launch {
