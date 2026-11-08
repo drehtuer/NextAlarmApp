@@ -54,6 +54,7 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-and-quality
+          config-file: ./.github/codeql/codeql-config.yml
 
       # CodeQL sees only what is compiled in this run: no build cache, and the Kotlin compiler in Gradle's own process.
       - if: matrix.build-mode == 'manual'
