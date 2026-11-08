@@ -23,6 +23,7 @@ import de.drehtuer.nextalarm.planning.alarmUri
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -400,7 +401,20 @@ class AlarmReceiversTest {
     @Test
     fun `the locked boot receiver runs the sweep`() {
         val instance = stored(AlarmState.Announcing)
-        context.sendBroadcast(Intent(context, LockedBootReceiver::class.java))
+        context.sendBroadcast(Intent(context, LockedBootReceiver::class.java).setAction(Intent.ACTION_LOCKED_BOOT_COMPLETED))
         awaitUntil { state(instance.id) == AlarmState.Done }
     }
+
+    /**
+     * Called directly, outside a real broadcast, a receiver has no pending result to hand out, so one that went on to
+     * the sweep would fail at `goAsync`. The application's own sweep at start makes watching the alarms no proof.
+     */
+    @Test
+    fun `the locked boot receiver ignores any other broadcast`() {
+        val receiver = LockedBootReceiver()
+        receiver.onReceive(context, Intent())
+        receiver.onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
+        assertFailsWith<NullPointerException> { receiver.onReceive(context, Intent(Intent.ACTION_LOCKED_BOOT_COMPLETED)) }
+    }
 }
+

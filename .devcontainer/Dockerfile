@@ -1,6 +1,7 @@
 # Development container for NextAlarm: JDK and Android SDK for building and unit testing on the JVM.
 # See docs/development.md.
-FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+# Pinned by digest, which Dependabot keeps up to date, so that a changed image cannot slip into the build.
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae
 
 # Android SDK packages. Versions and checksums are taken from
 # https://dl.google.com/android/repository/repository2-3.xml

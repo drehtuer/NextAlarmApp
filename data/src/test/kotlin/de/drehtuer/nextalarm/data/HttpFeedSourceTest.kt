@@ -129,6 +129,25 @@ class HttpFeedDownloaderTest {
     }
 
     @Test
+    fun `a redirect to an address that is not valid is refused`() {
+        val result = downloader { FakeConnection(it, code = 302, location = "/a b") }.download("https://a.example/", 100)
+        assertEquals(FeedDownload.Failed(FeedFailure.InvalidAddress), result)
+        assertEquals(1, opened.size)
+    }
+
+    @Test
+    fun `a redirect is resolved like a browser does`() {
+        assertEquals("https://b.example/x", resolveRedirect("https://a.example/feed", "https://b.example/x"))
+        assertEquals("https://a.example/a/new", resolveRedirect("https://a.example/a/old?q=1", "new"))
+        assertEquals("https://a.example/top", resolveRedirect("https://a.example/a/old", "/top"))
+        assertEquals("https://a.example/new", resolveRedirect("https://a.example", "new"))
+        assertEquals("https://a.example/new", resolveRedirect("https://a.example?q=1", "new"))
+        assertEquals("https://a.example/?q=2", resolveRedirect("https://a.example?q=1", "?q=2"))
+        assertEquals("https://user@a.example:8443/new", resolveRedirect("https://user@a.example:8443", "new"))
+        assertEquals(null, resolveRedirect("https://a.example/", "/a b"))
+    }
+
+    @Test
     fun `a redirect that does not say where to is an error`() {
         val result = downloader { FakeConnection(it, code = 302, message = "Found") }.download("https://a.example/", 100)
         assertEquals(FeedDownload.Failed(FeedFailure.Http(302, "Found")), result)

@@ -223,8 +223,19 @@ class PlanningTest {
 
     @Test
     fun `the boot, clock and update broadcasts ask for a re-plan`() {
-        ReplanReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
-        assertTrue(work(PlanningWork.REPLAN_WORK).tags.contains(ReplanWorker::class.java.name))
+        ReplanReceiver.ACTIONS.forEach { action ->
+            workManager.cancelAllWork().result.get()
+            workManager.pruneWork().result.get()
+            ReplanReceiver().onReceive(context, Intent(action))
+            assertTrue(work(PlanningWork.REPLAN_WORK).tags.contains(ReplanWorker::class.java.name), action)
+        }
+    }
+
+    @Test
+    fun `any other broadcast asks for nothing`() {
+        ReplanReceiver().onReceive(context, Intent("de.example.SOMETHING_ELSE"))
+        ReplanReceiver().onReceive(context, Intent())
+        assertTrue(workManager.getWorkInfosForUniqueWork(PlanningWork.REPLAN_WORK).get().isEmpty())
     }
 
 }
@@ -236,12 +247,8 @@ class PlanningManifestTest {
 
     @Test
     fun `the receiver listens for every re-planning broadcast`() {
-        listOf(
-            Intent.ACTION_BOOT_COMPLETED,
-            Intent.ACTION_TIME_CHANGED,
-            Intent.ACTION_TIMEZONE_CHANGED,
-            Intent.ACTION_MY_PACKAGE_REPLACED,
-        ).forEach { action ->
+        assertEquals(4, ReplanReceiver.ACTIONS.size)
+        ReplanReceiver.ACTIONS.forEach { action ->
             val receivers = context.packageManager.queryBroadcastReceivers(Intent(action).setPackage(context.packageName), 0)
             assertEquals(listOf(ReplanReceiver::class.java.name), receivers.map { it.activityInfo.name }, action)
         }
