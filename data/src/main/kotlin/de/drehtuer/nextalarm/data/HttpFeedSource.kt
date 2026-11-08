@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.time.Duration
 import kotlinx.coroutines.CoroutineDispatcher
@@ -54,13 +55,13 @@ class HttpFeedDownloader(
         repeat(MAX_REDIRECTS + 1) {
             if (!isWebAddress(address)) return FeedDownload.Failed(FeedFailure.InvalidAddress)
             addresses += address
-            val connection = open(URL(address))
+            val connection = open(URI(address).toURL())
             try {
                 configure(connection)
                 val code = connection.responseCode
                 val location = if (code in REDIRECTS) connection.getHeaderField("Location") else null
                 if (location == null) return answer(connection, code, maxBytes, deadline, addresses)
-                address = URL(URL(address), location).toString()
+                address = resolveRedirect(address, location) ?: return FeedDownload.Failed(FeedFailure.InvalidAddress)
             } finally {
                 connection.disconnect()
             }
@@ -111,4 +112,20 @@ class HttpFeedDownloader(
         val SUCCESS = 200..299
         val REDIRECTS = setOf(301, 302, 303, 307, 308)
     }
+}
+
+/**
+ * Where a redirect leads, relative to [address], which is a web address. Empty if the server sent no valid address. An
+ * address without a path is taken as one ending in "/", because `URI.resolve` would glue a relative path to the host.
+ */
+internal fun resolveRedirect(address: String, location: String): String? = try {
+    val uri = URI(address)
+    val base = if (uri.rawPath.isNullOrEmpty()) {
+        URI("${uri.scheme}://${uri.rawAuthority}/" + (uri.rawQuery?.let { "?$it" } ?: ""))
+    } else {
+        uri
+    }
+    base.resolve(location).toString()
+} catch (_: IllegalArgumentException) {
+    null
 }

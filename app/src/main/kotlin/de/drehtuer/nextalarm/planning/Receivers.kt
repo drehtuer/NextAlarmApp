@@ -8,10 +8,24 @@ import dagger.hilt.android.AndroidEntryPoint
 import de.drehtuer.nextalarm.ringing.AlarmBroadcasts
 import javax.inject.Inject
 
-/** Boot, clock changes and app updates each ask for a re-plan. See the manifest for the list. */
+/**
+ * Boot, clock changes and app updates each ask for a re-plan. See the manifest for the list. Only the system sends
+ * these, and the receiver is not exported, but anything else that reaches it is ignored all the same.
+ */
 class ReplanReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action !in ACTIONS) return
         PlanningWork(WorkManager.getInstance(context)).requestReplan()
+    }
+
+    companion object {
+        /** The broadcasts the manifest registers this receiver for. */
+        val ACTIONS = setOf(
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+        )
     }
 }
 

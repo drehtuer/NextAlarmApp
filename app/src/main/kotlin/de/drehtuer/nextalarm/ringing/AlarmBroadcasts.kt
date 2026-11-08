@@ -115,13 +115,17 @@ class AlarmActionReceiver : BroadcastReceiver() {
     }
 }
 
-/** The phone booted and has not been unlocked yet. See docs/architecture.md#direct-boot. */
+/**
+ * The phone booted and has not been unlocked yet. See docs/architecture.md#direct-boot. Any other broadcast that reaches
+ * it is ignored.
+ */
 @AndroidEntryPoint
 class LockedBootReceiver : BroadcastReceiver() {
     @Inject
     lateinit var broadcasts: AlarmBroadcasts
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_LOCKED_BOOT_COMPLETED) return
         broadcasts.sweep(goAsync()::finish)
     }
 }

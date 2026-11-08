@@ -106,6 +106,22 @@ The Android SDK versions in `.devcontainer/Dockerfile` and in the workflows are 
 [Updating SDK versions](#updating-sdk-versions). Keep them in line in `build.yml`, `codeql.yml` and
 `dependency-submission.yml`.
 
+**Security floors for the build tools.** Alerts for libraries that only the build tools use (the Android Gradle plugin,
+lint, JaCoCo, KSP, Hilt) can't be fixed by a Dependabot pull request, because no build file names them. `settings.gradle.kts`
+raises each of them to its first fixed version (`securityFloors`), in every configuration of every project and in the
+build scripts' classpath; none of them ships in the APK. For a new alert of this kind, add the library and its fixed
+version there and regenerate the checksums. Remove an entry once the tools require a fixed version themselves; `./gradlew
+:app:dependencies` shows a raised version as `->` with the reason "security floor".
+
+**Alerts that are not fixed in the code:**
+
+- CodeQL's `java/local-variable-is-never-read` on the first line of files with a `data object`: the variable is in the
+  `equals` that the Kotlin compiler generates, not in our code. These are dismissed as false positives.
+- Scorecard's checks for code review, branch protection, maintenance, fuzzing, the OpenSSF best-practices badge and CI
+  tests describe how the repository is run (one maintainer, a young project), not a flaw in it. They stay open as a
+  reminder, and are not dismissed. The Gradle wrapper JAR (`BinaryArtifacts`) is checked by `gradle/actions/setup-gradle`
+  against Gradle's published checksums on every CI run.
+
 CodeQL runs as a workflow (advanced setup), because Kotlin is only analysed while it is compiled. The default setup
 under **Settings → Code security** must stay off, as the two cannot run side by side.
 
