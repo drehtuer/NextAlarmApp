@@ -175,7 +175,11 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
 
 ### 2 Home
 
-- **Top bar:** "NextAlarm", with a settings icon button (sliders icon, content description "Settings").
+- **Top bar:** "NextAlarm", with two icon buttons:
+  - Sync (refresh icon, content description "Sync now"): asks the accounts of the alarm calendars to sync, such as
+    DAVx⁵, and plans again at once. It is off from the tap until the re-plan has been asked for, so that a second tap
+    does not ask twice. The footer's "Checked …" time shows when the planner last read the calendar.
+  - Settings (sliders icon, content description "Settings").
 - **Fail-safe banner** (`errorContainer`, warning icon, only in `FailSafe`):
   - Title: "New alarms aren't being added"
   - Body: "NextAlarm couldn't read your calendar at 19:58. The alarms below will still ring. Anything you add or change in

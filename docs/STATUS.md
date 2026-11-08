@@ -144,3 +144,4 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | 10.4 | Hue: scene recall    | `Not started` | Answers Q-H4.          |
 | 10.5 | Hue: lead time       | `Not started` |                        |
 | 10.6 | Hue: silent alarm    | `Not started` |                        |
+| 10.7 | Sync now on home     | `In progress` | Built and unit tested. Still to check on the phone: that DAVx⁵ syncs when asked, and that a new event shows on home. |

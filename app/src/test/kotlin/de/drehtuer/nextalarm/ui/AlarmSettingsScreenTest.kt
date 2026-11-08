@@ -46,6 +46,10 @@ class RecordingActions : AppActions {
     /** The same for the preview of the sound on screen 5. */
     val previewLifecycle = mutableListOf<String>()
 
+    override fun syncNow() {
+        calls += "sync"
+    }
+
     override fun importSound(uri: Uri) {
         calls += "import:$uri"
     }

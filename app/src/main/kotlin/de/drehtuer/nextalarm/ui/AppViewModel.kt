@@ -11,6 +11,7 @@ import de.drehtuer.nextalarm.domain.AlarmRepository
 import de.drehtuer.nextalarm.domain.AlarmSettingsModel
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.CalendarRepository
+import de.drehtuer.nextalarm.domain.CalendarSync
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import de.drehtuer.nextalarm.domain.DiagnosticsModel
 import de.drehtuer.nextalarm.domain.HomeModel
@@ -39,6 +40,7 @@ import de.drehtuer.nextalarm.domain.calendarSummary
 import de.drehtuer.nextalarm.domain.chosenCalendars
 import de.drehtuer.nextalarm.domain.diagnosticsSummary
 import de.drehtuer.nextalarm.domain.soundRejectionText
+import de.drehtuer.nextalarm.domain.syncAccounts
 import de.drehtuer.nextalarm.domain.testAlarmEntry
 import de.drehtuer.nextalarm.domain.withAlarmCalendar
 import de.drehtuer.nextalarm.domain.withPreview
@@ -67,6 +69,8 @@ class AppPorts(
     val planner: PlannerRepository,
     val alarms: AlarmRepository,
     val calendars: CalendarRepository,
+    /** For "Sync now" on home. */
+    val calendarSync: CalendarSync,
     val engine: PlannerEngine,
     /** Rings the test alarm. */
     val alarmEngine: AlarmEngine,
@@ -113,7 +117,15 @@ data class AppState(
     val testAlarmPending: Boolean = false,
     /** How the last log export went. */
     val logNote: String? = null,
+    /** True from tapping "Sync now" until the re-plan it asked for has been requested. */
+    val syncPending: Boolean = false,
 )
+
+/** What screen 2 can ask for. */
+interface HomeActions {
+    /** Asks the accounts of the alarm calendars to sync, and plans again from what the phone has now. */
+    fun syncNow()
+}
 
 /** What screen 5 can ask for. */
 interface AlarmSettingsActions {
@@ -152,7 +164,7 @@ interface NewsActions {
     fun turnOffNews()
 }
 
-interface AppActions : AlarmSettingsActions, NewsActions, DiagnosticsActions
+interface AppActions : HomeActions, AlarmSettingsActions, NewsActions, DiagnosticsActions
 
 @HiltViewModel
 class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(), AppActions {
@@ -238,6 +250,25 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
                     notificationsAllowed,
                 ),
             )
+        }
+    }
+
+    /**
+     * The re-plan runs at once, from what the phone has now. What the sync fetches later reaches the planner through the
+     * calendar trigger. Tapping again while a request is on its way does not add another.
+     */
+    override fun syncNow() {
+        if (mutableState.value.syncPending) return
+        mutableState.update { it.copy(syncPending = true) }
+        viewModelScope.launch {
+            try {
+                val accounts = syncAccounts(ports.settings.load().alarmCalendars, readCalendars())
+                withContext(ports.io) { ports.calendarSync.requestSync(accounts) }
+                ports.engine.replanRequested()
+                refresh()
+            } finally {
+                mutableState.update { it.copy(syncPending = false) }
+            }
         }
     }
 

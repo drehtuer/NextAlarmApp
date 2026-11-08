@@ -151,6 +151,8 @@ fun NextAlarmApp(
         )
         else -> HomeScreen(
             state.home,
+            syncPending = state.syncPending,
+            onSyncNow = actions::syncNow,
             onSettings = { stack = stack + Route.SETTINGS.name },
             onDiagnostics = { stack = stack + Route.DIAGNOSTICS.name },
         )

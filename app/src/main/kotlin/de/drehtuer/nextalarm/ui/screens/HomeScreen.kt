@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -32,12 +33,25 @@ import de.drehtuer.nextalarm.domain.HomeRow
 import de.drehtuer.nextalarm.ui.theme.ListTimeStyle
 import de.drehtuer.nextalarm.ui.theme.outlinedButtonBorder
 
-/** Screen 2. Read-only, because alarms are changed in the calendar app. */
+/**
+ * Screen 2. Read-only, because alarms are changed in the calendar app. "Sync now" is off while [syncPending], so that
+ * tapping twice does not ask twice.
+ */
 @Composable
-fun HomeScreen(model: HomeModel, onSettings: () -> Unit, onDiagnostics: () -> Unit) {
+fun HomeScreen(
+    model: HomeModel,
+    onSettings: () -> Unit,
+    onDiagnostics: () -> Unit,
+    syncPending: Boolean = false,
+    onSyncNow: () -> Unit = {},
+) {
     Scaffold(
         topBar = {
             NextAlarmTopBar("NextAlarm", actions = {
+                // The icon button dims its content while it is off, so the icon takes that colour.
+                IconButton(onClick = onSyncNow, enabled = !syncPending) {
+                    SymbolIcon(R.drawable.ic_refresh, SYNC_NOW, tint = LocalContentColor.current)
+                }
                 IconButton(onClick = onSettings) { SymbolIcon(R.drawable.ic_settings, "Settings") }
             })
         },
@@ -183,3 +197,6 @@ private fun Chip(text: String) {
 
 /** The design's 72 dp plus room for a time with seconds, which it requires too and which does not fit in 72 dp. */
 private val WIDE_TIME = 100.dp
+
+/** The content description of the sync button, and what tests look for. */
+const val SYNC_NOW = "Sync now"

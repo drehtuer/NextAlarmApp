@@ -6,6 +6,7 @@ import de.drehtuer.nextalarm.data.db.NextAlarmDatabase
 import de.drehtuer.nextalarm.domain.AlarmRepository
 import de.drehtuer.nextalarm.domain.AlarmScheduler
 import de.drehtuer.nextalarm.domain.CalendarRepository
+import de.drehtuer.nextalarm.domain.CalendarSync
 import de.drehtuer.nextalarm.domain.FeedSource
 import de.drehtuer.nextalarm.domain.PlannerRepository
 import de.drehtuer.nextalarm.domain.SavedAlarmVolume
@@ -19,6 +20,9 @@ class DataComponents(private val context: Context) {
     val planner: PlannerRepository by lazy { RoomPlannerRepository(database.planner()) }
     val alarms: AlarmRepository by lazy { RoomAlarmRepository(database.alarms()) }
     val calendars: CalendarRepository by lazy { AndroidCalendarRepository(context.contentResolver) }
+
+    /** Asks the calendar accounts to sync, for "Sync now" on home. */
+    val calendarSync: CalendarSync by lazy { AndroidCalendarSync() }
     val sounds: SoundStore by lazy { SoundStore(context) }
 
     /** The user's alarm volume while an alarm has changed it. */
