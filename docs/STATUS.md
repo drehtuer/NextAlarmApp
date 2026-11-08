@@ -20,7 +20,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | Concept and architecture documents        | `Done` | Later decisions are updated as they come. |
 | [Dev container](development.md)           | `Done` | Merged in #4.                           |
 | [Documentation site](development.md#documentation-site) | `Done` | Built with Jekyll and published to GitHub Pages on every release. |
-| [Releases](development.md#releases) | `Done` | Signed release APK built and published from a version tag. [0.1.0](https://github.com/drehtuer/NextAlarmApp/releases/tag/v0.1.0) published on 2026-11-07 as a pre-release; certificate SHA-256 `6aa7a127…be73210d`. |
+| [Releases](development.md#releases) | `Done` | Signed release APK built and published from a version tag. Pre-releases: [0.1.0](https://github.com/drehtuer/NextAlarmApp/releases/tag/v0.1.0) on 2026-11-07, [0.2.0](https://github.com/drehtuer/NextAlarmApp/releases/tag/v0.2.0) (Sync now, security fixes) on 2026-11-08. Certificate SHA-256 `6aa7a127…be73210d`. |
 | [Dependency updates and security](development.md#dependency-updates-and-security) | `Done` | Dependabot, CodeQL, OpenSSF Scorecard, [security policy](SECURITY.md). |
 
 ## Device checks
