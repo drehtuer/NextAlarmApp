@@ -62,6 +62,11 @@ class DataComponentsTest {
     }
 
     @Test
+    fun `calendar accounts can be asked to sync`() {
+        assertTrue(components.calendarSync is AndroidCalendarSync)
+    }
+
+    @Test
     fun `the sound store always offers the bundled sound`() {
         assertEquals(SoundSource.Bundled(R.raw.alarm_fallback), components.sounds.sources(SoundRef.SystemDefault).last())
     }

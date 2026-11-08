@@ -143,3 +143,4 @@ Run on the Pixel 10a with [wireless debugging](development.md#running-on-the-pix
 | 10.4 | Hue: recall a scene with ramp-up and maximum brightness. Test the bridge's transition limit to answer Q-H4. | [Philips Hue](architecture.md#future-philips-hue-not-in-the-mvp) |
 | 10.5 | Hue: configurable lead time for the sunrise effect. | [Philips Hue](architecture.md#future-philips-hue-not-in-the-mvp) |
 | 10.6 | Hue: silent alarm that turns the light off. | [Philips Hue](architecture.md#future-philips-hue-not-in-the-mvp) |
+| 10.7 | "Sync now" on home: asks the alarm calendars' accounts to sync, and re-plans. | [Re-planning triggers](architecture.md#re-planning-triggers), [design](design.md#2-home) |

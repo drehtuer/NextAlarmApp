@@ -18,7 +18,6 @@ private val WEEKDAY_AND_TIME = DateTimeFormatter.ofPattern("EEEE HH:mm", Locale.
 
 private const val DAVX_ACCOUNT_TYPE = "bitfire.at.davdroid"
 private const val ICSX_ACCOUNT_TYPE = "at.bitfire.icsdroid"
-private const val LOCAL_ACCOUNT_TYPE = "LOCAL"
 
 data class HomeHero(
     val label: String,
@@ -282,7 +281,7 @@ private fun calendarSource(calendar: DeviceCalendar): String? = when (calendar.a
 private fun calendarGroupLabel(calendar: DeviceCalendar): String {
     val source = calendarSource(calendar)
     return when {
-        calendar.accountType == LOCAL_ACCOUNT_TYPE -> "On this phone"
+        calendar.accountType == LOCAL_CALENDAR_ACCOUNT_TYPE -> "On this phone"
         source != null && calendar.accountName != null -> "$source · ${calendar.accountName}"
         source != null -> source
         else -> calendar.accountName ?: "On this phone"

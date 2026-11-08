@@ -53,6 +53,7 @@ import de.drehtuer.nextalarm.domain.buildAlarmSettings
 import de.drehtuer.nextalarm.domain.Settings as DomainSettings
 import de.drehtuer.nextalarm.ui.screens.CalendarScreen
 import de.drehtuer.nextalarm.ui.screens.HomeScreen
+import de.drehtuer.nextalarm.ui.screens.SYNC_NOW
 import de.drehtuer.nextalarm.ui.screens.OnboardingScreen
 import de.drehtuer.nextalarm.ui.screens.PermissionCard
 import de.drehtuer.nextalarm.ui.screens.SettingsScreen
@@ -123,6 +124,24 @@ class ScreensTest {
             "Snoozed until 07:15",
             "From the calendar “NextAlarm” (DAVx⁵).",
         ).forEach { rule.onNodeWithText(it).assertIsDisplayed() }
+    }
+
+    @Test
+    fun `home's sync button asks for a sync`() {
+        var asked = 0
+        rule.setContent { NextAlarmTheme(dark = false) { HomeScreen(empty, {}, {}, onSyncNow = { asked++ }) } }
+        rule.onNodeWithContentDescription(SYNC_NOW).assertIsEnabled().performClick()
+        assertEquals(1, asked)
+    }
+
+    @Test
+    fun `home's sync button is off while a sync is on its way`() {
+        var asked = 0
+        rule.setContent {
+            NextAlarmTheme(dark = false) { HomeScreen(empty, {}, {}, syncPending = true, onSyncNow = { asked++ }) }
+        }
+        rule.onNodeWithContentDescription(SYNC_NOW).assertIsNotEnabled().performClick()
+        assertEquals(0, asked)
     }
 
     @Test
@@ -842,6 +861,16 @@ class NewsLifecycleTest {
         rule.waitForIdle()
         hide()
         assertTrue("stopTest" in actions.newsLifecycle)
+    }
+
+    @Test
+    fun `home's sync button reaches the app, and is off while a sync is on its way`() {
+        var state by mutableStateOf(AppState(loaded = true, setupDone = true))
+        rule.setContent { NextAlarmTheme(dark = false) { NextAlarmApp(state, 0, { _, _ -> }, {}, actions) } }
+        rule.onNodeWithContentDescription(SYNC_NOW).performClick()
+        assertEquals(listOf("sync"), actions.calls)
+        state = state.copy(syncPending = true)
+        rule.onNodeWithContentDescription(SYNC_NOW).assertIsNotEnabled()
     }
 
     @Test

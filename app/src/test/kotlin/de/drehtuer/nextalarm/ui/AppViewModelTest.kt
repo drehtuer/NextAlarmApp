@@ -36,7 +36,9 @@ import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.AlarmKey
 import de.drehtuer.nextalarm.domain.AlarmState
 import de.drehtuer.nextalarm.domain.CalendarEvent
+import de.drehtuer.nextalarm.domain.CalendarAccount
 import de.drehtuer.nextalarm.domain.CalendarId
+import de.drehtuer.nextalarm.domain.CalendarSync
 import de.drehtuer.nextalarm.domain.CalendarRepository
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import de.drehtuer.nextalarm.domain.PlannerEffects
@@ -89,6 +91,13 @@ private class FakeCalendars(var result: () -> List<DeviceCalendar> = { listOf(CA
     override suspend fun events(calendars: Set<CalendarId>, from: Instant, to: Instant) = emptyList<CalendarEvent>()
 }
 
+private class RecordingSync : CalendarSync {
+    val requests = mutableListOf<Set<CalendarAccount>>()
+    override fun requestSync(accounts: Set<CalendarAccount>) {
+        requests += accounts
+    }
+}
+
 private class RecordingEffects : PlannerEffects {
     val started = mutableListOf<Long>()
     override fun cancelPlanningJob() = Unit
@@ -126,6 +135,7 @@ class AppViewModelTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val data = DataComponents(context)
     private val calendars = FakeCalendars()
+    private val sync = RecordingSync()
     private val effects = RecordingEffects()
     private val changes = MutableSharedFlow<Unit>()
     private val scheduler = FakeScheduler()
@@ -146,6 +156,7 @@ class AppViewModelTest {
             planner = data.planner,
             alarms = data.alarms,
             calendars = calendars,
+            calendarSync = sync,
             engine = engine,
             alarmEngine = alarmEngine,
             planningChanges = changes,
@@ -227,6 +238,48 @@ class AppViewModelTest {
         settle()
         viewModel.stopWatching()
         assertFalse(viewModel.state.value.loaded)
+    }
+
+    @Test
+    fun `sync now asks the accounts of the chosen calendars to sync, and re-plans`() = runBlocking {
+        val work = DeviceCalendar(CalendarId(2), "Work", "me@work.example", "com.google", null)
+        calendars.result = { listOf(CALENDAR, work) }
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id)))
+        engine.setupCompleted()
+        viewModel.syncNow()
+        assertTrue(viewModel.state.value.syncPending)
+        awaitState { it.loaded && !it.syncPending }
+        assertEquals(listOf(setOf(CalendarAccount("me", "bitfire.at.davdroid"))), sync.requests)
+        assertEquals(listOf(1L, 2L), effects.started)
+        assertEquals(PlannerState.Planning, data.planner.load().state)
+    }
+
+    @Test
+    fun `sync now before setup is finished asks for a sync, but the planner ignores the re-plan`() {
+        viewModel.syncNow()
+        awaitState { it.loaded && !it.syncPending }
+        assertEquals(listOf(emptySet<CalendarAccount>()), sync.requests)
+        assertTrue(effects.started.isEmpty())
+    }
+
+    @Test
+    fun `tapping sync now again while it is on its way asks only once`() = runBlocking {
+        engine.setupCompleted()
+        val gate = kotlinx.coroutines.CompletableDeferred<Settings>()
+        settings.gate = gate
+        viewModel.syncNow()
+        viewModel.syncNow()
+        settle()
+        assertTrue(sync.requests.isEmpty())
+        settings.gate = null
+        gate.complete(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id)))
+        awaitState { it.loaded && !it.syncPending }
+        assertEquals(1, sync.requests.size)
+        assertEquals(listOf(1L, 2L), effects.started)
+
+        viewModel.syncNow()
+        awaitState { !it.syncPending }
+        assertEquals(2, sync.requests.size)
     }
 
     @Test

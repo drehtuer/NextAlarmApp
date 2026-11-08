@@ -2,7 +2,7 @@
 
 The progress of each step in [TODO.md](TODO.md). Update this file in the same change that starts or finishes a step.
 
-**Last updated:** 2026-11-07
+**Last updated:** 2026-11-08
 
 **Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are merged in #20. The documentation is published as a GitHub Pages site with every release. No alarm has been heard on a real phone yet. Phase 9 needs the owner and an audible test. Hue is waiting for Q-H5.
 
@@ -143,3 +143,4 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | 10.4 | Hue: scene recall    | `Not started` | Answers Q-H4.          |
 | 10.5 | Hue: lead time       | `Not started` |                        |
 | 10.6 | Hue: silent alarm    | `Not started` |                        |
+| 10.7 | Sync now on home     | `In progress` | Built and unit tested. Still to check on the phone: that DAVx⁵ syncs when asked, and that a new event shows on home. |

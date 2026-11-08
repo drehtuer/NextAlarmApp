@@ -114,6 +114,7 @@ object PlanningModule {
         planner = data.planner,
         alarms = data.alarms,
         calendars = data.calendars,
+        calendarSync = data.calendarSync,
         engine = engine,
         alarmEngine = alarmEngine,
         planningChanges = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(PlanningWork.PLAN_WORK),

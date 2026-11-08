@@ -214,6 +214,7 @@ daily job is unique too, with the `KEEP` policy, so that it is not moved by ever
 |-------------------------------------------|------------------------------------------------------------------------------|
 | Calendar data changed (sync, edit)        | WorkManager content-URI trigger on `CalendarContract.CONTENT_URI`, re-armed at the start of each run, before it reads the calendar |
 | Settings changed in the app               | Direct call from the UI (alarm calendars or alarm settings changed)         |
+| "Sync now" on home                        | Direct call from the UI, after asking Android to sync the accounts of the chosen alarm calendars |
 | Device boot / user unlock                 | `LOCKED_BOOT_COMPLETED` (restore alarms), `BOOT_COMPLETED` (re-plan)        |
 | Time or time zone changed                 | `TIME_SET`, `TIMEZONE_CHANGED`                                               |
 | App updated                               | `MY_PACKAGE_REPLACED`                                                        |
@@ -226,6 +227,12 @@ applies the result only if it is still the current run. A failed read or a faile
 the planned alarms; a run replaced by a newer one is not a failure. Every successful run registers all waiting alarms
 with `AlarmManager` again, which also repairs an alarm whose registration a replaced run interrupted. The planner record
 keeps the last run's time, duration, alarm count and failure reason for the diagnostics screen.
+
+"Sync now" asks for a manual, expedited sync (`ContentResolver.requestSync` with the authority
+`CalendarContract.AUTHORITY`) of each account of a chosen alarm calendar, as a calendar app's refresh does, and then
+re-plans at once from what the phone has. No other account is asked, and calendars that only live on the phone (`LOCAL`)
+have nothing to sync. The request does not wait for the sync: when the sync app, such as DAVx⁵, writes new events, the
+calendar trigger starts another re-plan. An account that refuses the request is skipped, and logged.
 
 There is no pre-alarm check. If Doze delays the content-URI trigger, an edit made shortly before an alarm may not be
 picked up in time, and the alarm rings as last planned.
