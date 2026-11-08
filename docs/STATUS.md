@@ -2,9 +2,9 @@
 
 The progress of each step in [TODO.md](TODO.md). Update this file in the same change that starts or finishes a step.
 
-**Last updated:** 2026-11-07
+**Last updated:** 2026-11-08
 
-**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are merged in #20. The documentation is published as a GitHub Pages site with every release. No alarm has been heard on a real phone yet. Phase 9 needs the owner and an audible test. Hue is waiting for Q-H5.
+**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are merged in #20. The documentation is published as a GitHub Pages site with every release. The first real alarm rang audibly on the phone on 2026-11-08. The rest of phase 9 needs the owner. Hue is waiting for Q-H5.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -32,6 +32,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | 2026-11-07 | Pixel 10a, Android 17 (API 37)  | Silent device tests, build of `impl/device-tests`: a fired alarm rings at volume 0 and its screen opens by itself; Snooze; Dismiss; several alarms together; the bundled and default sounds open; Android's XML parser reads feeds and refuses entity tricks. | Pass   |
 | 2026-11-07 | Pixel 10a, Android 17 (API 37)  | Silent alarm through the real `AlarmManager`, with the process dead and the screen off: the foreground service was allowed, with type `systemExempted`; the alarm screen woke the phone over the lock screen; the player ran with no audio hardening mute, only the test's own volume 0. | Pass   |
 | 2026-11-07 | Pixel 10a, Android 17 (API 37)  | Build of `impl/audio-and-calendars`: the database upgrade to version 3 kept the chosen calendar; home lists real timed events from a DAVx⁵ calendar, registered with `AlarmManager` at the right times, with the matching "Next alarm" notification; a phone sound ("Prism") chosen through Android's sound picker is imported; **first audible sound: the play button on screen 5 plays it** (owner). A real alarm has not been heard yet. | Pass   |
+| 2026-11-08 | Pixel 10a, Android 17 (API 37)  | **First real alarm** (owner): the alarm fired and its sound was audible. | Pass   |
 | Postponed  | Pixel 10a, Android 17 (API 37)  | Phase 5 build with a timed event to test with: events on home, moved and deleted events, the next alarm notification. | Open   |
 
 ## Phase 0: Settle the concept gaps
@@ -130,7 +131,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | 9.1  | Instrumented tests | `In progress` | Merged in #15. Silent suite passes on the phone. Direct boot needs a reboot, so it needs the owner. |
 | 9.2  | Calendar sources   | `Not started` |       |
 | 9.3  | Reliability        | `Not started` |       |
-| 9.4  | Sound and wake-up  | `Not started` |       |
+| 9.4  | Sound and wake-up  | `In progress` | A real alarm rang audibly on 2026-11-08 (device checks). The other checks in TODO.md are still to do. |
 | 9.5  | Everyday use       | `Not started` |       |
 
 ## Phase 10: After the MVP
