@@ -115,8 +115,10 @@ version there and regenerate the checksums. Remove an entry once the tools requi
 
 **Alerts that are not fixed in the code:**
 
-- CodeQL's `java/local-variable-is-never-read` on the first line of files with a `data object`: the variable is in the
-  `equals` that the Kotlin compiler generates, not in our code. These are dismissed as false positives.
+- CodeQL's `java/local-variable-is-never-read`: every `data object` was reported on the first line of its file, because
+  the `equals` that the Kotlin compiler generates casts into a variable it never reads. The query is excluded in
+  `.github/codeql/codeql-config.yml`. Unused variables in the source are still reported by the Kotlin compiler and by
+  SonarCloud (`kotlin:S1481`).
 - Scorecard's checks for code review, branch protection, maintenance, fuzzing, the OpenSSF best-practices badge and CI
   tests describe how the repository is run (one maintainer, a young project), not a flaw in it. They stay open as a
   reminder, and are not dismissed. The Gradle wrapper JAR (`BinaryArtifacts`) is checked by `gradle/actions/setup-gradle`
