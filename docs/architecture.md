@@ -234,6 +234,19 @@ re-plans at once from what the phone has. No other account is asked, and calenda
 have nothing to sync. The request does not wait for the sync: when the sync app, such as DAVx⁵, writes new events, the
 calendar trigger starts another re-plan. An account that refuses the request is skipped, and logged.
 
+Android drops a sync request without a word, and without an exception, unless the app can see both the sync app and
+the account (the authority and account access checks of `ContentService.requestSync`, for apps that target API 33 or
+newer). This was found on the phone, where every request was dropped:
+
+- **The sync app:** the manifest's `<queries>` lists the `android.content.SyncAdapter` action, which makes every sync
+  app visible, such as DAVx⁵.
+- **The account:** another app's account is only visible once the user picks it in Android's account chooser
+  (`AccountManager.newChooseAccountIntent`), which stores it as visible to NextAlarm. "Sync now" therefore asks only the
+  accounts that `AccountManager.getAccountsByType` returns. For the first one it can't see, home shows the chooser with
+  only that account in it. Once the user has picked it, the sync is asked for again, which also offers the next such
+  account. An account already offered since the tap is not offered again, so a pick that did not take cannot bring the
+  chooser back. If the user leaves the chooser, nothing more is asked until the next tap.
+
 There is no pre-alarm check. If Doze delays the content-URI trigger, an edit made shortly before an alarm may not be
 picked up in time, and the alarm rings as last planned.
 

@@ -283,3 +283,15 @@ It stays silent through its ring timeout and snooze. Android may clear the regis
 stops the app: if the alarm does not fire, that is the first thing to check (`adb shell dumpsys alarm`), rather than a fault
 in the alarm path. Opening the app registers it again, through the recovery sweep. The second command starts a process of
 its own, so it finds no sound to stop unless the sweep rang the alarm in it, and it goes by the stored state.
+
+`AccountAccessDeviceTest` checks that Android's account chooser makes a sync account visible to the app, which "Sync now"
+needs (see [re-planning triggers](architecture.md#re-planning-triggers)). It needs someone at the phone to pick the
+account, so it only runs with the account type. It opens the app, shows the chooser and waits up to two minutes; the app
+closes when the test ends. A pick stays until the app is uninstalled.
+
+```bash
+adb shell am instrument -w -e class de.drehtuer.nextalarm.AccountAccessDeviceTest -e accountType bitfire.at.davdroid \
+    de.drehtuer.nextalarm.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+The silent suite grants the app the notification permission itself, so it also runs on a fresh install, before onboarding.

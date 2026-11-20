@@ -2,9 +2,9 @@
 
 The progress of each step in [TODO.md](TODO.md). Update this file in the same change that starts or finishes a step.
 
-**Last updated:** 2026-11-08
+**Last updated:** 2026-11-20
 
-**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are merged in #20. The documentation is published as a GitHub Pages site with every release. The first real alarm rang audibly on the phone on 2026-11-08. The rest of phase 9 needs the owner. Hue is waiting for Q-H5.
+**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are merged in #20. The documentation is published as a GitHub Pages site with every release. On 2026-11-20 most of phase 9 was run on the phone with the owner; every check passed, and the run found that "Sync now" never reached DAVx⁵, which is fixed. Still open: aCalendar and ICSx⁵ (9.2), everyday use (9.5) and the tile in a real System UI (10.1). Hue is waiting for Q-H5.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -33,7 +33,14 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | 2026-11-07 | Pixel 10a, Android 17 (API 37)  | Silent alarm through the real `AlarmManager`, with the process dead and the screen off: the foreground service was allowed, with type `systemExempted`; the alarm screen woke the phone over the lock screen; the player ran with no audio hardening mute, only the test's own volume 0. | Pass   |
 | 2026-11-07 | Pixel 10a, Android 17 (API 37)  | Build of `impl/audio-and-calendars`: the database upgrade to version 3 kept the chosen calendar; home lists real timed events from a DAVx⁵ calendar, registered with `AlarmManager` at the right times, with the matching "Next alarm" notification; a phone sound ("Prism") chosen through Android's sound picker is imported; **first audible sound: the play button on screen 5 plays it** (owner). A real alarm has not been heard yet. | Pass   |
 | 2026-11-08 | Pixel 10a, Android 17 (API 37)  | **First real alarm** (owner): the alarm fired and its sound was audible. | Pass   |
-| Postponed  | Pixel 10a, Android 17 (API 37)  | Phase 5 build with a timed event to test with: events on home, moved and deleted events, the next alarm notification. | Open   |
+| 2026-11-20 | Pixel 10a, Android 17 (API 37)  | Debug build of `main` (replaces release 0.2.0): silent suite, 13 tests. On a fresh install, `aFiredAlarmRingsAndDismissEndsIt` failed until onboarding had granted the notification permission; the test now grants it itself. | Pass   |
+| 2026-11-20 | Pixel 10a, Android 17 (API 37)  | The postponed phase 5 check: a timed event in the DAVx⁵ "Alarms" calendar is registered within seconds with the "Next alarm" notification; moved, it is registered at the new time only; deleted, its registration is gone. | Pass   |
+| 2026-11-20 | Pixel 10a, Android 17 (API 37)  | 9.2: `Instances` also returns an event that started before the query range (range start = event start + 1 s), so the planner's horizon is what keeps it out. | Pass   |
+| 2026-11-20 | Pixel 10a, Android 17 (API 37)  | 9.3 and 9.4 (owner): alarm under Doze with Do Not Disturb (priority) on and the phone locked rings audibly, with the full-screen alarm screen over the always-on display. Deep `IDLE` could not be forced (`QUICK_DOZE_DELAY`), so this ran under quick Doze. | Pass   |
+| 2026-11-20 | Pixel 10a, Android 17 (API 37)  | 9.4 (owner): after Dismiss on the lock screen, the title is spoken, a real RSS feed (Tagesschau) is read, and Stop in the lock screen's media controls ends it; a real podcast (Tagesschau in 100 Sekunden) plays and ends at the end of the episode. With airplane mode on, the alarm and title work and the news ends quietly. | Pass   |
+| 2026-11-20 | Pixel 10a, Android 17 (API 37)  | 9.3 (owner): with the calendar permission revoked, a planned alarm still rings; the next run ends in `FailSafe` (`NO_PERMISSION`) with the warning, and once the permission is back, the backoff retry plans again and the warning goes. | Pass   |
+| 2026-11-20 | Pixel 10a, Android 17 (API 37)  | 9.3 and 9.4 (owner): after a reboot, never unlocked, the alarm rings with the bundled sound (the phone's default sound can't be read before the first unlock), and the title and the podcast follow. With the phone off at the alarm time, the alarm rings 3 minutes late at boot with the "Late alarm" notification (`lateBy` 184 s). The "missed" case (over 60 minutes) is left to the unit tests. | Pass   |
+| 2026-11-20 | Pixel 10a, Android 17 (API 37)  | 10.7 (owner): "Sync now" never reached DAVx⁵: Android dropped the request because NextAlarm could see neither DAVx⁵ nor its account. Fixed with `<queries>` for sync adapters and Android's account chooser. After the fix, an event made in the Nextcloud web interface reached home with one tap, and the chooser came up once for an account NextAlarm could not see yet. | Pass   |
 
 ## Phase 0: Settle the concept gaps
 
@@ -128,10 +135,10 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 | Step | Topic              | Status        | Notes |
 |------|--------------------|---------------|-------|
-| 9.1  | Instrumented tests | `In progress` | Merged in #15. Silent suite passes on the phone. Direct boot needs a reboot, so it needs the owner. |
-| 9.2  | Calendar sources   | `Not started` |       |
-| 9.3  | Reliability        | `Not started` |       |
-| 9.4  | Sound and wake-up  | `In progress` | A real alarm rang audibly on 2026-11-08 (device checks). The other checks in TODO.md are still to do. |
+| 9.1  | Instrumented tests | `Done`        | Merged in #15. Silent suite passes on the phone, also on a fresh install. Direct boot was checked by hand with a reboot (9.3). `AccountAccessDeviceTest` checks the account chooser, with someone at the phone. |
+| 9.2  | Calendar sources   | `In progress` | DAVx⁵ and the `Instances` range checked on 2026-11-20. aCalendar and ICSx⁵ are still to do; neither is set up on the phone yet. |
+| 9.3  | Reliability        | `Done`        | Checked on 2026-11-20 (device checks). Deep Doze could not be forced; the "missed" case is left to the unit tests. |
+| 9.4  | Sound and wake-up  | `Done`        | Checked on 2026-11-20 (device checks). Improvements found are Q-W5 to Q-W9 and Q-R5 in [open questions](open_questions.md). |
 | 9.5  | Everyday use       | `Not started` |       |
 
 ## Phase 10: After the MVP
@@ -144,4 +151,4 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | 10.4 | Hue: scene recall    | `Not started` | Answers Q-H4.          |
 | 10.5 | Hue: lead time       | `Not started` |                        |
 | 10.6 | Hue: silent alarm    | `Not started` |                        |
-| 10.7 | Sync now on home     | `In progress` | Built and unit tested. Still to check on the phone: that DAVx⁵ syncs when asked, and that a new event shows on home. |
+| 10.7 | Sync now on home     | `Done`        | Checked on the phone on 2026-11-20, after fixing that Android dropped every request (device checks). |

@@ -50,6 +50,14 @@ class RecordingActions : AppActions {
         calls += "sync"
     }
 
+    override fun accountAccessShown() {
+        calls += "access shown"
+    }
+
+    override fun accountAccessAnswered(granted: Boolean) {
+        calls += "access:$granted"
+    }
+
     override fun importSound(uri: Uri) {
         calls += "import:$uri"
     }

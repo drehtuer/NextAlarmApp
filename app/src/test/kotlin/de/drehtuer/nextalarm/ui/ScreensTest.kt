@@ -38,6 +38,7 @@ import androidx.test.core.app.ApplicationProvider
 import de.drehtuer.nextalarm.data.SUPPORTED_SOUND_MIME_TYPES
 import de.drehtuer.nextalarm.domain.ALARM_CALENDARS_LEAD
 import de.drehtuer.nextalarm.domain.CHOOSE_CALENDARS_LEAD
+import de.drehtuer.nextalarm.domain.CalendarAccount
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.DeviceCalendar
 import de.drehtuer.nextalarm.domain.MISSING_CALENDARS_HEADER
@@ -67,6 +68,7 @@ import de.drehtuer.nextalarm.ui.theme.NextAlarmTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.lifecycle.Lifecycle
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -871,6 +873,50 @@ class NewsLifecycleTest {
         assertEquals(listOf("sync"), actions.calls)
         state = state.copy(syncPending = true)
         rule.onNodeWithContentDescription(SYNC_NOW).assertIsNotEnabled()
+    }
+
+    private val davx = CalendarAccount("me@cloud.example", "bitfire.at.davdroid")
+
+    @Test
+    fun `an account to grant opens the account chooser once, and its answer reaches the app`() {
+        var state by mutableStateOf(AppState(loaded = true, setupDone = true))
+        rule.setContent { NextAlarmTheme(dark = false) { NextAlarmApp(state, 0, { _, _ -> }, {}, actions) } }
+        state = state.copy(accountToGrant = davx)
+        rule.waitForIdle()
+        val chooser = shadowOf(rule.activity).nextStartedActivityForResult
+        assertEquals(ACCOUNT_ACCESS_TEXT, chooser.intent.getStringExtra("descriptionTextOverride"))
+        assertEquals(listOf("access shown"), actions.calls)
+
+        // The app clears the account once the chooser is up; that does not open another.
+        state = state.copy(accountToGrant = null)
+        rule.waitForIdle()
+        assertNull(shadowOf(rule.activity).nextStartedActivityForResult)
+
+        shadowOf(rule.activity).receiveResult(chooser.intent, Activity.RESULT_OK, Intent())
+        rule.waitForIdle()
+        assertEquals(listOf("access shown", "access:true"), actions.calls)
+    }
+
+    @Test
+    fun `leaving the account chooser reaches the app as no access`() {
+        rule.setContent {
+            NextAlarmTheme(dark = false) {
+                NextAlarmApp(AppState(loaded = true, setupDone = true, accountToGrant = davx), 0, { _, _ -> }, {}, actions)
+            }
+        }
+        rule.waitForIdle()
+        val chooser = shadowOf(rule.activity).nextStartedActivityForResult
+        shadowOf(rule.activity).receiveResult(chooser.intent, Activity.RESULT_CANCELED, null)
+        rule.waitForIdle()
+        assertEquals(listOf("access shown", "access:false"), actions.calls)
+    }
+
+    @Test
+    fun `without an account to grant, home opens no chooser`() {
+        show(AppState(loaded = true, setupDone = true))
+        rule.waitForIdle()
+        assertNull(shadowOf(rule.activity).nextStartedActivityForResult)
+        assertTrue(actions.calls.isEmpty())
     }
 
     @Test

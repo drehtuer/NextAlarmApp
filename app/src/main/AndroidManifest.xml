@@ -19,6 +19,13 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <!--
+            "Sync now": Android drops a sync request without a word unless the app can see a sync adapter for the
+            calendar authority, such as DAVx⁵'s.
+        -->
+        <intent>
+            <action android:name="android.content.SyncAdapter" />
+        </intent>
     </queries>
 
     <!--

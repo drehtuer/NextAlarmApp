@@ -9,6 +9,7 @@ import de.drehtuer.nextalarm.data.SoundImportResult
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmRepository
 import de.drehtuer.nextalarm.domain.AlarmSettingsModel
+import de.drehtuer.nextalarm.domain.CalendarAccount
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.CalendarRepository
 import de.drehtuer.nextalarm.domain.CalendarSync
@@ -30,6 +31,7 @@ import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.SoundPreviewStatus
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.TEST_ALARM_DELAY
+import de.drehtuer.nextalarm.domain.accountToGrant
 import de.drehtuer.nextalarm.domain.buildAlarmSettings
 import de.drehtuer.nextalarm.domain.buildDiagnostics
 import de.drehtuer.nextalarm.domain.buildHome
@@ -119,12 +121,23 @@ data class AppState(
     val logNote: String? = null,
     /** True from tapping "Sync now" until the re-plan it asked for has been requested. */
     val syncPending: Boolean = false,
+    /**
+     * An account of the alarm calendars that "Sync now" cannot ask yet: home shows Android's account chooser for it,
+     * once, and says so with [AppActions.accountAccessShown].
+     */
+    val accountToGrant: CalendarAccount? = null,
 )
 
 /** What screen 2 can ask for. */
 interface HomeActions {
     /** Asks the accounts of the alarm calendars to sync, and plans again from what the phone has now. */
     fun syncNow()
+
+    /** The account chooser for [AppState.accountToGrant] is up, so that it is not shown a second time. */
+    fun accountAccessShown()
+
+    /** The user picked the account in the chooser ([granted]), or left it. */
+    fun accountAccessAnswered(granted: Boolean)
 }
 
 /** What screen 5 can ask for. */
@@ -253,23 +266,61 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         }
     }
 
+    /** The accounts the user was asked about since the last tap of "Sync now", which are not asked about again. */
+    private var askedForAccess = emptySet<CalendarAccount>()
+
+    /** The account whose chooser is up, until the user answers. */
+    private var askingForAccess: CalendarAccount? = null
+
     /**
      * The re-plan runs at once, from what the phone has now. What the sync fetches later reaches the planner through the
      * calendar trigger. Tapping again while a request is on its way does not add another.
+     *
+     * Only the accounts the app can see are asked: Android drops any other request without a word. The first one it
+     * can't see is offered for access, and once the user has picked it, the sync is asked for again.
      */
     override fun syncNow() {
+        askedForAccess = emptySet()
+        sync()
+    }
+
+    private fun sync() {
         if (mutableState.value.syncPending) return
         mutableState.update { it.copy(syncPending = true) }
         viewModelScope.launch {
             try {
                 val accounts = syncAccounts(ports.settings.load().alarmCalendars, readCalendars())
-                withContext(ports.io) { ports.calendarSync.requestSync(accounts) }
+                val toGrant = withContext(ports.io) {
+                    val accessible = ports.calendarSync.accessible(accounts)
+                    ports.calendarSync.requestSync(accessible)
+                    accountToGrant(accounts, accessible + askedForAccess)
+                }
+                if (toGrant != null) {
+                    askedForAccess = askedForAccess + toGrant
+                    mutableState.update { it.copy(accountToGrant = toGrant) }
+                }
                 ports.engine.replanRequested()
                 refresh()
             } finally {
                 mutableState.update { it.copy(syncPending = false) }
             }
         }
+    }
+
+    override fun accountAccessShown() {
+        askingForAccess = mutableState.value.accountToGrant
+        mutableState.update { it.copy(accountToGrant = null) }
+    }
+
+    /**
+     * A pick makes the account visible, so the sync is asked for again, which also offers the next account, if any. An
+     * account already asked about is never offered again, so a pick that did not take cannot bring the chooser back.
+     * Leaving the chooser asks nothing more.
+     */
+    override fun accountAccessAnswered(granted: Boolean) {
+        if (askingForAccess == null) return
+        askingForAccess = null
+        if (granted) sync()
     }
 
     /** Ticking or unticking a calendar counts at once. Before setup is finished, the planner ignores the request. */

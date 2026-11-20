@@ -149,13 +149,24 @@ fun NextAlarmApp(
             onToggle = onToggleCalendar,
             onBack = { stack = stack.dropLast(1) },
         )
-        else -> HomeScreen(
-            state.home,
-            syncPending = state.syncPending,
-            onSyncNow = actions::syncNow,
-            onSettings = { stack = stack + Route.SETTINGS.name },
-            onDiagnostics = { stack = stack + Route.DIAGNOSTICS.name },
-        )
+        else -> {
+            // "Sync now" found an account it may not ask yet: Android's account chooser lets the user give access to it.
+            val accountAccess = rememberLauncherForActivityResult(GrantAccountAccess(), actions::accountAccessAnswered)
+            val toGrant = state.accountToGrant
+            LaunchedEffect(toGrant) {
+                if (toGrant != null) {
+                    actions.accountAccessShown()
+                    accountAccess.launch(toGrant)
+                }
+            }
+            HomeScreen(
+                state.home,
+                syncPending = state.syncPending,
+                onSyncNow = actions::syncNow,
+                onSettings = { stack = stack + Route.SETTINGS.name },
+                onDiagnostics = { stack = stack + Route.DIAGNOSTICS.name },
+            )
+        }
     }
 }
 
