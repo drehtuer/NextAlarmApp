@@ -67,6 +67,8 @@ GRADLE_USER_HOME=$(mktemp -d) ./gradlew --write-verification-metadata sha256 --n
 [`.github/workflows/build.yml`](../.github/workflows/build.yml) runs on every pull request and on every push to
 `main`. It builds the app, runs the unit tests with coverage and sends the analysis to
 [SonarCloud](https://sonarcloud.io/project/overview?id=drehtuer_NextAlarmApp), which shows the line and branch coverage.
+Pull requests from forks and from Dependabot skip the SonarCloud step, as their runs get no access to `SONAR_TOKEN`
+(Dependabot's runs only get Dependabot secrets). Their changes are analysed on `main` after the merge.
 
 SonarCloud can only import coverage from a CI analysis, so this needs two settings outside the repository:
 

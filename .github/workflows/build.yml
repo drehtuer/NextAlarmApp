@@ -42,9 +42,12 @@ jobs:
       - name: Build and test with coverage
         run: ./gradlew coverageReports :app:assembleDebug :app:assembleDebugAndroidTest
 
-      # Pull requests from forks have no access to the token.
+      # Pull requests from forks have no access to the token, and neither do Dependabot's: its runs only get Dependabot
+      # secrets. Their changes are analysed on main after the merge.
       - name: Analyse with SonarCloud
-        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        if: >-
+          github.event_name == 'push' ||
+          (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: ./gradlew sonar --no-configuration-cache
