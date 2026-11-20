@@ -1,5 +1,6 @@
 package de.drehtuer.nextalarm.data
 
+import android.accounts.AccountManager
 import android.app.AlarmManager
 import android.content.Context
 import de.drehtuer.nextalarm.data.db.NextAlarmDatabase
@@ -22,7 +23,7 @@ class DataComponents(private val context: Context) {
     val calendars: CalendarRepository by lazy { AndroidCalendarRepository(context.contentResolver) }
 
     /** Asks the calendar accounts to sync, for "Sync now" on home. */
-    val calendarSync: CalendarSync by lazy { AndroidCalendarSync() }
+    val calendarSync: CalendarSync by lazy { AndroidCalendarSync(AccountManager.get(context)::getAccountsByType) }
     val sounds: SoundStore by lazy { SoundStore(context) }
 
     /** The user's alarm volume while an alarm has changed it. */

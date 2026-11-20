@@ -93,9 +93,15 @@ private class FakeCalendars(var result: () -> List<DeviceCalendar> = { listOf(CA
 
 private class RecordingSync : CalendarSync {
     val requests = mutableListOf<Set<CalendarAccount>>()
+
+    /** The accounts the app can see; all of them unless a test says otherwise. */
+    var visible: (Set<CalendarAccount>) -> Set<CalendarAccount> = { it }
+
     override fun requestSync(accounts: Set<CalendarAccount>) {
         requests += accounts
     }
+
+    override fun accessible(accounts: Set<CalendarAccount>) = visible(accounts)
 }
 
 private class RecordingEffects : PlannerEffects {
@@ -252,6 +258,121 @@ class AppViewModelTest {
         assertEquals(listOf(setOf(CalendarAccount("me", "bitfire.at.davdroid"))), sync.requests)
         assertEquals(listOf(1L, 2L), effects.started)
         assertEquals(PlannerState.Planning, data.planner.load().state)
+    }
+
+    private val davx = CalendarAccount("me", "bitfire.at.davdroid")
+    private val family = CalendarAccount("family", "bitfire.at.davdroid")
+    private val familyCalendar = DeviceCalendar(CalendarId(2), "Family", "family", "bitfire.at.davdroid", null)
+
+    private fun chooseBoth() = runBlocking {
+        calendars.result = { listOf(CALENDAR, familyCalendar) }
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id, familyCalendar.id)))
+        engine.setupCompleted()
+    }
+
+    private fun chooseDavx() = runBlocking {
+        data.settings.save(Settings.DEFAULT.copy(alarmCalendars = setOf(CALENDAR.id)))
+        engine.setupCompleted()
+    }
+
+    /** Taps "Sync now" and waits until it has asked what it asks. */
+    private fun syncAndWait(): AppState {
+        viewModel.syncNow()
+        return awaitState { it.loaded && !it.syncPending }
+    }
+
+    @Test
+    fun `sync now asks only the accounts the app can see, offers the other for access, and re-plans`() {
+        chooseBoth()
+        sync.visible = { it - davx }
+        val state = syncAndWait()
+        assertEquals(listOf(setOf(family)), sync.requests)
+        assertEquals(davx, state.accountToGrant)
+        assertEquals(listOf(1L, 2L), effects.started)
+    }
+
+    @Test
+    fun `nothing is offered for access when the app can see every account`() {
+        chooseDavx()
+        assertNull(syncAndWait().accountToGrant)
+    }
+
+    @Test
+    fun `showing the chooser clears the account, so that it is shown once`() {
+        chooseDavx()
+        sync.visible = { emptySet() }
+        syncAndWait()
+        viewModel.accountAccessShown()
+        assertNull(viewModel.state.value.accountToGrant)
+    }
+
+    @Test
+    fun `picking the account in the chooser asks for the sync again`() {
+        chooseDavx()
+        sync.visible = { emptySet() }
+        syncAndWait()
+        viewModel.accountAccessShown()
+        sync.visible = { it }
+        viewModel.accountAccessAnswered(granted = true)
+        val state = awaitState { it.loaded && !it.syncPending && sync.requests.size == 2 }
+        assertEquals(listOf(emptySet(), setOf(davx)), sync.requests)
+        assertNull(state.accountToGrant)
+        assertEquals(listOf(1L, 2L, 3L), effects.started)
+    }
+
+    @Test
+    fun `leaving the chooser asks nothing more`() {
+        chooseDavx()
+        sync.visible = { emptySet() }
+        syncAndWait()
+        viewModel.accountAccessShown()
+        viewModel.accountAccessAnswered(granted = false)
+        settle()
+        assertEquals(listOf(emptySet<CalendarAccount>()), sync.requests)
+        assertNull(viewModel.state.value.accountToGrant)
+    }
+
+    @Test
+    fun `a pick that gave no access does not bring the chooser back`() {
+        chooseDavx()
+        sync.visible = { emptySet() }
+        syncAndWait()
+        viewModel.accountAccessShown()
+        viewModel.accountAccessAnswered(granted = true)
+        val state = awaitState { it.loaded && !it.syncPending && sync.requests.size == 2 }
+        assertNull(state.accountToGrant)
+        assertEquals(listOf(emptySet<CalendarAccount>(), emptySet()), sync.requests)
+    }
+
+    @Test
+    fun `after a pick, the next account the app cannot see is offered`() {
+        chooseBoth()
+        sync.visible = { emptySet() }
+        assertEquals(family, syncAndWait().accountToGrant)
+        viewModel.accountAccessShown()
+        sync.visible = { it - davx }
+        viewModel.accountAccessAnswered(granted = true)
+        val state = awaitState { it.accountToGrant != null && !it.syncPending }
+        assertEquals(davx, state.accountToGrant)
+        assertEquals(listOf(emptySet(), setOf(family)), sync.requests)
+    }
+
+    @Test
+    fun `an answer without a chooser shown does nothing`() {
+        chooseDavx()
+        viewModel.accountAccessAnswered(granted = true)
+        settle()
+        assertTrue(sync.requests.isEmpty())
+    }
+
+    @Test
+    fun `a new tap of sync now offers an account again that was left before`() {
+        chooseDavx()
+        sync.visible = { emptySet() }
+        syncAndWait()
+        viewModel.accountAccessShown()
+        viewModel.accountAccessAnswered(granted = false)
+        assertEquals(davx, syncAndWait().accountToGrant)
     }
 
     @Test

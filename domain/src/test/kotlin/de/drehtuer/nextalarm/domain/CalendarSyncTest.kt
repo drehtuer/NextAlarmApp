@@ -2,6 +2,7 @@ package de.drehtuer.nextalarm.domain
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class CalendarSyncTest {
     private val alarms = DeviceCalendar(CalendarId(1), "NextAlarm", "me@cloud.example", "bitfire.at.davdroid", null)
@@ -51,5 +52,36 @@ class CalendarSyncTest {
     @Test
     fun `nothing chosen syncs nothing`() {
         assertEquals(emptySet(), syncAccounts(emptySet(), all))
+    }
+
+    private val google = CalendarAccount("me@work.example", "com.google")
+    private val otherDavx = CalendarAccount("family@cloud.example", "bitfire.at.davdroid")
+
+    @Test
+    fun `an account the app cannot ask yet has to be granted`() {
+        assertEquals(davx, accountToGrant(setOf(davx, google), accessible = setOf(google)))
+    }
+
+    @Test
+    fun `nothing has to be granted when every account is accessible`() {
+        assertNull(accountToGrant(setOf(davx, google), accessible = setOf(davx, google)))
+    }
+
+    @Test
+    fun `nothing has to be granted when there is no account`() {
+        assertNull(accountToGrant(emptySet(), accessible = emptySet()))
+    }
+
+    @Test
+    fun `an accessible account that is not asked about does not count`() {
+        assertNull(accountToGrant(setOf(davx), accessible = setOf(davx, google)))
+    }
+
+    @Test
+    fun `several accounts are granted one at a time, by type and then by name`() {
+        val all = setOf(google, davx, otherDavx)
+        assertEquals(otherDavx, accountToGrant(all, accessible = emptySet()))
+        assertEquals(davx, accountToGrant(all, accessible = setOf(otherDavx)))
+        assertEquals(google, accountToGrant(all, accessible = setOf(otherDavx, davx)))
     }
 }

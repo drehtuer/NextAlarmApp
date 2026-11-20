@@ -179,6 +179,10 @@ Three steps, with a progress bar of three 4 dp segments at the top (done and cur
   - Sync (refresh icon, content description "Sync now"): asks the accounts of the alarm calendars to sync, such as
     DAVx⁵, and plans again at once. It is off from the tap until the re-plan has been asked for, so that a second tap
     does not ask twice. The footer's "Checked …" time shows when the planner last read the calendar.
+  - The first time an account is to be synced, Android's account chooser opens with only that account in it, as
+    Android only lets the app ask accounts it may see (see [architecture](architecture.md#re-planning-triggers)). Its
+    text: "Tap the account to let NextAlarm ask it to sync your alarm calendars." Tapping the account syncs it;
+    leaving the chooser syncs nothing, and it opens again at the next tap.
   - Settings (sliders icon, content description "Settings").
 - **Fail-safe banner** (`errorContainer`, warning icon, only in `FailSafe`):
   - Title: "New alarms aren't being added"
