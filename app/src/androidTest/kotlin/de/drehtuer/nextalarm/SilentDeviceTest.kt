@@ -1,10 +1,12 @@
 package de.drehtuer.nextalarm
 
+import android.Manifest
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.Bundle
+import android.service.notification.StatusBarNotification
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -41,6 +43,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -93,6 +96,25 @@ class SilentDeviceTest {
     private fun activeNotifications() =
         context.getSystemService(NotificationManager::class.java).activeNotifications.toList()
 
+    /** Whether a notification that matches [matches] is posted within the usual wait. */
+    private fun awaitNotification(matches: (StatusBarNotification) -> Boolean): Boolean {
+        repeat(WAIT_STEPS) {
+            if (activeNotifications().any(matches)) return true
+            Thread.sleep(POLL_MILLIS)
+        }
+        return activeNotifications().any(matches)
+    }
+
+    /**
+     * The alarm notifications need the notification permission, which onboarding asks for. Granting it here lets the
+     * tests run on a fresh install too; it stays granted, as the app needs it anyway.
+     */
+    @Before
+    fun grantNotifications() {
+        InstrumentationRegistry.getInstrumentation().uiAutomation
+            .grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+    }
+
     /** Nothing keeps ringing, whatever a test did, and its alarms are gone. */
     @After
     fun cleanUp() = runBlocking {
@@ -119,11 +141,7 @@ class SilentDeviceTest {
         fire(alarm)
         awaitState(alarm.id, AlarmState.Ringing)
         // The state is stored first, so that a crash can't lose it, and the notification follows.
-        repeat(WAIT_STEPS) {
-            if (activeNotifications().any { it.id != NEXT_ALARM_ID }) return@repeat
-            Thread.sleep(POLL_MILLIS)
-        }
-        assertTrue(activeNotifications().any { it.id != NEXT_ALARM_ID })
+        assertTrue(awaitNotification { it.id != NEXT_ALARM_ID })
 
         val hold = arguments.getString("holdSeconds")?.toLong() ?: 0
         if (hold > 0) {
