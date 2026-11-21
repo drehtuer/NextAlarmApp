@@ -148,7 +148,7 @@ class NewsScreenTest {
     @Test
     fun `the pause is picked from its list, and reaches the actions`() {
         show(model())
-        assertShown("Pause after the title", "Silence before the feed starts", "1 s")
+        assertShown("Pause after the title", "Silence before the feed, and before the weather", "1 s")
         rule.onNodeWithText("Pause after the title").performScrollTo().performClick()
         rule.onNodeWithText("2.5 s").performScrollTo().performClick()
         assertEquals(listOf("pause:2500"), actions.calls)

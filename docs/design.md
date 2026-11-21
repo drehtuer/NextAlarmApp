@@ -340,7 +340,7 @@ Details decided while building this screen:
   - The feed name.
   - A detail line: "12 headlines today" or "Deutschlandfunk · today, 18 min".
 - **Duration:** "Maximum duration" / "Playback stops after this", with a − / + stepper showing "15 min".
-- **Pause:** "Pause after the title" / "Silence before the feed starts", with the value on the right: "None", "0.5 s",
+- **Pause:** "Pause after the title" / "Silence before the feed, and before the weather", with the value on the right: "None", "0.5 s",
   "1 s" (the default), and so on up to "5 s". It opens a list to pick from, like the pickers of screen 5.
 - **Language:** "Language" / "For RSS feeds read aloud", with the value on the right: "Auto: as the feed says" (the
   default), or a language by its English name, "German (Germany)". The list has auto first, then the languages of the
@@ -509,7 +509,9 @@ Details decided while building this screen:
 
 ### 9 Wake-up screen (night)
 
-1. "Good morning · Saturday 7 November", then the time in `displaySmall`.
+1. A greeting that fits the local time, "Good morning" from 05:00, "Good afternoon" from 12:00, "Good evening" from
+   18:00 and "Hello" from midnight, with the date: "Good morning · Saturday 7 November". Then the time in
+   `displaySmall`. The media notification greets the same way while nothing plays yet.
 2. The title or titles, centred, in `headlineSmall`.
 3. A "now playing" card (`nightSurfaceContainer`, 24 dp corners) with an icon disc and a progress bar. Its contents
    depend on what is playing:

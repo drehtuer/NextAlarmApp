@@ -46,7 +46,7 @@ const val NEWS_UNAVAILABLE_TITLE = "The feed isn't available"
 
 /** The screen at [now], to the minute, like the alarm screen. */
 fun wakeUpScreenModel(now: Instant, zone: ZoneId, status: WakeUpStatus): WakeUpScreenModel = WakeUpScreenModel(
-    greeting = "Good morning · ${now.atZone(zone).format(GREETING_DATE)}",
+    greeting = "${greeting(now, zone)} · ${now.atZone(zone).format(GREETING_DATE)}",
     time = formatTime(now.truncatedTo(ChronoUnit.MINUTES), zone),
     titles = status.titles,
     playing = status.playing?.let { nowPlaying(it, now) },
@@ -101,14 +101,30 @@ fun formatPlayTime(time: Duration): String {
     }
 }
 
+/**
+ * A greeting that fits the time of day, as an alarm can be for any hour. Between midnight and 05:00 none of the usual
+ * ones fits, so it is a plain "Hello".
+ */
+fun greeting(now: Instant, zone: ZoneId): String = when (now.atZone(zone).hour) {
+    in MORNING_FROM until AFTERNOON_FROM -> "Good morning"
+    in AFTERNOON_FROM until EVENING_FROM -> "Good afternoon"
+    in EVENING_FROM..LAST_HOUR -> "Good evening"
+    else -> "Hello"
+}
+
+private const val MORNING_FROM = 5
+private const val AFTERNOON_FROM = 12
+private const val EVENING_FROM = 18
+private const val LAST_HOUR = 23
+
 /** For a notification that cannot be about anything yet, because Android demands one before there is something to show. */
-val WAKE_UP_PLACEHOLDER_TEXT = NotificationText("NextAlarm", "Good morning")
+fun wakeUpPlaceholderText(now: Instant, zone: ZoneId): NotificationText = NotificationText("NextAlarm", greeting(now, zone))
 
 /** The media notification. */
-fun wakeUpNotificationText(status: WakeUpStatus, zone: ZoneId): NotificationText {
+fun wakeUpNotificationText(status: WakeUpStatus, zone: ZoneId, now: Instant): NotificationText {
     val stopsBy = status.newsStopsAt?.let { "stops by ${formatTime(it, zone)} at the latest" }.orEmpty()
     return when (val playing = status.playing) {
-        null -> WAKE_UP_PLACEHOLDER_TEXT
+        null -> wakeUpPlaceholderText(now, zone)
         is WakeUpPlaying.Speaking -> NotificationText(
             if (playing.count > 1) "Speaking the titles" else "Speaking the title",
             playing.title,
