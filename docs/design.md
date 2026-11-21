@@ -340,7 +340,7 @@ Details decided while building this screen:
   - The feed name.
   - A detail line: "12 headlines today" or "Deutschlandfunk · today, 18 min".
 - **Duration:** "Maximum duration" / "Playback stops after this", with a − / + stepper showing "15 min".
-- **Pause:** "Pause after the title" / "Silence before the feed starts", with the value on the right: "None", "0.5 s",
+- **Pause:** "Pause after the title" / "Silence before the feed, and before the weather", with the value on the right: "None", "0.5 s",
   "1 s" (the default), and so on up to "5 s". It opens a list to pick from, like the pickers of screen 5.
 - **Language:** "Language" / "For RSS feeds read aloud", with the value on the right: "Auto: as the feed says" (the
   default), or a language by its English name, "German (Germany)". The list has auto first, then the languages of the

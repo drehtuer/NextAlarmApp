@@ -237,6 +237,9 @@ class WakeUpDirector(
         var forecast: SpokenText? = null
         var forecastArrived = false
         var weatherStarted = false
+
+        /** The silence between the feed and the weather runs. */
+        var weatherPausing = false
     }
 
     private class Title(val alarmId: Long, val text: String)
@@ -533,8 +536,31 @@ class WakeUpDirector(
         publish()
     }
 
+    /**
+     * After a feed, the weather waits for the same pause as the feed did after the titles, so that the two don't run
+     * together. The weather alone had its pause before it already.
+     */
     private fun startWeather(current: News) {
         current.weatherStarted = true
+        val pause = current.source?.pauseMillis?.toLong() ?: 0L
+        if (pause > 0) {
+            current.weatherPausing = true
+            current.phase = Phase.WaitingForWeather
+            publish()
+            cancelWeatherWait = timers.after(Duration.ofMillis(pause)) { weatherPauseOver(current) }
+        } else {
+            weatherAfterPause(current)
+        }
+    }
+
+    @Synchronized
+    private fun weatherPauseOver(current: News) {
+        if (news !== current || !current.weatherPausing) return
+        current.weatherPausing = false
+        if (calls.active()) newsEnded(current) else weatherAfterPause(current)
+    }
+
+    private fun weatherAfterPause(current: News) {
         val spoken = current.forecast
         when {
             spoken != null -> sayWeather(current, spoken)
@@ -552,7 +578,7 @@ class WakeUpDirector(
         if (news !== current) return
         current.forecast = result
         current.forecastArrived = true
-        if (current.phase != Phase.WaitingForWeather) return
+        if (current.phase != Phase.WaitingForWeather || current.weatherPausing) return
         cancelWeatherWait()
         if (result != null) sayWeather(current, result) else newsEnded(current)
     }

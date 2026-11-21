@@ -4,7 +4,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 
 **Last updated:** 2026-11-21
 
-**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are merged in #20. The documentation is published as a GitHub Pages site with every release. On 2026-11-20 most of phase 9 was run on the phone with the owner; every check passed, and the run found that "Sync now" never reached DAVx⁵, which is fixed. Still open: aCalendar (9.2), everyday use (9.5) and the tile in a real System UI (10.1). On 2026-11-21 the open reliability and wake-up questions were answered, and the weather added (10.8 to 10.10), which still have to be run on the phone. Hue is waiting for Q-H5.
+**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are merged in #20. The documentation is published as a GitHub Pages site with every release. On 2026-11-20 most of phase 9 was run on the phone with the owner; every check passed, and the run found that "Sync now" never reached DAVx⁵, which is fixed. Still open: aCalendar (9.2), everyday use (9.5) and the tile in a real System UI (10.1). On 2026-11-21 the open reliability and wake-up questions were answered and the weather added (10.8 to 10.10), and checked on the phone; only the pause before the weather is still to be heard. Hue is waiting for Q-H5.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -41,6 +41,9 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | 2026-11-20 | Pixel 10a, Android 17 (API 37)  | 9.3 (owner): with the calendar permission revoked, a planned alarm still rings; the next run ends in `FailSafe` (`NO_PERMISSION`) with the warning, and once the permission is back, the backoff retry plans again and the warning goes. | Pass   |
 | 2026-11-20 | Pixel 10a, Android 17 (API 37)  | 9.3 and 9.4 (owner): after a reboot, never unlocked, the alarm rings with the bundled sound (the phone's default sound can't be read before the first unlock), and the title and the podcast follow. With the phone off at the alarm time, the alarm rings 3 minutes late at boot with the "Late alarm" notification (`lateBy` 184 s). The "missed" case (over 60 minutes) is left to the unit tests. | Pass   |
 | 2026-11-20 | Pixel 10a, Android 17 (API 37)  | 10.7 (owner): "Sync now" never reached DAVx⁵: Android dropped the request because NextAlarm could see neither DAVx⁵ nor its account. Fixed with `<queries>` for sync adapters and Android's account chooser. After the fix, an event made in the Nextcloud web interface reached home with one tap, and the chooser came up once for an account NextAlarm could not see yet. | Pass   |
+| 2026-11-21 | Pixel 10a, Android 17 (API 37)  | 10.8 to 10.10, build of #37 over the data of 0.2.0: the database upgrade from version 3 to 5 kept everything; opening the app started a planning run; the copy of the default sound ("Bright Morning", 230 KB) is in device-protected storage, and screen 5 shows no note; opening screen 6 stored the podcast's title; the duration steps by 1 minute; the language list has the phone's voices (English, German, Spanish); a search for "Berlin" found five places, and the preview said the forecast in English and in German; "Use the current location" asks for the approximate location and stays off when refused. | Pass   |
+| 2026-11-21 | Pixel 10a, Android 17 (API 37)  | 10.9 and 10.10 (owner): the feed starts about 1 s after the title; a second alarm that rings stops the first one's audio, and its own title and feed follow; in airplane mode "The feed isn't available" is said and the weather is left out. The weather followed the feed without a pause, which is now added. | Pass   |
+| 2026-11-21 | Pixel 10a, Android 17 (API 37)  | 10.8 (owner): after a reboot, never unlocked, the alarm rings with the phone's default sound ("Bright Morning") from its copy, where on 2026-11-20 the bundled sound rang. | Pass   |
 
 ## Phase 0: Settle the concept gaps
 
@@ -152,6 +155,6 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | 10.5 | Hue: lead time       | `Not started` |                        |
 | 10.6 | Hue: silent alarm    | `Not started` |                        |
 | 10.7 | Sync now on home     | `Done`        | Checked on the phone on 2026-11-20, after fixing that Android dropped every request (device checks). |
-| 10.8 | Reliability answers  | `In progress` | Q-R1 to Q-R5, answered on 2026-11-21. Unit tests pass; not yet run on the phone. |
-| 10.9 | Wake-up answers      | `In progress` | Q-W2 to Q-W8, answered on 2026-11-21. Unit tests pass; not yet run on the phone. |
-| 10.10 | Weather             | `In progress` | Q-W9, answered on 2026-11-21. Unit tests pass; not yet run on the phone. |
+| 10.8 | Reliability answers  | `Done`        | Q-R1 to Q-R5, merged in #37. Checked on the phone on 2026-11-21, also the default sound before the first unlock. |
+| 10.9 | Wake-up answers      | `Done`        | Q-W2 to Q-W8, merged in #37. Checked on the phone on 2026-11-21. |
+| 10.10 | Weather             | `In progress` | Q-W9, merged in #37. Checked on the phone on 2026-11-21; the pause between the feed and the weather is still to be heard. |

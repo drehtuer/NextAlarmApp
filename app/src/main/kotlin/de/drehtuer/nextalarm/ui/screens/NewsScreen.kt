@@ -81,7 +81,13 @@ fun NewsScreen(model: NewsModel, actions: NewsActions, onBack: () -> Unit) {
             }
             model.detected?.let { DetectedFeed(it) }
             DurationStepper(model, actions)
-            PickerRow("Pause after the title", "Silence before the feed starts", model.pause, actions::setNewsPause, PICKER_MARGIN)
+            PickerRow(
+                "Pause after the title",
+                "Silence before the feed, and before the weather",
+                model.pause,
+                actions::setNewsPause,
+                PICKER_MARGIN,
+            )
             PickerRow("Language", "For RSS feeds read aloud", model.language, actions::setNewsLanguage, PICKER_MARGIN)
             TestButton(model, actions::toggleNewsTest)
             model.testLine?.let { TestProgress(it) }

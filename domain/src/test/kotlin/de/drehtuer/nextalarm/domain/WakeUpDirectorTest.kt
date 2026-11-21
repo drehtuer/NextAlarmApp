@@ -889,6 +889,65 @@ class WakeUpDirectorTest {
     }
 
     @Test
+    fun `after a feed the weather waits for the same pause as the feed did`() {
+        forecasting.startNews(withWeather(alarm(1, news = pausedSource)))
+        forecasts.onResult(sentence)
+        fetcher.onResult(found(rssFeed.copy(entries = rssFeed.entries.take(1))))
+        speech.finish()
+        assertEquals(listOf("One. First"), speech.said)
+        assertEquals(WakeUpPlaying.Weather("Berlin"), forecasting.status().playing)
+        timers.active(pause).block()
+        assertEquals(listOf("One. First", sentence.text), speech.said)
+    }
+
+    @Test
+    fun `weather that comes during the pause after the feed waits for its end`() {
+        forecasting.startNews(withWeather(alarm(1, news = pausedSource)))
+        fetcher.onResult(found(rssFeed.copy(entries = rssFeed.entries.take(1))))
+        speech.finish()
+        forecasts.onResult(sentence)
+        assertEquals(listOf("One. First"), speech.said)
+        timers.active(pause).block()
+        assertEquals(sentence.text, speech.said.last())
+    }
+
+    @Test
+    fun `weather that hasn't come by the end of the pause is still waited for`() {
+        forecasting.startNews(withWeather(alarm(1, news = pausedSource)))
+        fetcher.onResult(found(rssFeed.copy(entries = rssFeed.entries.take(1))))
+        speech.finish()
+        timers.active(pause).block()
+        forecasts.onResult(sentence)
+        assertEquals(sentence.text, speech.said.last())
+    }
+
+    @Test
+    fun `a call during the pause before the weather ends the step without it`() {
+        forecasting.startNews(withWeather(alarm(1, news = pausedSource)))
+        forecasts.onResult(sentence)
+        fetcher.onResult(found(rssFeed.copy(entries = rssFeed.entries.take(1))))
+        speech.finish()
+        val after = timers.active(pause)
+        calls.isActive = true
+        after.block()
+        assertEquals(listOf("One. First"), speech.said)
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `the end of a pause that was cancelled does nothing`() {
+        forecasting.startNews(withWeather(alarm(1, news = pausedSource)))
+        forecasts.onResult(sentence)
+        fetcher.onResult(found(rssFeed.copy(entries = rssFeed.entries.take(1))))
+        speech.finish()
+        val after = timers.last(pause)
+        forecasting.leave(1)
+        assertTrue(after.cancelled)
+        after.block()
+        assertEquals(listOf("One. First"), speech.said)
+    }
+
+    @Test
     fun `the weather alone is said without a feed, and stops by its own limit`() {
         forecasting.startNews(withWeather(alarm(1, news = null)))
         assertTrue(fetcher.asked.isEmpty())

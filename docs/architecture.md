@@ -513,6 +513,7 @@ unlocked. This has consequences, because the phone is usually still locked at th
   text without one.
 - **A pause** of 1 second (0 to 5 seconds, set on screen 6) separates the titles from the news. It counts from the start
   of the news step, so a download that takes as long adds nothing to it. There is no pause without a title before the news.
+  The same pause comes between the feed and the weather.
 - All wake-up audio, speech and news alike, uses the media stream (`USAGE_MEDIA`), so the volume keys work as
   expected. Unlike the alarm sound, it follows the media volume and is subject to Do Not Disturb. It pauses other audio and
   doesn't play during a call: see [Calls and audio focus](#calls-and-audio-focus).
@@ -587,7 +588,7 @@ from Open-Meteo's daily values, in English or German: "The weather in Berlin tod
   is not, the automation waits up to 15 seconds more for it. A forecast that can't be had is left out without a word:
   unlike the feed, it is no content the user chose to hear. The feed's maximum duration also ends the weather; the
   weather alone stops after 2 minutes. A call ends the news step as before, without the weather. The pause after the
-  title comes before the weather when there is no feed.
+  title comes before the weather when there is no feed, and the same pause separates it from the feed when there is one.
 - **Storage:** `WeatherSource` (place name, coordinates, current location, language) is part of the settings and of
   each alarm's snapshot, so it changes like the news: a change asks for a new plan, which refreshes the snapshots.
 
