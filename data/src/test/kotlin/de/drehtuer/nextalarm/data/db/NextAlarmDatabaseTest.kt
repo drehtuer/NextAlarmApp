@@ -11,6 +11,7 @@ import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.PlannerState
 import de.drehtuer.nextalarm.domain.PlanningFailure
 import de.drehtuer.nextalarm.domain.SoundRef
+import de.drehtuer.nextalarm.domain.WeatherSource
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -210,6 +211,82 @@ class NextAlarmDatabaseTest {
             database.settings().save(settings.copy(alarmCalendars = several).toEntity())
         }
         assertEquals(several, opened { it.settings().load()!!.toDomain().alarmCalendars })
+    }
+
+    @Test
+    fun `news stored in version 3 keeps its feed and limit, and gets the defaults for the rest`() {
+        createDatabase(3) { db ->
+            db.execSQL(
+                "INSERT INTO settings (id, alarmCalendarIds, soundFile, vibrate, volumeRampSeconds, maxVolume, " +
+                    "ringTimeoutMinutes, snoozeMinutes, speakReason, news_type, news_url, news_maxMinutes) " +
+                    "VALUES (0, '9', 'sound-1', 1, 12, 0.5, 4, 8, 1, 'RSS', 'https://example.org/feed.xml', 7)",
+            )
+            insertVersion2Alarm(db)
+        }
+        opened { database ->
+            assertEquals(NEWS, database.settings().load()!!.toDomain().news)
+            assertEquals(SNAPSHOT, database.alarms().find(7)!!.toDomain().snapshot)
+            val titled = NEWS.copy(title = "Der Tag", pauseMillis = 0, language = "de")
+            val settings = database.settings().load()!!.toDomain()
+            database.settings().save(settings.copy(news = titled).toEntity())
+            assertEquals(titled, database.settings().load()!!.toDomain().news)
+        }
+    }
+
+    @Test
+    fun `settings without news in version 3 still have none`() {
+        createDatabase(3) { db ->
+            db.execSQL(
+                "INSERT INTO settings (id, alarmCalendarIds, soundFile, vibrate, volumeRampSeconds, maxVolume, " +
+                    "ringTimeoutMinutes, snoozeMinutes, speakReason, news_type, news_url, news_maxMinutes) " +
+                    "VALUES (0, '', NULL, 1, 0, NULL, 3, 10, 1, NULL, NULL, NULL)",
+            )
+        }
+        assertNull(opened { it.settings().load()!!.toDomain().news })
+    }
+
+    @Test
+    fun `version 4 only adds the news title, pause and language, to the settings and the alarms`() {
+        val added = listOf("news_title", "news_pauseMillis", "news_language")
+        assertEquals(added, columns(4, "settings") - columns(3, "settings").toSet())
+        assertEquals(added, columns(4, "alarm_instance") - columns(3, "alarm_instance").toSet())
+        assertEquals(emptyList(), columns(3, "settings") - columns(4, "settings").toSet())
+        assertEquals(columns(3, "planner"), columns(4, "planner"))
+        assertEquals(3, MIGRATION_3_4.startVersion)
+        assertEquals(4, MIGRATION_3_4.endVersion)
+    }
+
+    @Test
+    fun `version 4 data has no weather, and can store some after the migration`() {
+        createDatabase(4) { db ->
+            db.execSQL(
+                "INSERT INTO settings (id, alarmCalendarIds, soundFile, vibrate, volumeRampSeconds, maxVolume, " +
+                    "ringTimeoutMinutes, snoozeMinutes, speakReason, news_type, news_url, news_maxMinutes, news_title, " +
+                    "news_pauseMillis, news_language) " +
+                    "VALUES (0, '9', NULL, 1, 0, NULL, 3, 10, 1, 'RSS', 'https://example.org/feed.xml', 7, 'T', 0, 'de')",
+            )
+            insertVersion2Alarm(db)
+        }
+        opened { database ->
+            val settings = database.settings().load()!!.toDomain()
+            assertNull(settings.weather)
+            assertEquals(NEWS.copy(title = "T", pauseMillis = 0, language = "de"), settings.news)
+            assertNull(database.alarms().find(7)!!.toDomain().snapshot.weather)
+            val weather = WeatherSource("Berlin", 52.52, 13.41, true, null)
+            database.settings().save(settings.copy(weather = weather).toEntity())
+            assertEquals(weather, database.settings().load()!!.toDomain().weather)
+        }
+    }
+
+    @Test
+    fun `version 5 only adds the weather, to the settings and the alarms`() {
+        val added = listOf("weather_placeName", "weather_latitude", "weather_longitude", "weather_useCurrentLocation", "weather_language")
+        assertEquals(added, columns(5, "settings") - columns(4, "settings").toSet())
+        assertEquals(added, columns(5, "alarm_instance") - columns(4, "alarm_instance").toSet())
+        assertEquals(emptyList(), columns(4, "alarm_instance") - columns(5, "alarm_instance").toSet())
+        assertEquals(columns(4, "planner"), columns(5, "planner"))
+        assertEquals(4, MIGRATION_4_5.startVersion)
+        assertEquals(5, MIGRATION_4_5.endVersion)
     }
 
     @Test

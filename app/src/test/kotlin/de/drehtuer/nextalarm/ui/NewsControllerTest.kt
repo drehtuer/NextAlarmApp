@@ -2,6 +2,7 @@ package de.drehtuer.nextalarm.ui
 
 import android.app.Application
 import android.os.Looper
+import de.drehtuer.nextalarm.domain.AUTO_LANGUAGE_LABEL
 import de.drehtuer.nextalarm.domain.FeedFailure
 import de.drehtuer.nextalarm.domain.FeedResult
 import de.drehtuer.nextalarm.domain.NewsModel
@@ -113,7 +114,7 @@ class NewsControllerTest {
 
     @Test
     fun `opening shows what is stored and looks at it again, without storing it twice`() {
-        settings.stored = NewsSource(NewsType.RSS, FEED, 20)
+        settings.stored = NewsSource(NewsType.RSS, FEED, 20, RSS_FEED.name)
         controller.open()
         settle()
         assertEquals(FEED, shown.address)
@@ -122,6 +123,14 @@ class NewsControllerTest {
         assertEquals("RSS feed found.", shown.helper)
         assertEquals("tagesschau.de", shown.detected?.name)
         assertTrue(stored.isEmpty())
+    }
+
+    @Test
+    fun `opening a feed stored before titles were stores it again with its title`() {
+        settings.stored = NewsSource(NewsType.RSS, FEED, 20, pauseMillis = 0, language = "de-DE")
+        controller.open()
+        settle()
+        assertEquals(listOf<NewsSource?>(NewsSource(NewsType.RSS, FEED, 20, RSS_FEED.name, 0, "de-DE")), stored)
     }
 
     @Test
@@ -146,11 +155,11 @@ class NewsControllerTest {
 
     @Test
     fun `a stored feed that has become a podcast is stored as one`() {
-        settings.stored = NewsSource(NewsType.RSS, FEED, 20)
+        settings.stored = NewsSource(NewsType.RSS, FEED, 20, RSS_FEED.name)
         parts.feeds.result = FeedResult.Found(PODCAST_FEED)
         controller.open()
         settle()
-        assertEquals(listOf<NewsSource?>(NewsSource(NewsType.PODCAST, FEED, 20)), stored)
+        assertEquals(listOf<NewsSource?>(NewsSource(NewsType.PODCAST, FEED, 20, PODCAST_FEED.name)), stored)
     }
 
     @Test
@@ -194,7 +203,7 @@ class NewsControllerTest {
         waitFor(DETECTION_DELAY)
         assertEquals(listOf(FEED), parts.feeds.asked)
         assertEquals("RSS feed found.", shown.helper)
-        assertEquals(listOf<NewsSource?>(NewsSource(NewsType.RSS, FEED, 15)), stored)
+        assertEquals(listOf<NewsSource?>(NewsSource(NewsType.RSS, FEED, 15, RSS_FEED.name)), stored)
     }
 
     @Test
@@ -203,7 +212,7 @@ class NewsControllerTest {
         typeAndDetect(FEED)
         assertEquals("Podcast found.", shown.helper)
         assertEquals("Der Tag", shown.detected?.name)
-        assertEquals(NewsSource(NewsType.PODCAST, FEED, 15), stored.single())
+        assertEquals(NewsSource(NewsType.PODCAST, FEED, 15, PODCAST_FEED.name), stored.single())
     }
 
     @Test
@@ -298,13 +307,51 @@ class NewsControllerTest {
     }
 
     @Test
+    fun `opening offers the languages of the speech engine, and the stored pause and language`() {
+        settings.stored = NewsSource(NewsType.RSS, FEED, 20, pauseMillis = 2500, language = "de-DE")
+        controller.open()
+        settle()
+        assertEquals("2.5 s", shown.pause.label)
+        assertEquals("German (Germany)", shown.language.label)
+        assertEquals(listOf(null, "en-GB", "de-DE"), shown.language.options.map { it.value })
+    }
+
+    @Test
+    fun `the pause and the language of what is stored change at once`() {
+        typeAndDetect(FEED)
+        controller.setPause(0)
+        controller.setLanguage("en-GB")
+        settle()
+        assertEquals("None", shown.pause.label)
+        assertEquals(0, settings.stored?.pauseMillis)
+        assertEquals("en-GB", settings.stored?.language)
+        controller.setLanguage(null)
+        settle()
+        assertEquals(AUTO_LANGUAGE_LABEL, shown.language.label)
+        assertNull(settings.stored?.language)
+    }
+
+    @Test
+    fun `the pause and the language are only remembered while nothing is stored, and the feed's title is stored`() {
+        controller.setPause(2000)
+        controller.setLanguage("de-DE")
+        settle()
+        assertTrue(stored.isEmpty())
+        typeAndDetect(FEED)
+        val source = assertNotNull(stored.single())
+        assertEquals(2000, source.pauseMillis)
+        assertEquals("de-DE", source.language)
+        assertEquals("tagesschau.de", source.title)
+    }
+
+    @Test
     fun `the duration is only remembered while nothing is stored`() {
         controller.lengthen()
         settle()
-        assertEquals("20 min", shown.minutes)
+        assertEquals("16 min", shown.minutes)
         assertTrue(stored.isEmpty())
         typeAndDetect(FEED)
-        assertEquals(20, stored.single()?.maxMinutes)
+        assertEquals(16, stored.single()?.maxMinutes)
     }
 
     @Test
@@ -312,8 +359,8 @@ class NewsControllerTest {
         typeAndDetect(FEED)
         controller.lengthen()
         settle()
-        assertEquals("20 min", shown.minutes)
-        assertEquals(20, settings.stored?.maxMinutes)
+        assertEquals("16 min", shown.minutes)
+        assertEquals(16, settings.stored?.maxMinutes)
         controller.shorten()
         settle()
         assertEquals("15 min", shown.minutes)
@@ -327,12 +374,12 @@ class NewsControllerTest {
         type(OTHER)
         controller.lengthen()
         settle()
-        assertEquals(NewsSource(NewsType.RSS, FEED, 20), settings.stored)
+        assertEquals(NewsSource(NewsType.RSS, FEED, 16, RSS_FEED.name), settings.stored)
     }
 
     @Test
     fun `a step that changes nothing stores nothing`() {
-        settings.stored = NewsSource(NewsType.RSS, FEED, 60)
+        settings.stored = NewsSource(NewsType.RSS, FEED, 60, RSS_FEED.name)
         controller.open()
         settle()
         controller.lengthen()
@@ -408,13 +455,13 @@ class NewsControllerTest {
     fun `a working test stores the feed and reads it aloud, with the limit it was given`() {
         controller.lengthen()
         startTest()
-        assertEquals(NewsSource(NewsType.RSS, FEED, 20), settings.stored)
+        assertEquals(NewsSource(NewsType.RSS, FEED, 16, RSS_FEED.name), settings.stored)
         assertEquals(listOf("One"), parts.speech.said)
         assertTrue(shown.testing)
         assertTrue(parts.wakeLock.held)
         assertEquals("RSS feed found.", shown.helper)
-        assertEquals("Playing “tagesschau.de” · 0:00 of 20:00", shown.testLine?.text)
-        assertNotNull(parts.timers.waiting[Duration.ofMinutes(20)])
+        assertEquals("Playing “tagesschau.de” · 0:00 of 16:00", shown.testLine?.text)
+        assertNotNull(parts.timers.waiting[Duration.ofMinutes(16)])
     }
 
     @Test

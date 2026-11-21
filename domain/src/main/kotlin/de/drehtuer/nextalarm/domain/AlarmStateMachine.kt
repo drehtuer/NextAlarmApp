@@ -117,7 +117,7 @@ private fun fromSnoozed(event: AlarmEvent, context: AlarmContext): Transition<Al
 }
 
 private fun fromAnnouncing(event: AlarmEvent, context: AlarmContext): Transition<AlarmState, AlarmAction> = when (event) {
-    AlarmEvent.AnnouncementDone -> if (context.snapshot.news != null) enterNewsPlaying() else enterDone()
+    AlarmEvent.AnnouncementDone -> if (context.snapshot.hasNewsStep) enterNewsPlaying() else enterDone()
     AlarmEvent.StopWakeUp -> enterDone()
     AlarmEvent.Create, is AlarmEvent.Fire, AlarmEvent.Snooze, AlarmEvent.Dismiss, AlarmEvent.RingTimeout,
     is AlarmEvent.Refresh, AlarmEvent.Remove, AlarmEvent.NewsDone,
@@ -154,7 +154,7 @@ private fun startWakeUp(snapshot: AlarmSnapshot): Transition<AlarmState, AlarmAc
         AlarmState.Announcing,
         listOf(AlarmAction.LeaveAlarmService, AlarmAction.CancelAlarm, AlarmAction.StartAnnouncement),
     )
-    snapshot.news != null -> enterNewsPlaying()
+    snapshot.hasNewsStep -> enterNewsPlaying()
     else -> enterDone()
 }
 

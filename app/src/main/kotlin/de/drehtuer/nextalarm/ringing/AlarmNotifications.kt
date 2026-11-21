@@ -9,8 +9,10 @@ import android.content.Intent
 import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.FOREGROUND_REFUSED_TEXT
 import de.drehtuer.nextalarm.domain.NO_SOUND_TEXT
+import de.drehtuer.nextalarm.domain.NewsSource
 import de.drehtuer.nextalarm.domain.NotificationText
 import de.drehtuer.nextalarm.domain.RINGING_PLACEHOLDER_TEXT
+import de.drehtuer.nextalarm.domain.feedUnavailableText
 import de.drehtuer.nextalarm.domain.lateText
 import de.drehtuer.nextalarm.domain.missedText
 import de.drehtuer.nextalarm.domain.ringLimitText
@@ -96,6 +98,9 @@ class AlarmNotifications(
     /** It stays after the alarm has ended, to explain why nothing was heard. */
     fun showNoSound() = showAlarmWarning(NO_SOUND_ID, NO_SOUND_TEXT)
 
+    /** One at a time: the next alarm's feed is the same one. */
+    fun showFeedUnavailable(source: NewsSource) = showNotice(FEED_UNAVAILABLE_ID, feedUnavailableText(source))
+
     private fun showAlarmWarning(id: Int, text: NotificationText) {
         ensureChannels()
         val notification = notificationBuilder(context, ALARM_CHANNEL, text.title, text.text)
@@ -177,6 +182,7 @@ class AlarmNotifications(
         /** `WakeUpNotifications.ID` is 4. */
         const val FOREGROUND_REFUSED_ID = 5
         const val NO_SOUND_ID = 6
+        const val FEED_UNAVAILABLE_ID = 7
 
         private const val REQUEST_SCREEN = 1
         private const val REQUEST_ACTION = 2

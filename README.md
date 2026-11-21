@@ -17,7 +17,7 @@ The stock Android alarm clock rings whether or not you have a holiday, are on va
 ## Goals
 
 - **All alarms come from dedicated alarm calendars:** every timed event in the calendars you tick is an alarm at the event's start time, whether a calendar app shows the calendar or hides it. There is no alarm schedule inside the app; regular alarms are recurring events. To drop an alarm (holiday, vacation), delete it in the calendar app; aCalendar, for example, can delete instances of a recurring event automatically while a parallel event exists.
-- **Wake-up automation:** after the alarm is dismissed (no need to unlock the phone), speak the event title and optionally read the news aloud.
+- **Wake-up automation:** after the alarm is dismissed (no need to unlock the phone), speak the event title and optionally read the news aloud and say the weather forecast.
 - **Fail-safe:** if the calendar can't be read or planning fails, the alarms that are already planned ring anyway.
 
 ## How it works
@@ -26,7 +26,6 @@ The app reads events from the Android calendar provider (`CalendarContract`). An
 
 - a local calendar in aCalendar (never synced)
 - a Nextcloud / CalDAV calendar via [DAVx⁵](https://www.davx5.com/)
-- a subscribed calendar (iCal/webcal) via [ICSx⁵](https://icsx5.bitfire.at/)
 
 The calendar provider is a local store on the phone, so planning needs no network access. NextAlarm does not use the Google Clock app, calendar reminders or Google services; it schedules its own alarms.
 
@@ -51,6 +50,7 @@ Sound, vibration, snooze and the wake-up automation are configured once in the a
 - Kotlin and Jetpack Compose; English UI only
 - Calendar read permission
 - Exact alarm permission (`USE_EXACT_ALARM`), notifications and full-screen notifications for the alarm screen
+- Optional: coarse location, only for a weather forecast for the current location
 
 ## Roadmap
 
@@ -59,6 +59,7 @@ Sound, vibration, snooze and the wake-up automation are configured once in the a
 - [x] Alarm screen with snooze
 - [x] Text-to-speech for the event title
 - [x] News readout (RSS / podcast)
+- [x] Weather forecast after the news (Open-Meteo)
 
 Later, after the MVP:
 

@@ -35,13 +35,39 @@ data class NewsSource(
     val type: NewsType,
     val url: String,
     val maxMinutes: Int = DEFAULT_NEWS_MINUTES,
+    /** The feed's own title when it was found ("Der Tag"). Empty for a source stored before titles were. */
+    val title: String? = null,
+    /** The silence between the last title and the news, so that the two don't run together. */
+    val pauseMillis: Int = DEFAULT_PAUSE_MILLIS,
+    /** The language tag to read an RSS feed in. Empty means the language the feed declares, else the phone's. */
+    val language: String? = null,
 ) {
     init {
         require(maxMinutes > 0) { "maxMinutes must be positive: $maxMinutes" }
+        require(pauseMillis >= 0) { "pauseMillis must not be negative: $pauseMillis" }
     }
 
     companion object {
         const val DEFAULT_NEWS_MINUTES = 15
+        const val DEFAULT_PAUSE_MILLIS = 1000
+    }
+}
+
+/**
+ * The weather forecast that follows the news. [placeName] is the chosen place, which is also where the forecast is for
+ * when [useCurrentLocation] is off or the phone doesn't know where it is.
+ */
+data class WeatherSource(
+    val placeName: String,
+    val latitude: Double,
+    val longitude: Double,
+    val useCurrentLocation: Boolean = false,
+    /** The language of the sentence, as a language tag. Empty means the phone's. */
+    val language: String? = null,
+) {
+    init {
+        require(latitude in -90.0..90.0) { "latitude must be between -90 and 90: $latitude" }
+        require(longitude in -180.0..180.0) { "longitude must be between -180 and 180: $longitude" }
     }
 }
 
@@ -70,6 +96,7 @@ data class Settings(
     val snoozeMinutes: Int = DEFAULT_SNOOZE_MINUTES,
     val speakReason: Boolean,
     val news: NewsSource?,
+    val weather: WeatherSource? = null,
 ) {
     init {
         require(volumeRampSeconds >= 0) { "volumeRampSeconds must not be negative: $volumeRampSeconds" }
@@ -110,7 +137,12 @@ data class AlarmSnapshot(
     val snoozeMinutes: Int,
     val speakReason: Boolean,
     val news: NewsSource?,
-)
+    val weather: WeatherSource? = null,
+) {
+    /** The step after the title plays the feed and then the weather, whichever of them is set. */
+    val hasNewsStep: Boolean
+        get() = news != null || weather != null
+}
 
 /** Builds the snapshot of an alarm with this [title]. A missing or blank title gives an alarm without a reason. */
 fun Settings.snapshotFor(title: String?): AlarmSnapshot = AlarmSnapshot(
@@ -123,6 +155,7 @@ fun Settings.snapshotFor(title: String?): AlarmSnapshot = AlarmSnapshot(
     snoozeMinutes = snoozeMinutes,
     speakReason = speakReason,
     news = news,
+    weather = weather,
 )
 
 data class AlarmInstance(

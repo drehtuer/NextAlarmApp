@@ -38,6 +38,12 @@ data class WakeUpScreenModel(
     val playing: NowPlayingModel?,
 )
 
+/** The wake-up screen's and the notification's words while the weather is got or said. */
+const val WEATHER_TITLE = "The weather"
+
+/** The wake-up screen's and the notifications' words for a feed that can't be had. */
+const val NEWS_UNAVAILABLE_TITLE = "The feed isn't available"
+
 /** The screen at [now], to the minute, like the alarm screen. */
 fun wakeUpScreenModel(now: Instant, zone: ZoneId, status: WakeUpStatus): WakeUpScreenModel = WakeUpScreenModel(
     greeting = "Good morning · ${now.atZone(zone).format(GREETING_DATE)}",
@@ -56,6 +62,9 @@ private fun nowPlaying(playing: WakeUpPlaying, now: Instant): NowPlayingModel = 
         null,
     )
     is WakeUpPlaying.GettingNews -> NowPlayingModel(PlayingKind.NEWS, "Getting the news", playing.source, null, null, null)
+    is WakeUpPlaying.NewsUnavailable ->
+        NowPlayingModel(PlayingKind.NEWS, NEWS_UNAVAILABLE_TITLE, playing.source, null, null, null)
+    is WakeUpPlaying.Weather -> NowPlayingModel(PlayingKind.SPEECH, WEATHER_TITLE, playing.place, null, null, null)
     is WakeUpPlaying.ReadingNews -> {
         val elapsed = Duration.between(playing.startedAt, now)
         NowPlayingModel(
@@ -105,6 +114,8 @@ fun wakeUpNotificationText(status: WakeUpStatus, zone: ZoneId): NotificationText
             playing.title,
         )
         is WakeUpPlaying.GettingNews -> NotificationText("Getting the news", "${playing.source} · $stopsBy")
+        is WakeUpPlaying.NewsUnavailable -> NotificationText(NEWS_UNAVAILABLE_TITLE, playing.source)
+        is WakeUpPlaying.Weather -> NotificationText(WEATHER_TITLE, playing.place)
         is WakeUpPlaying.ReadingNews -> NotificationText("Playing: ${playing.feedName}", "Reading the news · $stopsBy")
         is WakeUpPlaying.PlayingPodcast ->
             NotificationText("Playing: ${playing.feedName}", "${playing.author ?: playing.feedName} podcast · $stopsBy")

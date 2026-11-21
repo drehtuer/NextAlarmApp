@@ -34,6 +34,7 @@ import de.drehtuer.nextalarm.ui.screens.CalendarScreen
 import de.drehtuer.nextalarm.ui.screens.DiagnosticsScreen
 import de.drehtuer.nextalarm.ui.screens.HomeScreen
 import de.drehtuer.nextalarm.ui.screens.NewsScreen
+import de.drehtuer.nextalarm.ui.screens.WeatherScreen
 import de.drehtuer.nextalarm.ui.screens.OnboardingScreen
 import de.drehtuer.nextalarm.ui.screens.PermissionCard
 import de.drehtuer.nextalarm.ui.screens.SettingsScreen
@@ -45,7 +46,7 @@ const val VERSION_TEXT_FORMAT = "%s (build %d)"
 
 const val LOG_MIME_TYPE = "text/plain"
 
-enum class Route { HOME, SETTINGS, CALENDAR, ALARM_SETTINGS, NEWS, DIAGNOSTICS, SETUP }
+enum class Route { HOME, SETTINGS, CALENDAR, ALARM_SETTINGS, NEWS, WEATHER, DIAGNOSTICS, SETUP }
 
 /**
  * The screens and how they connect. See the navigation diagram in docs/screens.md.
@@ -76,6 +77,7 @@ fun NextAlarmApp(
     // Whichever way screens 5 and 6 are left: back, the top bar, or a notification that opens another screen.
     LaunchedEffect(route) {
         if (route != Route.NEWS) actions.closeNews()
+        if (route != Route.WEATHER) actions.closeWeather()
         if (route != Route.ALARM_SETTINGS) actions.stopSoundPreview()
     }
 
@@ -123,6 +125,26 @@ fun NextAlarmApp(
                 onPhoneSounds = { phoneSoundPicker.launch(!state.alarmSettings.usesFile) },
                 onChooseFile = { soundPicker.launch(SUPPORTED_SOUND_MIME_TYPES.toTypedArray()) },
                 onNews = { stack = stack + Route.NEWS.name },
+                onWeather = { stack = stack + Route.WEATHER.name },
+            )
+        }
+        route == Route.WEATHER -> {
+            LaunchedEffect(Unit) { actions.openWeather() }
+            // The location is only asked for when it is wanted, and a refusal leaves the switch off.
+            val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                actions.setWeatherUseCurrentLocation(granted)
+            }
+            WeatherScreen(
+                model = state.weather,
+                actions = actions,
+                onBack = { stack = stack.dropLast(1) },
+                onUseCurrentLocation = { use ->
+                    if (use && !context.has(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                        locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                    } else {
+                        actions.setWeatherUseCurrentLocation(use)
+                    }
+                },
             )
         }
         route == Route.NEWS -> {

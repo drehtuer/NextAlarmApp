@@ -81,6 +81,8 @@ fun NewsScreen(model: NewsModel, actions: NewsActions, onBack: () -> Unit) {
             }
             model.detected?.let { DetectedFeed(it) }
             DurationStepper(model, actions)
+            PickerRow("Pause after the title", "Silence before the feed starts", model.pause, actions::setNewsPause, PICKER_MARGIN)
+            PickerRow("Language", "For RSS feeds read aloud", model.language, actions::setNewsLanguage, PICKER_MARGIN)
             TestButton(model, actions::toggleNewsTest)
             model.testLine?.let { TestProgress(it) }
             TextButton(actions::turnOffNews, Modifier.fillMaxWidth(), enabled = model.canTurnOff) {
@@ -231,6 +233,8 @@ private fun TestProgress(line: NewsTestLine) {
     }
 }
 
+/** The rows line up with the stepper, which the screen's padding already moves in. */
+private val PICKER_MARGIN = 8.dp
 private val TILE = 40.dp
 private val STEP_BUTTON = 48.dp
 private val BORDER_NORMAL = 1.dp

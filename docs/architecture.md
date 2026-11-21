@@ -85,12 +85,12 @@ interfaces are declared in `domain` and implemented in `data`, so that the code 
 ## Calendar source
 
 - The app reads only the Android calendar provider (`CalendarContract`). The provider is a local database on the
-  phone; sync adapters (DAVx⁵, ICSx⁵) and calendar apps such as aCalendar keep their copy of the events there.
+  phone; sync adapters such as DAVx⁵ and calendar apps such as aCalendar keep their copy of the events there.
   Planning therefore works without network access, using whatever was synced last.
 - The user ticks any number of calendars as alarm calendars, for example one for regular alarms that is hidden in the
   calendar app, and one for special cases that stays visible. Hidden and visible calendars work the same. Any calendar
-  works: a local one (e.g. aCalendar's "phone" calendars, which are never synced), a CalDAV calendar via DAVx⁵ or a
-  subscribed one via ICSx⁵. The events of all other calendars are never read.
+  works: a local one (e.g. aCalendar's "phone" calendars, which are never synced) or a CalDAV calendar via DAVx⁵. The
+  events of all other calendars are never read.
 - The app is independent of Google: it does not read or create alarms in the Google Clock app, does not use calendar
   reminders (`CalendarContract.Reminders`) and does not need Google Play Services.
 - The app does not check whether a sync adapter synced recently, and there is no automatic warning about stale
@@ -145,7 +145,7 @@ Notes:
 - An empty result is valid. If an alarm calendar has no events in the horizon, its planned alarms that have not started
   are removed. The same goes for unticking a calendar, through the normal diff: its alarms that have not started are
   removed, and one that has started goes on. The app does not try to tell this apart from a sync problem: missing alarms show in the 48 h preview,
-  and sync problems show in the sync app (DAVx⁵, ICSx⁵).
+  and sync problems show in the sync app (DAVx⁵).
 - A failed read is different from an empty result. If the provider returns no result or the calendar permission was
   revoked, the run ends with `PlanFailed` and the planned alarms stay (fail-safe).
 - **A calendar that is gone is a failed read, not an empty result.** `Instances` selects by calendar id, so a calendar
@@ -215,6 +215,7 @@ daily job is unique too, with the `KEEP` policy, so that it is not moved by ever
 | Calendar data changed (sync, edit)        | WorkManager content-URI trigger on `CalendarContract.CONTENT_URI`, re-armed at the start of each run, before it reads the calendar |
 | Settings changed in the app               | Direct call from the UI (alarm calendars or alarm settings changed)         |
 | "Sync now" on home                        | Direct call from the UI, after asking Android to sync the accounts of the chosen alarm calendars |
+| App comes to the front                    | Direct call from the UI, each time the app is resumed (also after granting the calendar permission in the system settings), so that home shows the real state |
 | Device boot / user unlock                 | `LOCKED_BOOT_COMPLETED` (restore alarms), `BOOT_COMPLETED` (re-plan)        |
 | Time or time zone changed                 | `TIME_SET`, `TIMEZONE_CHANGED`                                               |
 | App updated                               | `MY_PACKAGE_REPLACED`                                                        |
@@ -224,7 +225,9 @@ daily job is unique too, with the `KEEP` policy, so that it is not moved by ever
 `PlannerEngine` and `AlarmEngine` in `domain` run the state machines against the repositories, so this logic is tested
 on the JVM. `app` only adds WorkManager workers and a broadcast receiver. A planning run reads the calendar first and
 applies the result only if it is still the current run. A failed read or a failed apply leads to `FailSafe` and keeps
-the planned alarms; a run replaced by a newer one is not a failure. Every successful run registers all waiting alarms
+the planned alarms; a run replaced by a newer one is not a failure. Each command of the diff is applied on its own, so a
+command that fails does not hold up the others; the run then still counts as failed, and the retry applies the failed
+command again. Every successful run registers all waiting alarms
 with `AlarmManager` again, which also repairs an alarm whose registration a replaced run interrupted. The planner record
 keeps the last run's time, duration, alarm count and failure reason for the diagnostics screen.
 
@@ -337,8 +340,13 @@ sequenceDiagram
   copy lives as long as the file is selected: unselecting or replacing the sound saves the settings first and then
   deletes it. The copy's name includes the file's own name, for the alarm settings to show. The user's original is
   never changed. A snoozed alarm whose copy was deleted this way rings with the next sound in the order below.
+- **The phone's default sound is copied too**, as `phone-default` next to the picked files, together with the address
+  it was copied from. Each planning run and each refresh of the visible app (both happen only after the first unlock)
+  copy it again if the default has changed. A copy of a sound that is no longer the default is never played. If it
+  can't be copied (unreadable, or not playable), the alarm settings say so below the sound's buttons, as the bundled
+  sound may then ring before the first unlock.
 - **If a sound cannot be played**, or takes more than 5 seconds to get ready, the next one is used: the picked file, then
-  the phone's default alarm sound, then a sound bundled with the app. An alarm therefore always rings, also if the phone's
+  the phone's default alarm sound, then its copy, then a sound bundled with the app. An alarm therefore always rings, also if the phone's
   default is set to silent. If asking for the sources fails or takes too long, the bundled sound is played. If not even
   that plays, this is logged, the "An alarm couldn't play a sound" notification is posted, and the alarm goes on silently
   until its timeout, with its vibration if it has one.
@@ -495,7 +503,16 @@ unlocked. This has consequences, because the phone is usually still locked at th
 - The title is spoken with Android's `TextToSpeech` API, using the device's default engine, language and voice.
   Only the event title is spoken; nothing is added to it.
 - The news source is an RSS feed, read aloud with `TextToSpeech`, or a podcast feed, of which the latest episode is
-  played. Both stop at a configurable maximum duration (default 15 minutes).
+  played. Both stop at a configurable maximum duration (1 to 60 minutes, default 15). The feed's content is up to the
+  user, so it need not be news.
+- **Language:** an RSS feed is read in the language set on screen 6. "Auto", the default, is the language the feed
+  declares (RSS `<language>`, Dublin Core `dc:language`, else `xml:lang` on the feed), and the phone's if it declares
+  none. The languages on offer are those of the engine's installed voices (`TextToSpeech.getVoices`, without
+  `KEY_FEATURE_NOT_INSTALLED`). A language the engine can't speak falls back to its default, and so does the title, which
+  is the user's own text. `TextToSpeechOutput` sets the language for a text and sets the default voice back for the next
+  text without one.
+- **A pause** of 1 second (0 to 5 seconds, set on screen 6) separates the titles from the news. It counts from the start
+  of the news step, so a download that takes as long adds nothing to it. There is no pause without a title before the news.
 - All wake-up audio, speech and news alike, uses the media stream (`USAGE_MEDIA`), so the volume keys work as
   expected. Unlike the alarm sound, it follows the media volume and is subject to Do Not Disturb. It pauses other audio and
   doesn't play during a call: see [Calls and audio focus](#calls-and-audio-focus).
@@ -506,9 +523,10 @@ unlocked. This has consequences, because the phone is usually still locked at th
 - After a reboot during the night (system update), the phone may not have been unlocked since boot
   ([direct boot](#direct-boot)). `WakeUpService` and the wake-up screen are therefore `directBootAware`, and
   everything they need (title, news source, TTS settings) is part of the alarm snapshot in device-protected storage.
-- The news needs network access. Wi-Fi usually connects before the first unlock, but if there is no network the
-  news step ends with `NewsDone` (failed) and the automation finishes. The same goes for an unreadable feed, a feed of
-  the wrong kind (a podcast address without audio) and playback that fails.
+- The news needs network access. Wi-Fi usually connects before the first unlock. If the feed can't be had (no network,
+  an unreadable feed, nothing in it, a podcast address without an episode), the automation says "The feed isn't
+  available.", posts a warning notification that names the feed, and the news step ends with `NewsDone` (failed).
+  Playback that fails once it has started ends the news without a word.
 - The TTS engine is a separate app and may not be available before the first unlock. In that case the announcement
   is skipped (`AnnouncementDone`, failed) and the automation continues with the news. An RSS feed needs TTS too, so
   its news step ends with `NewsDone` (failed); a podcast episode still plays. The manifest declares the
@@ -530,13 +548,48 @@ utterances.
   differ (the settings changed between two alarms), the first alarm's is played. A title to speak while news plays stops
   the news, which starts again from the beginning after it, so that two voices never talk at once.
 - **Stop** ends every alarm in the automation (`AlarmEngine.stopWakeUp`), from the wake-up screen, the media
-  notification and the `MediaSession`. Other audio that the user starts ends it the same way, one `StopWakeUp` per alarm.
+  notification and the `MediaSession`. After that, it ends whatever still plays (`WakeUpAutomation.stopAll`), so that
+  Stop also works when the alarms can't be read, and for an emergency alarm, which is not stored. Other audio that the
+  user starts ends it the same way, one `StopWakeUp` per alarm.
+- **An alarm that starts to ring ends the automation** (`WakeUpAutomation.alarmRings`, from `JoinAlarmService`): what
+  plays stops at once, and each alarm in it gets `StopWakeUp`, so the new alarm is heard on its own. Dismissing it starts
+  the automation again, with its own title and news.
+- **A test on screen 6 and the automation don't know of each other.** Both can be heard at once if a test is started
+  while the automation plays. That is left as it is: the user has just asked for the test, and Stop ends either.
 - **Screen 9 follows screen 8.** Android does not let an app in the background open an activity, so when an alarm is
   dismissed from its notification, the automation runs without opening the screen. The media notification opens it.
 - **The maximum duration** counts from the start of the news step, including the time the feed takes to download, so
   that "stops by 06:16 at the latest" holds. An episode that has not started after 45 seconds has failed.
 - A speech engine that does not answer is given up on after 30 seconds plus 0.2 seconds per character, so that it
   cannot hold up the automation.
+
+### Weather
+
+After the feed, the news step says today's weather forecast, if it is on (the "Weather" row of screen 5, which opens the
+weather screen). With no feed set, the weather alone makes the news step. The forecast is one sentence, made by the app
+from Open-Meteo's daily values, in English or German: "The weather in Berlin today: light rain, 4 to 9 degrees, with an
+80 percent chance of rain." Temperatures are in degrees Celsius.
+
+- **Open-Meteo** needs no key, no account and no proprietary library, so the app stays fit for F-Droid. The forecast
+  (`api.open-meteo.com/v1/forecast`, the day's weather code, highest and lowest temperature and chance of rain, in the
+  place's own time zone) and the place search (`geocoding-api.open-meteo.com/v1/search`, five places, English names) go
+  through the same downloader as the feeds, https only, with a limit of 64 KB. `OpenMeteoWeatherService` (`data`) reads
+  the JSON with Android's `org.json`.
+- **The place** is chosen by a search on the weather screen and stored with its name and coordinates. "Use the current
+  location" (off by default) asks for `ACCESS_COARSE_LOCATION` when it is turned on, and stays off if it is refused. It
+  then takes the newest last known location of any provider (`LocationManager.getLastKnownLocation`); nothing waits for
+  a fix. If there is none, or the app may not read it (no permission, or the app in the background without while-in-use
+  access, as after a dismissal from the notification), the forecast is for the chosen place. Before the first unlock the
+  location service still answers.
+- **The language** of the sentence is chosen on the weather screen: "Auto" (the phone's language), English or German.
+  Any other language gets English. The sentence is spoken in that language.
+- **Timing:** the forecast is fetched as soon as the news step starts, so it is usually ready when the feed ends. If it
+  is not, the automation waits up to 15 seconds more for it. A forecast that can't be had is left out without a word:
+  unlike the feed, it is no content the user chose to hear. The feed's maximum duration also ends the weather; the
+  weather alone stops after 2 minutes. A call ends the news step as before, without the weather. The pause after the
+  title comes before the weather when there is no feed.
+- **Storage:** `WeatherSource` (place name, coordinates, current location, language) is part of the settings and of
+  each alarm's snapshot, so it changes like the news: a change asks for a new plan, which refreshes the snapshots.
 
 ### Feeds
 
@@ -584,7 +637,7 @@ database working. `AlarmEngine` still stores a new state first, so that a crash 
   the database says. The alarm screen goes by the same list.
 - **A failed write does not stop what the user asked for.** If the state cannot be stored, the actions of the transition
   still run, with two exceptions. `Remove` does nothing, so that a failure never removes an alarm. `Dismiss` does not start
-  the wake-up automation, which could not be stopped, as `stopWakeUp` goes by the stored state.
+  the wake-up automation, none of whose steps could be stored.
 - **After a failed write the stored state is behind.** A dismissed alarm is then still stored as `Ringing`, so the
   recovery sweep rings it again at the next process start if that is within 60 minutes. Ringing once too often is the
   better way round.
@@ -593,7 +646,10 @@ database working. `AlarmEngine` still stores a new state first, so that a crash 
   memory, under the alarm's id, and is never stored. It plays the bundled sound at full level through the normal path, so
   the service comes first, and it vibrates. Its notification and screen have the normal actions, which work without the
   database, as they go by the list in the ringer. Its one ring timeout ends it. Snoozing it registers the alarm with the
-  system again. The stored alarm stays as it was, so if the database works again by then, the recovery sweep rings it at
+  system again, and keeps the snoozed alarm in memory in `AlarmEngine`, so that the Dismiss of its "Snoozed" notification
+  cancels the registration and ends it, whatever the database says. After a process restart that is gone, and the
+  alarm can be dismissed when it rings at the end of the snooze. At that end, the stored alarm rings, as the database may
+  work again. The stored alarm stays as it was, so if the database works again by then, the recovery sweep rings it at
   the next process start, if that is within 60 minutes.
 - **The ringing has a hard limit.** The ring timeout goes through `AlarmEngine`. If the alarms still ring 30 seconds after
   it, for whichever reason, `AlarmRinger` stops them on its own and posts "An alarm was stopped". This limit is measured
@@ -613,7 +669,8 @@ storage and the calendar provider are not available. To ring anyway:
   worker factory, whose parts are lazy.
 - On `LOCKED_BOOT_COMPLETED` the [recovery sweep](#recovery) runs.
 - The chosen alarm sound is a copy in device-protected storage (see [Ringing](#ringing)). The phone's default
-  alarm sound may not be readable before the first unlock; the bundled sound is then played instead.
+  alarm sound is not readable before the first unlock, so its copy is played instead, and the bundled sound only if
+  there is no copy of the current default.
 - Re-planning only starts after `BOOT_COMPLETED` (user unlocked).
 - The [quick settings tile](#quick-settings-tile) is not `directBootAware`. It only shows up after the first unlock.
 
@@ -696,6 +753,7 @@ classDiagram
         snoozeMinutes: Int
         speakReason: Boolean
         news: NewsSource?
+        weather: WeatherSource?
     }
     class PlanEntry {
         key: AlarmKey
@@ -722,9 +780,29 @@ classDiagram
         snoozeMinutes: Int
         speakReason: Boolean
         news: NewsSource?
+        weather: WeatherSource?
+    }
+    class WeatherSource {
+        placeName: String
+        latitude: Double
+        longitude: Double
+        useCurrentLocation: Boolean
+        language: String?
+    }
+    class NewsSource {
+        type: NewsType
+        url: String
+        maxMinutes: Int
+        title: String?
+        pauseMillis: Int
+        language: String?
     }
     AlarmInstance "1" *-- "1" AlarmSnapshot
     PlanEntry "1" *-- "1" AlarmSnapshot
+    Settings "1" *-- "0..1" NewsSource
+    AlarmSnapshot "1" *-- "0..1" NewsSource
+    Settings "1" *-- "0..1" WeatherSource
+    AlarmSnapshot "1" *-- "0..1" WeatherSource
     PlanEntry ..> AlarmInstance : creates / updates
 ```
 
@@ -736,7 +814,11 @@ Every version of the database schema is kept in `data/schemas/`, as the basis fo
 a schema change gets a new version with a real migration, never a destructive fallback. Version 2 adds the nullable
 column `lateBy` (in milliseconds) to `alarm_instance`. Version 3 replaces `alarmCalendarId` of `settings` with
 `alarmCalendarIds`, the sorted ids separated by commas (`3,9`), and empty if none is chosen. They stay in the single row of
-the settings, so that a choice is saved as one write. The migration keeps the chosen calendar.
+the settings, so that a choice is saved as one write. The migration keeps the chosen calendar. Version 4 adds the nullable
+columns `news_title`, `news_pauseMillis` and `news_language` to `settings` and `alarm_instance`. A news source stored
+before has none of them: no title, the default pause of 1 second, and the feed's own language. Version 5 adds the
+nullable weather columns `weather_placeName`, `weather_latitude`, `weather_longitude`, `weather_useCurrentLocation` and
+`weather_language` to both tables. Nothing stored before has weather.
 
 ## Future: Philips Hue (not in the MVP)
 

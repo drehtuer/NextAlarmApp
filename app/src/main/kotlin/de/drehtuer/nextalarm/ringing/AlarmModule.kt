@@ -26,6 +26,7 @@ import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.SoundWorker
 import de.drehtuer.nextalarm.domain.WakeUpAutomation
 import de.drehtuer.nextalarm.domain.WakeUpDirector
+import de.drehtuer.nextalarm.domain.WeatherFetcher
 import de.drehtuer.nextalarm.planning.AppAlarmIntents
 import de.drehtuer.nextalarm.planning.AppNotifications
 import de.drehtuer.nextalarm.planning.MutexEngineLock
@@ -203,6 +204,11 @@ object AlarmModule {
     @Singleton
     fun newsFetcher(scope: CoroutineScope, data: DataComponents): NewsFetcher = ScopedNewsFetcher(scope, data.feeds)
 
+    @Provides
+    @Singleton
+    fun weatherFetcher(@ApplicationContext context: Context, scope: CoroutineScope, data: DataComponents): WeatherFetcher =
+        ScopedWeatherFetcher(scope, data.weather, AndroidLastLocation(context))
+
     /** Effects run under the engine's lock, so what the automation reports goes through [EngineCalls]. */
     @Provides
     @Singleton
@@ -214,6 +220,8 @@ object AlarmModule {
         changes: WakeUpChanges,
         news: NewsFetcher,
         engine: EngineCalls,
+        notifications: AlarmNotifications,
+        weather: WeatherFetcher,
     ) = WakeUpDirector(
         speech = GatedSpeech(TextToSpeechOutput(context), gate),
         podcast = GatedPodcast(MediaPlayerPodcastOutput(context), gate),
@@ -228,6 +236,8 @@ object AlarmModule {
             foreground.changed(status)
             changes.report(status)
         },
+        onNewsUnavailable = notifications::showFeedUnavailable,
+        forecasts = weather,
     )
 
     @Provides

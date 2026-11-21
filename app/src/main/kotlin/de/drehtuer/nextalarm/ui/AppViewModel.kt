@@ -31,12 +31,15 @@ import de.drehtuer.nextalarm.domain.SoundPreview
 import de.drehtuer.nextalarm.domain.SoundPreviewStatus
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.TEST_ALARM_DELAY
+import de.drehtuer.nextalarm.domain.WeatherDraft
+import de.drehtuer.nextalarm.domain.WeatherModel
 import de.drehtuer.nextalarm.domain.accountToGrant
 import de.drehtuer.nextalarm.domain.buildAlarmSettings
 import de.drehtuer.nextalarm.domain.buildDiagnostics
 import de.drehtuer.nextalarm.domain.buildHome
 import de.drehtuer.nextalarm.domain.buildLogExport
 import de.drehtuer.nextalarm.domain.buildNews
+import de.drehtuer.nextalarm.domain.buildWeather
 import de.drehtuer.nextalarm.domain.calendarFact
 import de.drehtuer.nextalarm.domain.calendarSummary
 import de.drehtuer.nextalarm.domain.chosenCalendars
@@ -80,6 +83,7 @@ class AppPorts(
     val planningChanges: Flow<*>,
     val phone: PhonePorts,
     val news: NewsPorts,
+    val weather: WeatherPorts,
     /** Plays the alarm sound on screen 5. */
     val preview: SoundPreview,
     /** For the calls below that would block the screen. */
@@ -106,6 +110,7 @@ data class AppState(
     val selectedCalendars: Set<CalendarId> = emptySet(),
     val alarmSettings: AlarmSettingsModel = buildAlarmSettings(Settings.DEFAULT, null, null, null),
     val news: NewsModel = buildNews(NewsDraft(), null, Instant.EPOCH, ZoneOffset.UTC),
+    val weather: WeatherModel = buildWeather(WeatherDraft()),
     val diagnosticsSummary: String = diagnosticsSummary(PlannerRecord.INITIAL, ZoneOffset.UTC),
     val diagnostics: DiagnosticsModel = buildDiagnostics(
         PlannerRecord.INITIAL,
@@ -172,12 +177,25 @@ interface NewsActions {
     fun setNewsAddress(address: String)
     fun shortenNews()
     fun lengthenNews()
+    fun setNewsPause(millis: Int)
+    fun setNewsLanguage(language: String?)
     fun toggleNewsTest()
     fun stopNewsTest()
     fun turnOffNews()
 }
 
-interface AppActions : HomeActions, AlarmSettingsActions, NewsActions, DiagnosticsActions
+interface WeatherActions {
+    fun openWeather()
+    fun closeWeather()
+    fun setWeatherQuery(query: String)
+    fun chooseWeatherPlace(index: Int)
+    fun setWeatherUseCurrentLocation(use: Boolean)
+    fun setWeatherLanguage(language: String?)
+    fun previewWeather()
+    fun turnOffWeather()
+}
+
+interface AppActions : HomeActions, AlarmSettingsActions, NewsActions, WeatherActions, DiagnosticsActions
 
 @HiltViewModel
 class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(), AppActions {
@@ -212,10 +230,20 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         publish = { model -> mutableState.update { it.copy(news = model) } },
     )
 
-    /** While the screen is visible: keeps relative times current, and picks up finished planning runs. */
+    private val weather = WeatherController(
+        viewModelScope,
+        ports.weather,
+        ports.settings,
+        store = { source -> changeSettings { it.copy(weather = source) } },
+        publish = { model -> mutableState.update { it.copy(weather = model) } },
+    )
+
+    /** While the screen is visible: starts a planning run, keeps relative times current, and picks up finished runs. */
     fun startWatching() {
         stopWatching()
         watching = listOf(
+            // A run is cheap, and home then shows the real state, for instance right after the permission was granted.
+            viewModelScope.launch { ports.engine.replanRequested() },
             viewModelScope.launch {
                 while (true) {
                     refresh()
@@ -243,6 +271,8 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
         val phone = ports.phone
         val volume = withContext(ports.io) { phone.audio.alarmVolume() }
         val soundName = withContext(ports.io) { phone.audio.defaultSoundName() }
+        // The app can be seen, so the phone has been unlocked, and its default sound can be read.
+        val defaultCopied = phone.sounds.keepDefaultCopy()
         val notificationsAllowed = phone.notificationsAllowed()
         mutableState.update {
             it.copy(
@@ -251,7 +281,7 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
                 home = buildHome(now, zone, alarms, record, chosen, notificationsAllowed),
                 calendars = calendars,
                 selectedCalendars = selected,
-                alarmSettings = buildAlarmSettings(settings, soundName, volume, soundRejection, preview),
+                alarmSettings = buildAlarmSettings(settings, soundName, volume, soundRejection, preview, defaultCopied),
                 diagnosticsSummary = diagnosticsSummary(record, zone),
                 diagnostics = buildDiagnostics(
                     record,
@@ -412,11 +442,31 @@ class AppViewModel @Inject constructor(private val ports: AppPorts) : ViewModel(
 
     override fun lengthenNews() = news.lengthen()
 
+    override fun setNewsPause(millis: Int) = news.setPause(millis)
+
+    override fun setNewsLanguage(language: String?) = news.setLanguage(language)
+
     override fun toggleNewsTest() = news.toggleTest()
 
     override fun stopNewsTest() = news.stopTest()
 
     override fun turnOffNews() = news.turnOff()
+
+    override fun openWeather() = weather.open()
+
+    override fun closeWeather() = weather.close()
+
+    override fun setWeatherQuery(query: String) = weather.setQuery(query)
+
+    override fun chooseWeatherPlace(index: Int) = weather.choose(index)
+
+    override fun setWeatherUseCurrentLocation(use: Boolean) = weather.setUseCurrentLocation(use)
+
+    override fun setWeatherLanguage(language: String?) = weather.setLanguage(language)
+
+    override fun previewWeather() = weather.showPreview()
+
+    override fun turnOffWeather() = weather.turnOff()
 
     /** A test alarm goes the normal way. Asking again while one is on its way does not add another. */
     override fun ringTestAlarm() {

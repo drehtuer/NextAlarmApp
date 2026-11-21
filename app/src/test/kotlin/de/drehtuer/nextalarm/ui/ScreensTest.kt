@@ -489,6 +489,21 @@ class NextAlarmAppTest {
     }
 
     @Test
+    fun `the weather row opens the weather screen, and leaving it closes it`() {
+        show(ready)
+        openFromSettings("Alarm settings")
+        rule.onNodeWithText("Weather").performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Show the forecast").assertIsDisplayed()
+        assertEquals("open", actions.weatherLifecycle.last())
+        actions.weatherLifecycle.clear()
+        rule.onNodeWithContentDescription("Back").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("These apply to every alarm.").assertIsDisplayed()
+        assertEquals(listOf("close"), actions.weatherLifecycle)
+    }
+
+    @Test
     fun `leaving screen 5, back or forward, stops its sound`() {
         show(ready)
         openFromSettings("Alarm settings")

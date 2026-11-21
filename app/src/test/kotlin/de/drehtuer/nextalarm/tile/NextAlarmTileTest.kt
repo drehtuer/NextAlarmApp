@@ -147,6 +147,8 @@ class TileRefreshTest {
             override fun startAnnouncement(alarm: AlarmInstance) = Unit
             override fun startNews(alarm: AlarmInstance) = Unit
             override fun leave(instanceId: Long) = Unit
+            override fun stopAll() = Unit
+            override fun alarmRings() = Unit
         }
         val effects = AppAlarmEffects(ringer, AlarmNotifications(context), AppNotifications(context, tile = failing()), wakeUp, PreviewParts().preview)
         effects.showNextAlarm(scheduled())

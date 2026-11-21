@@ -82,12 +82,42 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
 }
 
 /**
+ * Version 4 keeps a news source's title, the pause before it and the language to read it in, for the settings and for
+ * each alarm's snapshot. A source stored before then has none of them, and gets the defaults.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf("settings", "alarm_instance").forEach { table ->
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `news_title` TEXT")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `news_pauseMillis` INTEGER")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `news_language` TEXT")
+        }
+    }
+}
+
+/**
+ * Version 5 keeps the weather after the news, for the settings and for each alarm's snapshot. Nothing stored before then
+ * has any, so all its columns start out empty.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf("settings", "alarm_instance").forEach { table ->
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `weather_placeName` TEXT")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `weather_latitude` REAL")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `weather_longitude` REAL")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `weather_useCurrentLocation` INTEGER")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `weather_language` TEXT")
+        }
+    }
+}
+
+/**
  * All app data. The database lives in device-protected storage, so that alarms can ring before the first unlock
  * after a reboot. See docs/architecture.md#direct-boot.
  */
 @Database(
     entities = [AlarmInstanceEntity::class, SettingsEntity::class, PlannerEntity::class],
-    version = 3,
+    version = 5,
 )
 abstract class NextAlarmDatabase : RoomDatabase() {
     abstract fun alarms(): AlarmDao
@@ -99,7 +129,7 @@ abstract class NextAlarmDatabase : RoomDatabase() {
 
         fun open(context: Context): NextAlarmDatabase = Room
             .databaseBuilder(context.createDeviceProtectedStorageContext(), NextAlarmDatabase::class.java, NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
     }
 }

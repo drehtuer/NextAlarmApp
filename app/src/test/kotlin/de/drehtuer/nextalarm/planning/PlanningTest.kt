@@ -4,6 +4,7 @@ import android.app.AlarmManager
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.provider.CalendarContract
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Data
@@ -19,12 +20,14 @@ import androidx.work.testing.WorkManagerTestInitHelper
 import dagger.Lazy
 import de.drehtuer.nextalarm.NextAlarmApplication
 import de.drehtuer.nextalarm.data.DataComponents
+import de.drehtuer.nextalarm.data.SoundFiles
 import de.drehtuer.nextalarm.domain.AlarmAction
 import de.drehtuer.nextalarm.domain.AlarmEffects
 import de.drehtuer.nextalarm.domain.AlarmEngine
 import de.drehtuer.nextalarm.domain.AlarmInstance
 import de.drehtuer.nextalarm.domain.PlannerState
 import de.drehtuer.nextalarm.domain.PlanningFailure
+import de.drehtuer.nextalarm.domain.SoundRef
 import java.time.Duration
 import java.time.Instant
 import kotlin.test.assertEquals
@@ -73,7 +76,7 @@ class PlanningTest {
         MutexEngineLock(),
     )
 
-    private fun factory() = NextAlarmWorkerFactory(Lazy { engine() }, Lazy { planning })
+    private fun factory() = NextAlarmWorkerFactory(Lazy { engine() }, Lazy { planning }, Lazy { data })
 
     private inline fun <reified W : ListenableWorker> worker(input: Data = Data.EMPTY): W =
         TestListenableWorkerBuilder<W>(context)
@@ -158,6 +161,27 @@ class PlanningTest {
         val record = data.planner.load()
         assertEquals(PlannerState.FailSafe, record.state)
         assertEquals(PlanningFailure.NO_CALENDAR, record.lastRun?.failure)
+    }
+
+    @Test
+    fun `the plan worker keeps the copy of the default sound up to date`() = runBlocking {
+        var copies = 0
+        val sounds = object : SoundFiles {
+            override suspend fun import(uri: Uri) = error("not used")
+            override suspend fun importPhoneSound(uri: Uri) = error("not used")
+            override fun delete(sound: SoundRef) = error("not used")
+            override suspend fun keepDefaultCopy(): Boolean {
+                copies++
+                return false
+            }
+        }
+        val factory = object : WorkerFactory() {
+            override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters) =
+                PlanWorker(appContext, workerParameters, engine(), planning, sounds)
+        }
+        val worker = TestListenableWorkerBuilder<PlanWorker>(context).setWorkerFactory(factory).build()
+        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+        assertEquals(1, copies)
     }
 
     @Test

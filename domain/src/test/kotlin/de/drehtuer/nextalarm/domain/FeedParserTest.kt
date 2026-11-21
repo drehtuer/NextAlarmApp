@@ -197,6 +197,38 @@ class FeedParserTest {
     }
 
     @Test
+    fun `an RSS feed's language is its language element`() {
+        assertEquals("de-DE", parse(rss("", "<title>T</title><language>de-de</language>"))?.language)
+        assertEquals("en-GB", parse(rss("", "<language> en_GB </language>"))?.language)
+    }
+
+    @Test
+    fun `Dublin Core's language counts too, and the first element wins over xml lang`() {
+        val dc = """<?xml version="1.0"?><rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xml:lang="fr">""" +
+            "<channel><dc:language>de</dc:language><language>en</language></channel></rss>"
+        assertEquals("de", parse(dc)?.language)
+    }
+
+    @Test
+    fun `an Atom feed's language is its xml lang`() {
+        val atom = """<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="de-AT"><title>T</title></feed>"""
+        assertEquals("de-AT", parse(atom)?.language)
+    }
+
+    @Test
+    fun `a feed without a language, or with one that is no language, has none`() {
+        assertNull(parse(rss(""))?.language)
+        assertNull(parse(rss("", "<language>  </language>"))?.language)
+        assertNull(parse(rss("", "<language>!!</language>"))?.language)
+        assertNull(languageTag("und"))
+    }
+
+    @Test
+    fun `an item's xml lang or language is not the feed's`() {
+        assertNull(parse(rss("<item><title>A</title><language>de</language></item>"))?.language)
+    }
+
+    @Test
     fun `a feed without a title takes the fallback name`() {
         assertEquals("fallback.example", parse("<rss><channel/></rss>")?.name)
         assertEquals("fallback.example", parse(rss("", channel = "<title>  </title>"))?.name)

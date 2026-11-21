@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import de.drehtuer.nextalarm.domain.AUTO_LANGUAGE_LABEL
 import de.drehtuer.nextalarm.domain.FeedFailure
 import de.drehtuer.nextalarm.domain.NewsCheck
 import de.drehtuer.nextalarm.domain.NewsDraft
@@ -135,6 +136,33 @@ class NewsScreenTest {
         rule.onNodeWithText("60 min").assertIsDisplayed()
         rule.onNodeWithContentDescription("Longer").assertIsNotEnabled()
         rule.onNodeWithContentDescription("Shorter").assertIsEnabled()
+    }
+
+    @Test
+    fun `the stepper ends at its lower limit of 1 minute`() {
+        show(model(NewsDraft(minutes = 1)))
+        rule.onNodeWithText("1 min").assertIsDisplayed()
+        rule.onNodeWithContentDescription("Shorter").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `the pause is picked from its list, and reaches the actions`() {
+        show(model())
+        assertShown("Pause after the title", "Silence before the feed starts", "1 s")
+        rule.onNodeWithText("Pause after the title").performScrollTo().performClick()
+        rule.onNodeWithText("2.5 s").performScrollTo().performClick()
+        assertEquals(listOf("pause:2500"), actions.calls)
+    }
+
+    @Test
+    fun `the language is picked from the engine's, or auto, and reaches the actions`() {
+        show(buildNews(NewsDraft(language = "de-DE"), null, NOW, ZoneOffset.UTC, listOf("de-DE", "en-GB")))
+        assertShown("Language", "For RSS feeds read aloud", "German (Germany)")
+        rule.onNodeWithText("Language").performScrollTo().performClick()
+        rule.onNodeWithText("English (United Kingdom)").performClick()
+        rule.onNodeWithText("Language").performScrollTo().performClick()
+        rule.onNodeWithText(AUTO_LANGUAGE_LABEL).performClick()
+        assertEquals(listOf("language:en-GB", "language:null"), actions.calls)
     }
 
     @Test

@@ -139,15 +139,23 @@ class PlannerEngine(
         perform(result, updated)
     }
 
+    /**
+     * Each command is applied on its own, so that one that fails does not hold up the others. The run still fails then,
+     * and the next one tries the failed command again.
+     */
     private suspend fun applyPlan(plan: Plan) {
+        val failures = Failures()
         diff(plan, alarms.all(), now()).forEach { command ->
-            when (command) {
-                is PlanCommand.Create -> alarmEngine.create(command.entry)
-                is PlanCommand.Refresh -> alarmEngine.handle(command.instanceId, AlarmEvent.Refresh(command.snapshot))
-                is PlanCommand.Remove -> alarmEngine.handle(command.instanceId, AlarmEvent.Remove)
+            failures.attempt {
+                when (command) {
+                    is PlanCommand.Create -> alarmEngine.create(command.entry)
+                    is PlanCommand.Refresh -> alarmEngine.handle(command.instanceId, AlarmEvent.Refresh(command.snapshot))
+                    is PlanCommand.Remove -> alarmEngine.handle(command.instanceId, AlarmEvent.Remove)
+                }
             }
         }
-        alarmEngine.registerWaiting()
+        failures.attempt { alarmEngine.registerWaiting() }
+        failures.rethrow()
     }
 
     private fun perform(result: Transition<PlannerState, PlannerAction>, record: PlannerRecord) {

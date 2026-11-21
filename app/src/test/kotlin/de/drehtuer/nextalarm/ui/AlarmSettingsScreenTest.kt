@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -21,6 +22,8 @@ import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.SoundPreviewStatus
 import de.drehtuer.nextalarm.domain.SoundRef
 import de.drehtuer.nextalarm.domain.SoundRejection
+import de.drehtuer.nextalarm.domain.WeatherSource
+import de.drehtuer.nextalarm.domain.DEFAULT_SOUND_COPY_NOTE
 import de.drehtuer.nextalarm.domain.buildAlarmSettings
 import de.drehtuer.nextalarm.domain.soundRejectionText
 import androidx.compose.runtime.getValue
@@ -45,6 +48,9 @@ class RecordingActions : AppActions {
 
     /** The same for the preview of the sound on screen 5. */
     val previewLifecycle = mutableListOf<String>()
+
+    /** The same for the weather screen. */
+    val weatherLifecycle = mutableListOf<String>()
 
     override fun syncNow() {
         calls += "sync"
@@ -126,12 +132,52 @@ class RecordingActions : AppActions {
         calls += "lengthen"
     }
 
+    override fun setNewsPause(millis: Int) {
+        calls += "pause:$millis"
+    }
+
+    override fun setNewsLanguage(language: String?) {
+        calls += "language:$language"
+    }
+
     override fun toggleNewsTest() {
         calls += "toggleTest"
     }
 
     override fun turnOffNews() {
         calls += "turnOff"
+    }
+
+    override fun openWeather() {
+        weatherLifecycle += "open"
+    }
+
+    override fun closeWeather() {
+        weatherLifecycle += "close"
+    }
+
+    override fun setWeatherQuery(query: String) {
+        calls += "weather query:$query"
+    }
+
+    override fun chooseWeatherPlace(index: Int) {
+        calls += "weather place:$index"
+    }
+
+    override fun setWeatherUseCurrentLocation(use: Boolean) {
+        calls += "weather location:$use"
+    }
+
+    override fun setWeatherLanguage(language: String?) {
+        calls += "weather language:$language"
+    }
+
+    override fun previewWeather() {
+        calls += "weather preview"
+    }
+
+    override fun turnOffWeather() {
+        calls += "weather off"
     }
 
     override fun ringTestAlarm() {
@@ -157,16 +203,18 @@ class AlarmSettingsScreenTest {
         volume: AlarmVolume? = AlarmVolume(5, 7),
         rejection: String? = null,
         preview: SoundPreviewStatus = SoundPreviewStatus.IDLE,
+        defaultCopied: Boolean = true,
     ) {
         rule.setContent {
             NextAlarmTheme(dark = false) {
                 AlarmSettingsScreen(
-                    model = buildAlarmSettings(settings, "Bright Morning", volume, rejection, preview),
+                    model = buildAlarmSettings(settings, "Bright Morning", volume, rejection, preview, defaultCopied),
                     actions = actions,
                     onBack = { other += "back" },
                     onPhoneSounds = { other += "phone sounds" },
                     onChooseFile = { other += "file" },
                     onNews = { other += "news" },
+                    onWeather = { other += "weather" },
                 )
             }
         }
@@ -203,8 +251,9 @@ class AlarmSettingsScreenTest {
             "Speak the title",
             "Reads the event title aloud",
             "News",
-            "Off",
+            "Weather",
         ).forEach(::visible)
+        assertEquals(2, rule.onAllNodesWithText("Off").fetchSemanticsNodes().size, "no news and no weather")
     }
 
     @Test
@@ -330,6 +379,13 @@ class AlarmSettingsScreenTest {
     }
 
     @Test
+    fun `the weather row shows where the forecast is for, and has its own callback`() {
+        show(Settings.DEFAULT.copy(weather = WeatherSource("Berlin", 52.52, 13.41)))
+        tap("Berlin")
+        assertEquals(listOf("weather"), other)
+    }
+
+    @Test
     fun `everything fits a scrolling screen`() {
         show(volume = AlarmVolume(1, 7), rejection = "Rejected.")
         visible("News")
@@ -343,6 +399,18 @@ class AlarmSettingsScreenTest {
         assertEquals(listOf("preview"), actions.calls)
         rule.onNodeWithContentDescription("Stop the alarm sound").assertDoesNotExist()
         rule.onNodeWithText("Stops after 10 s.", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `a default sound without a copy says what may ring instead`() {
+        show(defaultCopied = false)
+        visible(DEFAULT_SOUND_COPY_NOTE)
+    }
+
+    @Test
+    fun `a default sound with a copy has no note`() {
+        show()
+        rule.onNodeWithText(DEFAULT_SOUND_COPY_NOTE).assertDoesNotExist()
     }
 
     @Test

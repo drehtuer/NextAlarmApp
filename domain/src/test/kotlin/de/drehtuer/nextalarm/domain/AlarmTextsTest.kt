@@ -6,6 +6,7 @@ import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** The wording comes from docs/design.md. */
 class AlarmTextsTest {
@@ -28,6 +29,17 @@ class AlarmTextsTest {
         )
         assertEquals("An alarm couldn't play a sound", NO_SOUND_TEXT.title)
         assertEquals("NextAlarm tried all its sounds and none would play. Tap to open the alarm.", NO_SOUND_TEXT.text)
+    }
+
+    @Test
+    fun `a feed that couldn't be had is named by its title, or else by its address`() {
+        val titled = NewsSource(NewsType.RSS, "https://www.news.example/feed", title = "Der Tag")
+        assertEquals("The feed isn't available", feedUnavailableText(titled).title)
+        assertEquals(
+            "“Der Tag” couldn't be loaded after the alarm. Check the phone's connection, or test the feed in NextAlarm's settings.",
+            feedUnavailableText(titled).text,
+        )
+        assertTrue(feedUnavailableText(titled.copy(title = null)).text.startsWith("“news.example”"))
     }
 
     @Test

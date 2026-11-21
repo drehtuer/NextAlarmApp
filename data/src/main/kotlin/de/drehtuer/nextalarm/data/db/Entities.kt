@@ -16,12 +16,26 @@ data class AlarmConfigColumns(
     val snoozeMinutes: Int,
     val speakReason: Boolean,
     @Embedded(prefix = "news_") val news: NewsColumns?,
+    /** Came with version 5. */
+    @Embedded(prefix = "weather_") val weather: WeatherColumns? = null,
 )
 
+data class WeatherColumns(
+    val placeName: String,
+    val latitude: Double,
+    val longitude: Double,
+    val useCurrentLocation: Boolean,
+    val language: String?,
+)
+
+/** The last three came with version 4. A source stored before then has none of them. */
 data class NewsColumns(
     val type: String,
     val url: String,
     val maxMinutes: Int,
+    val title: String? = null,
+    val pauseMillis: Int? = null,
+    val language: String? = null,
 )
 
 @Entity(tableName = "alarm_instance", indices = [Index("alarmKey")])

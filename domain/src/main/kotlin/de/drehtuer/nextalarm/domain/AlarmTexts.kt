@@ -43,6 +43,13 @@ val NO_SOUND_TEXT = NotificationText(
     "NextAlarm tried all its sounds and none would play. Tap to open the alarm.",
 )
 
+/** After an alarm, when its feed could not be had. The feed is up to the user, so it isn't called news here. */
+fun feedUnavailableText(source: NewsSource): NotificationText = NotificationText(
+    NEWS_UNAVAILABLE_TITLE,
+    "“${source.title ?: feedFallbackName(source.url)}” couldn't be loaded after the alarm. Check the phone's connection, " +
+        "or test the feed in NextAlarm's settings.",
+)
+
 fun snoozedText(alarm: AlarmInstance, zone: ZoneId): NotificationText = NotificationText(
     "Snoozed until ${formatTime(alarm.triggerAt, zone)}",
     alarm.snapshot.reason ?: NO_TITLE,

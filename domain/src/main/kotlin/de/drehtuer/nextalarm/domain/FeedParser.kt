@@ -7,6 +7,7 @@ import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.util.Locale
 import javax.xml.XMLConstants
 import javax.xml.parsers.ParserConfigurationException
 import javax.xml.parsers.SAXParserFactory
@@ -30,6 +31,9 @@ private const val RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#" // NOSONAR
 private const val ITUNES = "http://www.itunes.com/dtds/podcast-1.0.dtd" // NOSONAR: an XML namespace name, which is never connected to.
 private const val CONTENT = "http://purl.org/rss/1.0/modules/content/" // NOSONAR: an XML namespace name, which is never connected to.
 private const val DUBLIN_CORE = "http://purl.org/dc/elements/1.1/" // NOSONAR: an XML namespace name, which is never connected to.
+
+/** Longer than any real language tag. */
+private const val MAX_LANGUAGE = 35
 private const val SECONDS_PER_PART = 60L
 private const val MAX_DURATION_PARTS = 3
 
@@ -132,6 +136,10 @@ private class FeedHandler : HostileXmlGuard() {
     private var title = ""
     private var author: String? = null
 
+    /** RSS's `<language>` or Dublin Core's, which say more than an `xml:lang` that may only be a template's default. */
+    private var language: String? = null
+    private var xmlLanguage: String? = null
+
     fun feed(fallbackName: String): Feed {
         val name = plainText(title).take(MAX_NAME).ifEmpty { fallbackName }
         val episode = latest?.let { it.copy(title = it.title.ifEmpty { name }) }
@@ -141,12 +149,16 @@ private class FeedHandler : HostileXmlGuard() {
             author = author?.let(::plainText)?.take(MAX_NAME)?.ifEmpty { null },
             entries = entries,
             latestEpisode = episode,
+            language = language ?: xmlLanguage,
         )
     }
 
     override fun startElement(uri: String, localName: String, qName: String, attributes: Attributes) {
         val name = elementName(uri, localName)
         if (path.isEmpty()) checkRoot(uri, localName)
+        if (path.isEmpty() || name in FEED_LEVEL) {
+            attributes.getValue(XMLConstants.XML_NS_URI, "lang")?.let(::languageTag)?.let { xmlLanguage = it }
+        }
         path.addLast(name)
         text.clear()
         if (name in ITEMS && current == null) current = ItemBuilder()
@@ -214,6 +226,7 @@ private class FeedHandler : HostileXmlGuard() {
         when (name) {
             "title" -> title = value
             "itunes:author" -> author = value
+            "language", "dc:language" -> if (language == null) language = languageTag(value)
         }
     }
 
@@ -238,6 +251,15 @@ private fun isAudio(url: String, type: String?): Boolean {
     if (mime !in GENERIC_TYPES) return false
     return url.substringBefore('?').substringBefore('#').substringAfterLast('.').lowercase() in AUDIO_EXTENSIONS
 }
+
+/** A language tag as Java knows it ("de-DE" for "de-de" or "de_DE"), or nothing if [text] names no language. */
+internal fun languageTag(text: String): String? {
+    val tag = text.trim().replace('_', '-').take(MAX_LANGUAGE)
+    val locale = Locale.forLanguageTag(tag)
+    return locale.toLanguageTag().takeIf { locale.language.isNotEmpty() && it != UNDETERMINED_LANGUAGE }
+}
+
+private const val UNDETERMINED_LANGUAGE = "und"
 
 /** RSS uses the date format of mails and Atom ISO 8601. A date in neither counts as no date. */
 internal fun parseFeedDate(text: String): Instant? = try {

@@ -10,10 +10,12 @@ import de.drehtuer.nextalarm.domain.NewsSource
 import de.drehtuer.nextalarm.domain.NewsTestPlayer
 import de.drehtuer.nextalarm.domain.NewsTestProgress
 import de.drehtuer.nextalarm.domain.SettingsRepository
+import de.drehtuer.nextalarm.domain.SpeechLanguages
 import de.drehtuer.nextalarm.domain.buildNews
 import de.drehtuer.nextalarm.domain.isWebAddress
 import de.drehtuer.nextalarm.domain.longerNewsMinutes
 import de.drehtuer.nextalarm.domain.newsCheck
+import de.drehtuer.nextalarm.domain.newsDraftOf
 import de.drehtuer.nextalarm.domain.newsSourceToSave
 import de.drehtuer.nextalarm.domain.shorterNewsMinutes
 import java.time.Instant
@@ -28,6 +30,7 @@ import kotlinx.coroutines.yield
 class NewsPorts(
     val feeds: FeedSource,
     val player: NewsTestPlayer,
+    val languages: SpeechLanguages = SpeechLanguages { emptyList() },
 )
 
 /**
@@ -46,6 +49,7 @@ class NewsController(
     private val publish: (NewsModel) -> Unit,
 ) {
     private var draft = NewsDraft()
+    private var languages = emptyList<String>()
     private var opened = false
     private var test: NewsTestProgress? = null
 
@@ -63,9 +67,14 @@ class NewsController(
         detection?.cancel()
         detection = scope.launch {
             val saved = settings.load().news
-            draft = NewsDraft(saved?.url.orEmpty(), saved?.maxMinutes ?: NewsSource.DEFAULT_NEWS_MINUTES, saved)
+            draft = newsDraftOf(saved)
             show()
             if (saved != null) detect(saved.url)
+        }
+        // The engine takes a moment to say, and the screen does not wait for it.
+        scope.launch {
+            languages = ports.languages.available()
+            show()
         }
     }
 
@@ -98,6 +107,22 @@ class NewsController(
     private fun setMinutes(minutes: Int) {
         val changed = draft.saved?.copy(maxMinutes = minutes)
         draft = draft.copy(minutes = minutes)
+        show()
+        save(changed)
+    }
+
+    /** Like the duration, it counts for what is stored right away. */
+    fun setPause(millis: Int) {
+        val changed = draft.saved?.copy(pauseMillis = millis)
+        draft = draft.copy(pauseMillis = millis)
+        show()
+        save(changed)
+    }
+
+    /** Empty for the feed's own language. Like the duration, it counts for what is stored right away. */
+    fun setLanguage(language: String?) {
+        val changed = draft.saved?.copy(language = language)
+        draft = draft.copy(language = language)
         show()
         save(changed)
     }
@@ -192,7 +217,7 @@ class NewsController(
         show()
     }
 
-    private fun show() = publish(buildNews(draft, test, now(), zone()))
+    private fun show() = publish(buildNews(draft, test, now(), zone(), languages))
 
     private companion object {
         /** Long enough to tell a paste from typing, which does not need an answer for every letter. */

@@ -49,6 +49,24 @@ class WakeUpScreenTest {
     }
 
     @Test
+    fun `a feed that can't be had says so, on the screen and in the notification`() {
+        assertEquals(
+            NowPlayingModel(PlayingKind.NEWS, "The feed isn't available", "Der Tag", null, null, null),
+            model(WakeUpPlaying.NewsUnavailable("Der Tag")).playing,
+        )
+        assertEquals(NotificationText("The feed isn't available", "Der Tag"), text(WakeUpPlaying.NewsUnavailable("Der Tag")))
+    }
+
+    @Test
+    fun `the weather names its place, on the screen and in the notification`() {
+        assertEquals(
+            NowPlayingModel(PlayingKind.SPEECH, "The weather", "Berlin", null, null, null),
+            model(WakeUpPlaying.Weather("Berlin")).playing,
+        )
+        assertEquals(NotificationText("The weather", "Berlin"), text(WakeUpPlaying.Weather("Berlin")))
+    }
+
+    @Test
     fun `reading a feed`() {
         assertEquals(
             NowPlayingModel(PlayingKind.NEWS, "Reading the news · tagesschau.de", "Headline 3 of 12", "1:48", "up to 15:00", 0.12f),

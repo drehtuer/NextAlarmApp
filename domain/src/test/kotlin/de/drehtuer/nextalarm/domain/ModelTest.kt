@@ -81,6 +81,15 @@ class ModelTest {
     }
 
     @Test
+    fun `news pauses for a second, in the feed's own language, and rejects a negative pause`() {
+        assertEquals(1000, NEWS.pauseMillis)
+        assertNull(NEWS.language)
+        assertNull(NEWS.title)
+        assertEquals(0, NEWS.copy(pauseMillis = 0).pauseMillis)
+        assertFailsWith<IllegalArgumentException> { NEWS.copy(pauseMillis = -1) }
+    }
+
+    @Test
     fun `ticking adds a calendar to those chosen, and leaves the rest of the settings alone`() {
         val settings = settings(speakReason = false).withAlarmCalendar(CalendarId(2), ticked = true)
         assertEquals(setOf(CalendarId(1), CalendarId(2)), settings.alarmCalendars)

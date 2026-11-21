@@ -10,6 +10,8 @@ import de.drehtuer.nextalarm.MainActivity
 import de.drehtuer.nextalarm.planning.AppNotifications
 import de.drehtuer.nextalarm.planning.alarmUri
 import de.drehtuer.nextalarm.domain.AlarmState
+import de.drehtuer.nextalarm.domain.NewsSource
+import de.drehtuer.nextalarm.domain.NewsType
 import java.time.Duration
 import java.time.ZoneId
 import kotlin.test.assertEquals
@@ -171,6 +173,14 @@ class AlarmNotificationsTest {
         notifications.showNoSound()
         val notification = assertNotNull(posted(AlarmNotifications.NO_SOUND_ID))
         assertEquals("An alarm couldn't play a sound", notification.title())
+    }
+
+    @Test
+    fun `a feed that couldn't be had is reported, as a warning`() {
+        notifications.showFeedUnavailable(NewsSource(NewsType.RSS, "https://www.news.example/feed", title = "Der Tag"))
+        val notification = assertNotNull(posted(AlarmNotifications.FEED_UNAVAILABLE_ID))
+        assertEquals("The feed isn't available", notification.title())
+        assertEquals(AppNotifications.WARNING_CHANNEL, notification.channelId)
     }
 
     @Test
