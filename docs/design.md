@@ -509,7 +509,9 @@ Details decided while building this screen:
 
 ### 9 Wake-up screen (night)
 
-1. "Good morning · Saturday 7 November", then the time in `displaySmall`.
+1. A greeting that fits the local time, "Good morning" from 05:00, "Good afternoon" from 12:00, "Good evening" from
+   18:00 and "Hello" from midnight, with the date: "Good morning · Saturday 7 November". Then the time in
+   `displaySmall`. The media notification greets the same way while nothing plays yet.
 2. The title or titles, centred, in `headlineSmall`.
 3. A "now playing" card (`nightSurfaceContainer`, 24 dp corners) with an icon disc and a progress bar. Its contents
    depend on what is playing:

@@ -14,11 +14,12 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import de.drehtuer.nextalarm.R
-import de.drehtuer.nextalarm.domain.WAKE_UP_PLACEHOLDER_TEXT
 import de.drehtuer.nextalarm.domain.WakeUpPlaying
 import de.drehtuer.nextalarm.domain.WakeUpStatus
 import de.drehtuer.nextalarm.domain.wakeUpNotificationText
+import de.drehtuer.nextalarm.domain.wakeUpPlaceholderText
 import de.drehtuer.nextalarm.planning.notificationBuilder
+import java.time.Instant
 import java.time.ZoneId
 
 /** What [WakeUpForeground] needs from the running `WakeUpService`. */
@@ -33,12 +34,13 @@ interface WakeUpForegroundHost {
  */
 class WakeUpNotifications(
     private val context: Context,
+    private val now: () -> Instant = Instant::now,
     private val zone: () -> ZoneId = ZoneId::systemDefault,
 ) {
     private val manager = context.getSystemService(NotificationManager::class.java)
 
     fun playing(status: WakeUpStatus, session: MediaSession.Token): Notification {
-        val text = wakeUpNotificationText(status, zone())
+        val text = wakeUpNotificationText(status, zone(), now())
         return builder(text.title, text.text)
             .setContentIntent(screen())
             .setStyle(Notification.MediaStyle().setMediaSession(session).setShowActionsInCompactView(0))
@@ -50,7 +52,10 @@ class WakeUpNotifications(
     }
 
     /** What `WakeUpService` shows if it has to be in the foreground while there is nothing to show. */
-    fun placeholder(): Notification = builder(WAKE_UP_PLACEHOLDER_TEXT.title, WAKE_UP_PLACEHOLDER_TEXT.text).build()
+    fun placeholder(): Notification {
+        val text = wakeUpPlaceholderText(now(), zone())
+        return builder(text.title, text.text).build()
+    }
 
     /** Without the service, which Android can refuse. */
     fun show(status: WakeUpStatus, session: MediaSession.Token) {
@@ -103,6 +108,7 @@ class WakeUpMedia(
     context: Context,
     private val zone: () -> ZoneId = ZoneId::systemDefault,
     private val newSession: () -> MediaSession = { MediaSession(context, "NextAlarm") },
+    private val now: () -> Instant = Instant::now,
     private val onStop: () -> Unit,
 ) {
     private var session: MediaSession? = null
@@ -133,7 +139,7 @@ class WakeUpMedia(
     }
 
     internal fun metadata(status: WakeUpStatus): MediaMetadata {
-        val text = wakeUpNotificationText(status, zone())
+        val text = wakeUpNotificationText(status, zone(), now())
         val builder = MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, text.title)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, text.text)

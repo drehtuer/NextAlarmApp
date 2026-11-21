@@ -3,6 +3,7 @@ package de.drehtuer.nextalarm.domain
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -22,6 +23,23 @@ class WakeUpScreenTest {
         assertEquals("06:06", model.time)
         assertEquals(listOf("Gym", null), model.titles)
         assertNull(model.playing)
+    }
+
+    @Test
+    fun `the greeting fits the time of day, where the phone is`() {
+        fun at(time: String) = greeting(Instant.parse("2026-11-07T${time}Z"), ZoneOffset.UTC)
+        assertEquals("Hello", at("00:00:00"))
+        assertEquals("Hello", at("04:59:59"))
+        assertEquals("Good morning", at("05:00:00"))
+        assertEquals("Good morning", at("11:59:59"))
+        assertEquals("Good afternoon", at("12:00:00"))
+        assertEquals("Good afternoon", at("17:59:59"))
+        assertEquals("Good evening", at("18:00:00"))
+        assertEquals("Good evening", at("23:59:59"))
+        assertEquals("Good evening", greeting(Instant.parse("2026-11-07T20:45:00Z"), zone), "21:45 in Berlin")
+        val evening = wakeUpScreenModel(Instant.parse("2026-11-07T20:45:00Z"), zone, WakeUpStatus(listOf("Gym"), null, null))
+        assertEquals("Good evening · Saturday 7 November", evening.greeting)
+        assertEquals(NotificationText("NextAlarm", "Good evening"), wakeUpPlaceholderText(Instant.parse("2026-11-07T20:45:00Z"), zone))
     }
 
     @Test
@@ -126,6 +144,7 @@ class WakeUpScreenTest {
     private fun text(playing: WakeUpPlaying?) = wakeUpNotificationText(
         WakeUpStatus(listOf("Gym"), playing, Instant.parse("2026-11-07T05:16:00Z")),
         zone,
+        at,
     )
 
     @Test
@@ -158,12 +177,13 @@ class WakeUpScreenTest {
 
     @Test
     fun `the notification between two steps`() {
-        assertEquals(WAKE_UP_PLACEHOLDER_TEXT, text(null))
+        assertEquals(NotificationText("NextAlarm", "Good morning"), text(null))
+        assertEquals(wakeUpPlaceholderText(at, zone), text(null))
     }
 
     @Test
     fun `no news means no promise of when it stops`() {
         val status = WakeUpStatus(listOf("Gym"), WakeUpPlaying.GettingNews("x"), null)
-        assertEquals(NotificationText("Getting the news", "x · "), wakeUpNotificationText(status, zone))
+        assertEquals(NotificationText("Getting the news", "x · "), wakeUpNotificationText(status, zone, at))
     }
 }

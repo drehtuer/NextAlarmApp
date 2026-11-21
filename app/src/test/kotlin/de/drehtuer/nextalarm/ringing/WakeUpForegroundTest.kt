@@ -14,6 +14,7 @@ import de.drehtuer.nextalarm.domain.WakeUpStatus
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
@@ -98,8 +99,10 @@ class WakeUpNotificationsTest {
     }
 
     @Test
-    fun `the placeholder has something to say`() {
+    fun `the placeholder has something to say, and greets as fits the time`() {
         assertEquals("NextAlarm", notifications.placeholder().title())
+        val evening = WakeUpNotifications(context, { Instant.parse("2026-11-07T21:45:00Z") }) { ZoneOffset.UTC }
+        assertEquals("Good evening", evening.placeholder().text())
     }
 
     @Test
