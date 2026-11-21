@@ -4,14 +4,20 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * Says one text at a time, through the media stream, with the device's default engine, language and voice.
- * `onDone` is told whether it worked, and is not called after [stop].
+ * Says one text at a time, through the media stream, with the device's default engine and voice. `onDone` is told whether
+ * it worked, and is not called after [stop].
  */
 interface SpeechOutput {
-    fun speak(text: String, onDone: (Boolean) -> Unit)
+    /** [language] is a language tag ("de-DE"). Empty, or one the engine can't speak, means the phone's language. */
+    fun speak(text: String, language: String?, onDone: (Boolean) -> Unit)
 
     /** Stops at once, and gives up the engine until the next [speak]. */
     fun stop()
+}
+
+/** The languages the phone's speech engine can speak, as language tags. Empty if it can't say. */
+fun interface SpeechLanguages {
+    suspend fun available(): List<String>
 }
 
 /** Plays the audio at an address, through the media stream. */
@@ -92,7 +98,8 @@ class ForegroundGate(
 
 /** Speech that starts when [gate] lets it. */
 class GatedSpeech(private val output: SpeechOutput, private val gate: ForegroundGate) : SpeechOutput {
-    override fun speak(text: String, onDone: (Boolean) -> Unit) = gate.whenOpen { output.speak(text, onDone) }
+    override fun speak(text: String, language: String?, onDone: (Boolean) -> Unit) =
+        gate.whenOpen { output.speak(text, language, onDone) }
 
     override fun stop() {
         gate.forget()
@@ -123,6 +130,12 @@ sealed interface WakeUpPlaying {
 
     /** Waiting for the feed. */
     data class GettingNews(val source: String) : WakeUpPlaying
+
+    /** Saying that the feed could not be had. */
+    data class NewsUnavailable(val source: String) : WakeUpPlaying
+
+    /** Getting or saying the weather for [place]. */
+    data class Weather(val place: String) : WakeUpPlaying
 
     /** Reading the [index]th of [count] entries (from 1). */
     data class ReadingNews(
@@ -189,18 +202,41 @@ class WakeUpDirector(
     private val now: () -> Instant,
     private val report: (Long, AlarmEvent) -> Unit,
     private val onChanged: (WakeUpStatus) -> Unit,
+    /**
+     * Told about a feed that could not be had (no network, no feed, nothing in it), after which that is said. Without it,
+     * the news just ends, as for the test on screen 6, which shows why itself.
+     */
+    private val onNewsUnavailable: ((NewsSource) -> Unit)? = null,
+    /** The weather after the feed. Without it, there is none, as for the test on screen 6. */
+    private val forecasts: WeatherFetcher = NO_WEATHER,
 ) : WakeUpAutomation {
     private sealed interface Phase {
         data object Fetching : Phase
+        data object Unavailable : Phase
+        data object WaitingForWeather : Phase
+        data object SpeakingWeather : Phase
         class Reading(val feed: Feed, val index: Int) : Phase
         class Playing(val feed: Feed, val episode: PodcastEpisode, val started: Boolean) : Phase
     }
 
-    private class News(val source: NewsSource, val startedAt: Instant) {
+    /** What an alarm wants after its title: the feed, the weather, or both. */
+    private class NewsStep(val source: NewsSource?, val weather: WeatherSource?)
+
+    /**
+     * The step after the titles: the feed, if there is one, then the weather, if there is that. [audioFrom] is when the
+     * first sound may come, which is the end of the pause after the titles.
+     */
+    private class News(val step: NewsStep, val startedAt: Instant, val audioFrom: Instant) {
+        val source: NewsSource? = step.source
         var phase: Phase = Phase.Fetching
 
         /** A call paused the podcast. */
         var paused = false
+
+        /** The weather is fetched while the feed plays, so that it is ready when the feed ends. */
+        var forecast: SpokenText? = null
+        var forecastArrived = false
+        var weatherStarted = false
     }
 
     private class Title(val alarmId: Long, val text: String)
@@ -216,7 +252,7 @@ class WakeUpDirector(
     private var titleIndex = 0
     private var titleCount = 0
 
-    private val newsAlarms = linkedMapOf<Long, NewsSource>()
+    private val newsAlarms = linkedMapOf<Long, NewsStep>()
     private var news: News? = null
 
     /** Told apart from each other, because a callback or a timer can arrive just after what it belongs to has ended. */
@@ -227,7 +263,16 @@ class WakeUpDirector(
     private var cancelNewsLimit: () -> Unit = {}
     private var cancelFetch: () -> Unit = {}
     private var cancelStartLimit: () -> Unit = {}
+    private var cancelPause: () -> Unit = {}
+    private var cancelWeatherFetch: () -> Unit = {}
+    private var cancelWeatherWait: () -> Unit = {}
     private var stopWatchingCalls: () -> Unit = {}
+
+    /**
+     * Titles have been said, so the news that comes next waits for its pause. The news usually only comes a moment later,
+     * when the state machine has heard that the title is done.
+     */
+    private var pauseBeforeNews = false
 
     @Synchronized
     override fun startAnnouncement(alarm: AlarmInstance) {
@@ -247,13 +292,13 @@ class WakeUpDirector(
     @Synchronized
     override fun startNews(alarm: AlarmInstance) {
         join(alarm)
-        val source = alarm.snapshot.news
-        if (source == null) {
+        val snapshot = alarm.snapshot
+        if (!snapshot.hasNewsStep) {
             report(alarm.id, AlarmEvent.NewsDone)
             publish()
             return
         }
-        newsAlarms[alarm.id] = source
+        newsAlarms[alarm.id] = NewsStep(snapshot.news, snapshot.weather)
         if (speaking == null && news == null) startNewsPlayback() else publish()
     }
 
@@ -277,12 +322,27 @@ class WakeUpDirector(
         }
     }
 
+    /** A new alarm has to be heard on its own, and its dismissal starts the automation again, with its own title. */
+    @Synchronized
+    override fun alarmRings() {
+        if (members.isNotEmpty()) endForEveryAlarm()
+    }
+
+    @Synchronized
+    override fun stopAll() {
+        if (members.isEmpty()) return
+        members.clear()
+        waitingTitles.clear()
+        newsAlarms.clear()
+        finish()
+    }
+
     /** As it is right now, including how far a podcast has got. */
     @Synchronized
     fun status(): WakeUpStatus = WakeUpStatus(
         titles = titles.values.toList(),
         playing = playing(),
-        newsStopsAt = news?.let { it.startedAt.plus(limitOf(it.source)) },
+        newsStopsAt = news?.let { it.startedAt.plus(limitOf(it.step)) },
     )
 
     private fun join(alarm: AlarmInstance) {
@@ -297,6 +357,7 @@ class WakeUpDirector(
     private fun speakNextTitle() {
         val title = waitingTitles.removeFirstOrNull()
         if (title == null) {
+            if (titleIndex > 0) pauseBeforeNews = true
             titleIndex = 0
             titleCount = 0
             if (newsAlarms.isNotEmpty()) startNewsPlayback() else publish()
@@ -311,7 +372,8 @@ class WakeUpDirector(
         speakingSince = now()
         titleIndex++
         publish()
-        say(title.text) {
+        // The phone's language: the title is the user's own.
+        say(title.text, null) {
             speaking = null
             report(title.alarmId, AlarmEvent.AnnouncementDone)
             speakNextTitle()
@@ -322,13 +384,13 @@ class WakeUpDirector(
      * A failed title is treated like a spoken one, and failed reading ends the news, so there is only this one way out.
      * The limit is for an engine that never answers, which would otherwise keep the automation waiting.
      */
-    private fun say(text: String, onDone: (Boolean) -> Unit) {
+    private fun say(text: String, language: String?, onDone: (Boolean) -> Unit) {
         focus.take(::focusLost)
         val run = ++speechRun
         onSpoken = onDone
         cancelSpeechLimit()
         cancelSpeechLimit = timers.after(speechLimit(text)) { speechTimedOut(run) }
-        speech.speak(text) { worked -> spoken(run, worked) }
+        speech.speak(text, language) { worked -> spoken(run, worked) }
     }
 
     @Synchronized
@@ -359,33 +421,77 @@ class WakeUpDirector(
             publish()
             return
         }
-        val source = newsAlarms.values.first()
-        val current = News(source, now())
+        val step = newsAlarms.values.first()
+        val source = step.source
+        val start = now()
+        val pauseMillis = (source?.pauseMillis ?: NewsSource.DEFAULT_PAUSE_MILLIS).toLong()
+        val pause = if (pauseBeforeNews) Duration.ofMillis(pauseMillis) else Duration.ZERO
+        pauseBeforeNews = false
+        val current = News(step, start, start.plus(pause))
         news = current
-        wakeLock.hold(limitOf(source).plus(NEWS_WAKE_LOCK_MARGIN))
-        cancelNewsLimit = timers.after(limitOf(source)) { newsEnded(current) }
+        wakeLock.hold(limitOf(step).plus(NEWS_WAKE_LOCK_MARGIN))
+        cancelNewsLimit = timers.after(limitOf(step)) { newsEnded(current) }
         publish()
-        cancelFetch = feeds.fetch(source.url) { result -> feedArrived(current, result) }
+        step.weather?.let { weather ->
+            cancelWeatherFetch = forecasts.fetch(weather) { result -> weatherArrived(current, result) }
+        }
+        if (source != null) {
+            cancelFetch = feeds.fetch(source.url) { result -> feedArrived(current, result) }
+        } else {
+            // Only the weather: the feed is over before it began.
+            afterPause(current) { newsEnded(current) }
+        }
     }
 
     @Synchronized
     private fun feedArrived(current: News, result: FeedResult) {
-        if (news !== current) return
+        val source = current.source
+        if (news !== current || source == null) return
         val feed = (result as? FeedResult.Found)?.feed
         val episode = feed?.latestEpisode
         when {
-            feed == null || calls.active() -> newsEnded(current)
-            current.source.type == NewsType.PODCAST ->
-                if (episode != null) playEpisode(current, feed, episode) else newsEnded(current)
-            feed.entries.isEmpty() -> newsEnded(current)
-            else -> readEntry(current, feed, 0)
+            calls.active() -> newsEnded(current)
+            feed == null -> afterPause(current) { unavailable(current, source) }
+            source.type == NewsType.PODCAST && episode != null ->
+                afterPause(current) { playEpisode(current, feed, episode) }
+            source.type == NewsType.PODCAST || feed.entries.isEmpty() -> afterPause(current) { unavailable(current, source) }
+            else -> afterPause(current) { readEntry(current, feed, 0) }
         }
+    }
+
+    /** Waits for the rest of the pause after the titles, if any is left after the download. */
+    private fun afterPause(current: News, action: () -> Unit) {
+        val wait = Duration.between(now(), current.audioFrom)
+        if (wait.isNegative || wait.isZero) {
+            action()
+        } else {
+            cancelPause = timers.after(wait) { pauseOver(current, action) }
+        }
+    }
+
+    @Synchronized
+    private fun pauseOver(current: News, action: () -> Unit) {
+        if (news !== current) return
+        if (calls.active()) newsEnded(current) else action()
+    }
+
+    /** Silence would sound like a fault, so the failure is said, in the phone's language, as the app's own words are. */
+    private fun unavailable(current: News, source: NewsSource) {
+        val tell = onNewsUnavailable
+        if (tell == null) {
+            newsEnded(current)
+            return
+        }
+        tell(source)
+        current.phase = Phase.Unavailable
+        publish()
+        say(NEWS_UNAVAILABLE_TEXT, null) { newsEnded(current) }
     }
 
     private fun readEntry(current: News, feed: Feed, index: Int) {
         current.phase = Phase.Reading(feed, index)
         publish()
-        say(feed.entries[index].spokenText) { worked ->
+        say(feed.entries[index].spokenText, current.source?.language ?: feed.language) { worked ->
             if (worked && index + 1 < feed.entries.size) readEntry(current, feed, index + 1) else newsEnded(current)
         }
     }
@@ -410,13 +516,56 @@ class WakeUpDirector(
         publish()
     }
 
-    /** The news played to its end, reached its limit, or failed: the state machine does not tell these apart. */
+    /**
+     * The feed played to its end, reached its limit, or failed: the state machine does not tell these apart. The weather
+     * comes next, if there is any and no call is in the way, and the step ends after it.
+     */
     @Synchronized
     private fun newsEnded(current: News) {
         if (news !== current) return
+        if (current.step.weather != null && !current.weatherStarted && !calls.active()) {
+            stopFeed(current)
+            startWeather(current)
+            return
+        }
         stopNewsPlayback()
         reportNewsDone()
         publish()
+    }
+
+    private fun startWeather(current: News) {
+        current.weatherStarted = true
+        val spoken = current.forecast
+        when {
+            spoken != null -> sayWeather(current, spoken)
+            current.forecastArrived -> newsEnded(current)
+            else -> {
+                current.phase = Phase.WaitingForWeather
+                publish()
+                cancelWeatherWait = timers.after(WEATHER_WAIT) { weatherLate(current) }
+            }
+        }
+    }
+
+    @Synchronized
+    private fun weatherArrived(current: News, result: SpokenText?) {
+        if (news !== current) return
+        current.forecast = result
+        current.forecastArrived = true
+        if (current.phase != Phase.WaitingForWeather) return
+        cancelWeatherWait()
+        if (result != null) sayWeather(current, result) else newsEnded(current)
+    }
+
+    @Synchronized
+    private fun weatherLate(current: News) {
+        if (news === current && current.phase == Phase.WaitingForWeather) newsEnded(current)
+    }
+
+    private fun sayWeather(current: News, spoken: SpokenText) {
+        current.phase = Phase.SpeakingWeather
+        publish()
+        say(spoken.text, spoken.language) { newsEnded(current) }
     }
 
     private fun reportNewsDone() {
@@ -472,7 +621,11 @@ class WakeUpDirector(
      */
     @Synchronized
     private fun focusLost() {
-        if (calls.active()) return
+        if (!calls.active()) endForEveryAlarm()
+    }
+
+    /** Stops what plays, and ends the automation for every alarm in it, through the state machine. */
+    private fun endForEveryAlarm() {
         if (speaking != null) abandonSpeech()
         stopNewsPlayback()
         waitingTitles.clear()
@@ -485,10 +638,18 @@ class WakeUpDirector(
         val current = news ?: return
         news = null
         cancelNewsLimit()
+        cancelWeatherFetch()
+        cancelWeatherWait()
+        stopFeed(current)
+    }
+
+    /** What plays stops, and what was on its way for it. The weather that is being fetched goes on. */
+    private fun stopFeed(current: News) {
         cancelFetch()
         cancelStartLimit()
+        cancelPause()
         val phase = current.phase
-        if (phase is Phase.Reading) {
+        if (phase is Phase.Reading || phase == Phase.Unavailable || phase == Phase.SpeakingWeather) {
             speechRun++
             cancelSpeechLimit()
             speech.stop()
@@ -498,6 +659,7 @@ class WakeUpDirector(
     }
 
     private fun finish() {
+        pauseBeforeNews = false
         if (speaking != null) abandonSpeech()
         stopNewsPlayback()
         speech.stop()
@@ -517,14 +679,18 @@ class WakeUpDirector(
             return WakeUpPlaying.Speaking(it.text, titleIndex, titleCount, speakingSince)
         }
         val current = news ?: return null
+        val source = current.source
+        val weather = current.step.weather?.let { WakeUpPlaying.Weather(it.placeName) }
         return when (val phase = current.phase) {
-            Phase.Fetching -> WakeUpPlaying.GettingNews(feedFallbackName(current.source.url))
+            Phase.Fetching -> if (source != null) WakeUpPlaying.GettingNews(feedFallbackName(source.url)) else weather
+            Phase.Unavailable -> source?.let { WakeUpPlaying.NewsUnavailable(it.title ?: feedFallbackName(it.url)) }
+            Phase.WaitingForWeather, Phase.SpeakingWeather -> weather
             is Phase.Reading -> WakeUpPlaying.ReadingNews(
                 phase.feed.name,
                 phase.index + 1,
                 phase.feed.entries.size,
                 current.startedAt,
-                limitOf(current.source),
+                limitOf(current.step),
             )
             is Phase.Playing -> WakeUpPlaying.PlayingPodcast(
                 phase.feed.name,
@@ -533,27 +699,44 @@ class WakeUpDirector(
                 phase.started,
                 if (phase.started) podcast.position() else Duration.ZERO,
                 (if (phase.started) podcast.duration() else null) ?: phase.episode.duration,
-                limitOf(current.source),
+                limitOf(current.step),
             )
         }
     }
 
-    private fun limitOf(source: NewsSource): Duration = Duration.ofMinutes(source.maxMinutes.toLong())
+    /** The feed's maximum duration. The weather alone has no setting, as it is one sentence. */
+    private fun limitOf(step: NewsStep): Duration =
+        step.source?.let { Duration.ofMinutes(it.maxMinutes.toLong()) } ?: WEATHER_ONLY_LIMIT
 
     private fun speechLimit(text: String): Duration = SPEECH_BASE_LIMIT.plus(SPEECH_LIMIT_PER_CHARACTER.multipliedBy(text.length.toLong()))
 
-    private companion object {
+    companion object {
+        /** What is said when the feed can't be had. It is not news in every case: the feed is up to the user. */
+        const val NEWS_UNAVAILABLE_TEXT = "The feed isn't available."
+
         /** Long enough for an engine to start and for most texts to be said. */
-        val SPEECH_BASE_LIMIT: Duration = Duration.ofSeconds(30)
+        private val SPEECH_BASE_LIMIT: Duration = Duration.ofSeconds(30)
 
         /** Far slower than anyone speaks. */
-        val SPEECH_LIMIT_PER_CHARACTER: Duration = Duration.ofMillis(200)
+        private val SPEECH_LIMIT_PER_CHARACTER: Duration = Duration.ofMillis(200)
 
         /** Until there is news to hold it for. It only has to outlast the titles. */
-        val SPEECH_WAKE_LOCK: Duration = Duration.ofMinutes(10)
-        val NEWS_WAKE_LOCK_MARGIN: Duration = Duration.ofMinutes(1)
+        private val SPEECH_WAKE_LOCK: Duration = Duration.ofMinutes(10)
+        private val NEWS_WAKE_LOCK_MARGIN: Duration = Duration.ofMinutes(1)
+
+        /** Long enough for one sentence, for a step that is only the weather. */
+        private val WEATHER_ONLY_LIMIT: Duration = Duration.ofMinutes(2)
+
+        /** How long the weather may still take after the feed has ended. Most of its time it had while the feed played. */
+        private val WEATHER_WAIT: Duration = Duration.ofSeconds(15)
+
+        private val NOTHING_TO_CANCEL: () -> Unit = {}
+        private val NO_WEATHER = WeatherFetcher { _, onResult ->
+            onResult(null)
+            NOTHING_TO_CANCEL
+        }
 
         /** A stream that does not start by then is taken to have failed, rather than leaving the user in silence. */
-        val PODCAST_START_LIMIT: Duration = Duration.ofSeconds(45)
+        private val PODCAST_START_LIMIT: Duration = Duration.ofSeconds(45)
     }
 }

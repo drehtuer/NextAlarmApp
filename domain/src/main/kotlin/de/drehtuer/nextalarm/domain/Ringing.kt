@@ -744,4 +744,10 @@ interface WakeUpAutomation {
 
     /** It is over for this alarm, for whichever reason. Nothing happens if it was not in the automation. */
     fun leave(instanceId: Long)
+
+    /** Ends it for every alarm in it, without a word to the state machine: for a Stop whose alarms can't be read. */
+    fun stopAll()
+
+    /** An alarm started to ring: what plays stops, and every alarm in it ends, through the state machine. */
+    fun alarmRings()
 }

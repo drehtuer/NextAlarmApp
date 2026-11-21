@@ -101,7 +101,8 @@ dismissed while snoozed never keeps a stale one. Every change of state also refr
 `AlarmEngine` stores `lateBy` when a `Fire` posts the "late alarm" notification, and leaves it alone otherwise.
 
 Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the current snooze was started by
-`RingTimeout`, not by the user) and the snapshot (`snoozeMinutes`, `ringTimeoutMinutes`, `speakReason`, `news`).
+`RingTimeout`, not by the user) and the snapshot (`snoozeMinutes`, `ringTimeoutMinutes`, `speakReason`, `news`,
+`weather`).
 
 ### Events
 
@@ -115,7 +116,7 @@ Instance data used by the guards: `lateBy` (from `Fire`), `autoSnoozed` (the cur
 | `Refresh(snapshot)`  | Re-planning found a different snapshot (event title or settings changed)            |
 | `Remove`             | Re-planning no longer contains this entry                                           |
 | `AnnouncementDone`   | TTS finished (or failed)                                                            |
-| `NewsDone`           | News finished (or failed, e.g. no network)                                          |
+| `NewsDone`           | The news step finished (or failed, e.g. no network): the feed, then the weather     |
 | `StopWakeUp`         | User stops the wake-up automation or starts other audio (sent to every alarm in it), or the recovery sweep ends an interrupted one |
 
 Guards:
@@ -123,8 +124,11 @@ Guards:
 - **G1 (on time):** `lateBy <= 60 min`.
 - **G2 (first timeout):** `!autoSnoozed`.
 - **G3 (wake-up routing):** if `speakReason && reason != null` → `Announcing`;
-  else if `news != null` → `NewsPlaying`; else → `Done`.
-- **G4 (news):** `news != null` → `NewsPlaying`; else → `Done`.
+  else if `news != null || weather != null` → `NewsPlaying`; else → `Done`.
+- **G4 (news):** `news != null || weather != null` → `NewsPlaying`; else → `Done`.
+
+`NewsPlaying` is the news step, which plays the feed and then says the weather, whichever of them is set. The weather has
+no state of its own: it is one sentence, and the step ends with one `NewsDone` either way.
 
 Transition actions: `Snooze` sets `autoSnoozed = false`; `RingTimeout` → `Snoozed` sets `autoSnoozed = true`.
 

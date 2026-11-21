@@ -7,6 +7,7 @@ import de.drehtuer.nextalarm.domain.AlarmState
 import de.drehtuer.nextalarm.domain.CalendarId
 import de.drehtuer.nextalarm.domain.NewsSource
 import de.drehtuer.nextalarm.domain.NewsType
+import de.drehtuer.nextalarm.domain.WeatherSource
 import de.drehtuer.nextalarm.domain.PlannerRecord
 import de.drehtuer.nextalarm.domain.PlannerState
 import de.drehtuer.nextalarm.domain.PlanningFailure
@@ -66,9 +67,20 @@ internal fun SoundRef.toColumn(): String? = when (this) {
 internal fun soundRefFromColumn(value: String?): SoundRef =
     if (value == null) SoundRef.SystemDefault else SoundRef.File(value)
 
-internal fun NewsSource.toColumns() = NewsColumns(type.name, url, maxMinutes)
+internal fun NewsSource.toColumns() = NewsColumns(type.name, url, maxMinutes, title, pauseMillis, language)
 
-internal fun NewsColumns.toDomain() = NewsSource(NewsType.valueOf(type), url, maxMinutes)
+internal fun NewsColumns.toDomain() = NewsSource(
+    NewsType.valueOf(type),
+    url,
+    maxMinutes,
+    title,
+    pauseMillis ?: NewsSource.DEFAULT_PAUSE_MILLIS,
+    language,
+)
+
+internal fun WeatherSource.toColumns() = WeatherColumns(placeName, latitude, longitude, useCurrentLocation, language)
+
+internal fun WeatherColumns.toDomain() = WeatherSource(placeName, latitude, longitude, useCurrentLocation, language)
 
 internal fun AlarmSnapshot.toConfigColumns() = AlarmConfigColumns(
     soundFile = sound.toColumn(),
@@ -79,6 +91,7 @@ internal fun AlarmSnapshot.toConfigColumns() = AlarmConfigColumns(
     snoozeMinutes = snoozeMinutes,
     speakReason = speakReason,
     news = news?.toColumns(),
+    weather = weather?.toColumns(),
 )
 
 internal fun AlarmInstance.toEntity() = AlarmInstanceEntity(
@@ -110,6 +123,7 @@ internal fun AlarmInstanceEntity.toDomain() = AlarmInstance(
         snoozeMinutes = config.snoozeMinutes,
         speakReason = config.speakReason,
         news = config.news?.toDomain(),
+        weather = config.weather?.toDomain(),
     ),
     lateBy = lateByMillis?.let(Duration::ofMillis),
 )
@@ -132,6 +146,7 @@ internal fun Settings.toEntity() = SettingsEntity(
         snoozeMinutes = snoozeMinutes,
         speakReason = speakReason,
         news = news?.toColumns(),
+        weather = weather?.toColumns(),
     ),
 )
 
@@ -145,6 +160,7 @@ internal fun SettingsEntity.toDomain() = Settings(
     snoozeMinutes = config.snoozeMinutes,
     speakReason = config.speakReason,
     news = config.news?.toDomain(),
+    weather = config.weather?.toDomain(),
 )
 
 internal fun PlanningRun.toColumns() = PlanningRunColumns(

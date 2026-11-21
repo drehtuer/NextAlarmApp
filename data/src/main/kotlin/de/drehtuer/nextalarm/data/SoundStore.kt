@@ -63,6 +63,12 @@ interface SoundFiles {
 
     /** Deletes the app's copy of a sound that is no longer selected. The user's original is not affected. */
     fun delete(sound: SoundRef)
+
+    /**
+     * Keeps a copy of the phone's default alarm sound, so that it also rings before the first unlock, when the phone's own
+     * file can't be read. False if there is no copy of the current default, as it could not be read or played.
+     */
+    suspend fun keepDefaultCopy(): Boolean
 }
 
 /** Where to play a sound from. */
@@ -83,6 +89,12 @@ class SoundStore(
 ) : SoundFiles {
     private val resolver = context.contentResolver
     private val directory = File(context.createDeviceProtectedStorageContext().filesDir, "sounds")
+
+    /** Named so that it can't be taken for the copy of a picked file, whose names start with `sound-`. */
+    private val defaultCopy = File(directory, DEFAULT_COPY)
+
+    /** The address of the sound [defaultCopy] was taken from. A copy of a sound that is no longer the default is stale. */
+    private val defaultCopySource = File(directory, DEFAULT_COPY_SOURCE)
 
     /** The sound that needs nothing from the phone or the database. */
     val bundled: SoundSource = SoundSource.Bundled(R.raw.alarm_fallback)
@@ -130,13 +142,60 @@ class SoundStore(
 
     /**
      * What to try for this sound, in order: if one cannot be played, the next one is used. It always ends with the
-     * bundled sound, because an alarm has to ring. The system's sound may be unavailable before the first unlock.
+     * bundled sound, because an alarm has to ring. The system's sound is unavailable before the first unlock, and then
+     * its copy rings, if there is one of the current default.
      */
-    fun sources(sound: SoundRef): List<SoundSource> = listOfNotNull(
-        storedFile(sound)?.let { SoundSource.Stored(it) },
-        RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)?.let { SoundSource.System(it) },
-        bundled,
-    )
+    fun sources(sound: SoundRef): List<SoundSource> {
+        val system = systemDefault()
+        return listOfNotNull(
+            storedFile(sound)?.let { SoundSource.Stored(it) },
+            system?.let { SoundSource.System(it) },
+            system?.takeIf { hasCopyOf(it) }?.let { SoundSource.Stored(defaultCopy) },
+            bundled,
+        )
+    }
+
+    override suspend fun keepDefaultCopy(): Boolean = withContext(ioDispatcher) {
+        val system = systemDefault()
+        when {
+            system != null && hasCopyOf(system) -> true
+            else -> {
+                removeQuietly(defaultCopySource)
+                removeQuietly(defaultCopy)
+                system != null && copyDefault(system)
+            }
+        }
+    }
+
+    /** The copy is only named after its source once it is complete and playable. */
+    private fun copyDefault(system: Uri): Boolean {
+        directory.mkdirs()
+        val partial = File(directory, DEFAULT_COPY_PARTIAL)
+        val done = copy(system, partial) && probe.isPlayable(partial) && partial.renameTo(defaultCopy) &&
+            writeQuietly(defaultCopySource, system.toString())
+        if (!done) {
+            removeQuietly(partial)
+            removeQuietly(defaultCopy)
+        }
+        return done
+    }
+
+    private fun systemDefault(): Uri? = RingtoneManager.getActualDefaultRingtoneUri(context, RingtoneManager.TYPE_ALARM)
+
+    private fun hasCopyOf(system: Uri): Boolean = defaultCopy.isFile && readQuietly(defaultCopySource) == system.toString()
+
+    private fun readQuietly(file: File): String? = try {
+        file.takeIf { it.isFile }?.readText()
+    } catch (_: IOException) {
+        null
+    }
+
+    private fun writeQuietly(file: File, text: String): Boolean = try {
+        file.writeText(text)
+        true
+    } catch (_: IOException) {
+        false
+    }
 
     override fun delete(sound: SoundRef) {
         storedFile(sound)?.let(::removeQuietly)
@@ -166,5 +225,8 @@ class SoundStore(
 
     private companion object {
         const val UNNAMED_FILE = "file"
+        const val DEFAULT_COPY = "phone-default"
+        const val DEFAULT_COPY_SOURCE = "phone-default.source"
+        const val DEFAULT_COPY_PARTIAL = "phone-default.partial"
     }
 }

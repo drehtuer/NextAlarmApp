@@ -1,26 +1,42 @@
 package de.drehtuer.nextalarm.ringing
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.PowerManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import android.util.Log
+import de.drehtuer.nextalarm.domain.Coordinates
 import de.drehtuer.nextalarm.domain.FeedResult
 import de.drehtuer.nextalarm.domain.FeedSource
+import de.drehtuer.nextalarm.domain.LastLocation
 import de.drehtuer.nextalarm.domain.NewsFetcher
 import de.drehtuer.nextalarm.domain.PodcastOutput
+import de.drehtuer.nextalarm.domain.SpeechLanguages
+import de.drehtuer.nextalarm.domain.SpokenText
 import de.drehtuer.nextalarm.domain.SpeechOutput
+import de.drehtuer.nextalarm.domain.WeatherFetcher
+import de.drehtuer.nextalarm.domain.WeatherService
+import de.drehtuer.nextalarm.domain.WeatherSource
+import de.drehtuer.nextalarm.domain.spokenForecast
 import java.io.IOException
 import java.time.Duration
+import java.util.Locale
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "NextAlarm"
 
 /**
- * Speaks with the device's default engine, language and voice: nothing here chooses any of them.
+ * Speaks with the device's default engine and voice, in its default language unless a text asks for another one that
+ * the engine can speak. A text after one in another language gets the default voice back.
  *
  * The engine is a separate app and takes a moment to connect, and it may not be available before the first unlock, in
  * which case `onDone` hears about it. Callbacks are made outside the lock, because the caller holds its own while it
@@ -33,18 +49,23 @@ class TextToSpeechOutput(
     private var engine: TextToSpeech? = null
     private var ready = false
     private var waitingText = ""
+    private var waitingLanguage: Locale? = null
     private var onDone: ((Boolean) -> Unit)? = null
+
+    /** The engine was set to a language of a text's own, which the next text without one has to undo. */
+    private var languageChanged = false
 
     /** Told apart from each other, because an old engine or utterance can still report. */
     private var engineRun = 0
     private var utterance = 0
 
-    override fun speak(text: String, onDone: (Boolean) -> Unit) {
+    override fun speak(text: String, language: String?, onDone: (Boolean) -> Unit) {
         val id: Int
         val worked = synchronized(this) {
             id = ++utterance
             this.onDone = onDone
             waitingText = text
+            waitingLanguage = language?.let(Locale::forLanguageTag)
             val current = engine
             when {
                 current == null -> connect()
@@ -99,13 +120,39 @@ class TextToSpeechOutput(
     /** The next text tries again, as the engine may have become available by then. */
     private fun dropEngine() {
         ready = false
+        languageChanged = false
         engineRun++
         engine?.shutdown()
         engine = null
     }
 
-    private fun say(current: TextToSpeech): Boolean =
-        current.speak(waitingText, TextToSpeech.QUEUE_FLUSH, null, utterance.toString()) == TextToSpeech.SUCCESS
+    private fun say(current: TextToSpeech): Boolean {
+        chooseLanguage(current)
+        return current.speak(waitingText, TextToSpeech.QUEUE_FLUSH, null, utterance.toString()) == TextToSpeech.SUCCESS
+    }
+
+    /** Only touches the engine when it has to, so that its own default is what speaks a text without a language. */
+    private fun chooseLanguage(current: TextToSpeech) {
+        val wanted = waitingLanguage?.takeIf { current.isLanguageAvailable(it) >= TextToSpeech.LANG_AVAILABLE }
+        when {
+            wanted != null -> {
+                current.setLanguage(wanted)
+                languageChanged = true
+            }
+            languageChanged -> {
+                val default = defaultVoice(current)
+                if (default != null) current.setVoice(default) else current.setLanguage(Locale.getDefault())
+                languageChanged = false
+            }
+        }
+    }
+
+    /** An engine that can't say which voice is its default leaves the phone's language to fall back on. */
+    private fun defaultVoice(current: TextToSpeech): Voice? = try {
+        current.defaultVoice
+    } catch (_: RuntimeException) {
+        null
+    }
 
     private fun finish(id: Int, worked: Boolean) {
         val callback = synchronized(this) {
@@ -135,6 +182,42 @@ class TextToSpeechOutput(
             .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .build()
+    }
+}
+
+/**
+ * Asks the phone's speech engine which languages its installed voices speak. The engine connects for this alone, and is
+ * let go at once. One that does not answer within [limit] counts as having none to offer.
+ */
+class TextToSpeechLanguages(
+    private val context: Context,
+    private val limit: Duration = Duration.ofSeconds(5),
+    private val newEngine: (TextToSpeech.OnInitListener) -> TextToSpeech = { TextToSpeech(context, it) },
+) : SpeechLanguages {
+    override suspend fun available(): List<String> {
+        val connected = CompletableDeferred<Boolean>()
+        val engine = try {
+            newEngine { status -> connected.complete(status == TextToSpeech.SUCCESS) }
+        } catch (failure: RuntimeException) {
+            Log.w(TAG, "The text-to-speech engine could not start", failure)
+            return emptyList()
+        }
+        return try {
+            if (withTimeoutOrNull(limit.toMillis()) { connected.await() } == true) languagesOf(engine) else emptyList()
+        } finally {
+            engine.shutdown()
+        }
+    }
+
+    /** A voice whose data is not on the phone could not speak before the first unlock, or without a network. */
+    private fun languagesOf(engine: TextToSpeech): List<String> = try {
+        engine.voices.orEmpty()
+            .filter { TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features.orEmpty() }
+            .map { it.locale.toLanguageTag() }
+            .distinct()
+    } catch (failure: RuntimeException) {
+        Log.w(TAG, "The text-to-speech engine did not say which voices it has", failure)
+        emptyList()
     }
 }
 
@@ -267,5 +350,41 @@ class ScopedNewsFetcher(
     override fun fetch(url: String, onResult: (FeedResult) -> Unit): () -> Unit {
         val job = scope.launch { onResult(feeds.fetchFeed(url)) }
         return { job.cancel() }
+    }
+}
+
+/** Gets the weather sentence in a coroutine of the alarm path, in the phone's language unless another one is chosen. */
+class ScopedWeatherFetcher(
+    private val scope: CoroutineScope,
+    private val service: WeatherService,
+    private val location: LastLocation,
+    private val phoneLocale: () -> Locale = Locale::getDefault,
+) : WeatherFetcher {
+    override fun fetch(source: WeatherSource, onResult: (SpokenText?) -> Unit): () -> Unit {
+        val job = scope.launch { onResult(spokenForecast(source, service, location, phoneLocale())) }
+        return { job.cancel() }
+    }
+}
+
+/**
+ * Where the phone was last, from whichever provider knows, with only the coarse location permission. Nothing here turns
+ * on a provider or waits for a fix: an alarm can't wait, and the chosen place is there to fall back on. Without the
+ * permission, or while the app is in the background without the while-in-use access, Android gives nothing.
+ */
+class AndroidLastLocation(private val context: Context) : LastLocation {
+    override fun coarse(): Coordinates? {
+        if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return null
+        }
+        val manager = context.getSystemService(LocationManager::class.java) ?: return null
+        return try {
+            manager.getProviders(true)
+                .mapNotNull { manager.getLastKnownLocation(it) }
+                .maxByOrNull { it.elapsedRealtimeNanos }
+                ?.let { Coordinates(it.latitude, it.longitude) }
+        } catch (failure: SecurityException) {
+            Log.w(TAG, "The location could not be read", failure)
+            null
+        }
     }
 }

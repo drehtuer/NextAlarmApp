@@ -298,7 +298,6 @@ class HomeTest {
             listOf(
                 davx.copy(id = CalendarId(1), name = "work"),
                 davx.copy(id = CalendarId(2), name = "Alarms"),
-                DeviceCalendar(CalendarId(3), "Holidays", "Holidays", "at.bitfire.icsdroid", null),
                 DeviceCalendar(CalendarId(4), "Phone", "local", "LOCAL", null),
                 DeviceCalendar(CalendarId(5), "Other", "someone@example.org", "com.example", null),
                 DeviceCalendar(CalendarId(6), "Nameless", null, null, null),
@@ -306,11 +305,11 @@ class HomeTest {
             ),
         )
         assertEquals(
-            listOf("DAVx⁵", "DAVx⁵ · me@cloud.example", "ICSx⁵ · Holidays", "On this phone", "someone@example.org"),
+            listOf("DAVx⁵", "DAVx⁵ · me@cloud.example", "On this phone", "someone@example.org"),
             groups.map { it.label },
         )
         assertEquals(listOf("Alarms", "work"), groups[1].calendars.map { it.name })
-        assertEquals(listOf("Nameless", "Phone"), groups[3].calendars.map { it.name })
+        assertEquals(listOf("Nameless", "Phone"), groups[2].calendars.map { it.name })
     }
 
     @Test

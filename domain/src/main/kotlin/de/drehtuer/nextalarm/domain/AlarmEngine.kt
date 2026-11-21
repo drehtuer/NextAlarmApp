@@ -13,10 +13,13 @@ interface AlarmEffects {
 
     /** The alarms that ring in this process right now. This is known without the database. */
     fun ringing(): List<AlarmInstance> = emptyList()
+
+    /** Ends the wake-up automation, whatever alarms are in it. This also works without the database. */
+    fun stopWakeUp() = Unit
 }
 
 /** Lets each step of a loop fail on its own: the others still run, and the first failure comes out at the end. */
-private class Failures {
+internal class Failures {
     private var first: Exception? = null
 
     val any: Boolean
@@ -61,6 +64,13 @@ class AlarmEngine(
     private val now: () -> Instant,
     private val lock: EngineLock,
 ) {
+    /**
+     * Emergency alarms (see [emergencyAlarm]) that were snoozed. They are not stored, so the Dismiss of their "Snoozed"
+     * notification goes by these, and cancels the snooze whatever the database says, or if it can't say anything. They
+     * live as long as the process: after a restart, the alarm rings at the end of the snooze, and can be dismissed there.
+     */
+    private val snoozedEmergencies = mutableMapOf<Long, AlarmInstance>()
+
     suspend fun create(entry: PlanEntry) = lock.withLock {
         val instance = alarms.create(entry.key, entry.triggerAt, entry.snapshot)
         createAlarm().actions.forEach { perform(instance, it) }
@@ -72,8 +82,12 @@ class AlarmEngine(
      */
     suspend fun handle(instanceId: Long, event: AlarmEvent) = lock.withLock { send(instanceId, event) }
 
-    /** The system delivered this alarm: sends `Fire` with how late it is. */
+    /**
+     * The system delivered this alarm: sends `Fire` with how late it is. At the end of an emergency alarm's snooze, the
+     * stored alarm rings, as the database may be readable again.
+     */
     suspend fun fire(instanceId: Long) = lock.withLock {
+        snoozedEmergencies.remove(instanceId)
         val instance = alarms.find(instanceId) ?: return@withLock
         send(instanceId, AlarmEvent.Fire(lateBy(instance.triggerAt, now())))
     }
@@ -95,11 +109,19 @@ class AlarmEngine(
         eachOnItsOwn(instanceIds) { send(it, AlarmEvent.RingTimeout) }
     }
 
-    /** The user stopped the wake-up automation, which all the alarms in it share. */
+    /**
+     * The user stopped the wake-up automation, which all the alarms in it share. Its alarms end as usual. Whatever still
+     * plays after that, because they could not be read or are not stored, is stopped all the same: Stop must always work.
+     */
     suspend fun stopWakeUp() = lock.withLock {
-        eachOnItsOwn(alarms.all().filter { it.state == AlarmState.Announcing || it.state == AlarmState.NewsPlaying }) {
-            send(it.id, AlarmEvent.StopWakeUp)
+        val failures = Failures()
+        var stored = emptyList<AlarmInstance>()
+        failures.attempt {
+            stored = alarms.all().filter { it.state == AlarmState.Announcing || it.state == AlarmState.NewsPlaying }
         }
+        stored.forEach { failures.attempt { send(it.id, AlarmEvent.StopWakeUp) } }
+        failures.attempt { effects.stopWakeUp() }
+        failures.rethrow()
     }
 
     /**
@@ -141,7 +163,10 @@ class AlarmEngine(
 
     private suspend fun send(instanceId: Long, event: AlarmEvent) {
         // What rings here is known without the database, and is right even if an earlier write failed.
-        val instance = effects.ringing().firstOrNull { it.id == instanceId } ?: alarms.find(instanceId) ?: return
+        val instance = effects.ringing().firstOrNull { it.id == instanceId }
+            ?: snoozedEmergencies[instanceId]
+            ?: alarms.find(instanceId)
+            ?: return
         val context = AlarmContext(instance.autoSnoozed, instance.snapshot)
         val result = transition(instance.state, event, context)
         if (result.actions.isEmpty()) return
@@ -150,7 +175,11 @@ class AlarmEngine(
             .fold(instance.copy(state = result.state), ::applyToInstance)
             .recordLateness(event, result.actions)
         val failures = Failures()
-        if (!updated.key.isEmergency) failures.attempt { alarms.update(updated) }
+        when {
+            !updated.key.isEmergency -> failures.attempt { alarms.update(updated) }
+            updated.state == AlarmState.Snoozed -> snoozedEmergencies[instanceId] = updated
+            else -> snoozedEmergencies.remove(instanceId)
+        }
         val actions = if (failures.any) result.actions.filter { runsWithoutStoring(event, it) } else result.actions
         actions.forEach { action -> failures.attempt { perform(updated, action) } }
         failures.attempt { showNextAlarm() }
@@ -161,7 +190,7 @@ class AlarmEngine(
      * What still happens if the new state could not be stored. The sound has to start and stop whatever the database does,
      * and a snooze has to ring again. The rest would not survive the stored state being behind:
      * - A planning run that removes an alarm must keep it (fail-safe): the run fails, and the next one tries again.
-     * - A wake-up automation that starts now could not be stopped, as `stopWakeUp` goes by the stored state.
+     * - A wake-up automation that starts now could store none of its steps, so its alarm would stay `Ringing`.
      */
     private fun runsWithoutStoring(event: AlarmEvent, action: AlarmAction): Boolean = when {
         event == AlarmEvent.Remove -> false

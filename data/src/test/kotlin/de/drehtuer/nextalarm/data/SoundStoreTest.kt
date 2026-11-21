@@ -283,6 +283,94 @@ class SoundStoreTest {
         assertEquals(store().bundled, store().sources(SoundRef.SystemDefault).last())
     }
 
+    private fun setSystemAlarm(address: Uri) {
+        Settings.System.putString(context.contentResolver, Settings.System.ALARM_ALERT, address.toString())
+    }
+
+    private val defaultCopy = File(sounds, "phone-default")
+
+    @Test
+    fun `a copy of the default sound rings after the phone's own file, before the bundled sound`() = runBlocking {
+        setSystemAlarm(uri)
+        provider.file = picked("ogg data")
+        assertTrue(store().keepDefaultCopy())
+        assertEquals("ogg data", defaultCopy.readText())
+        assertEquals(
+            listOf(SoundSource.System(uri), SoundSource.Stored(defaultCopy), bundled),
+            store().sources(SoundRef.SystemDefault),
+        )
+        val picked = SoundRef.File("gone")
+        assertEquals(listOf(SoundSource.System(uri), SoundSource.Stored(defaultCopy), bundled), store().sources(picked))
+    }
+
+    @Test
+    fun `the copy of an unchanged default is kept, without reading it again`() = runBlocking {
+        setSystemAlarm(uri)
+        provider.file = picked()
+        assertTrue(store().keepDefaultCopy())
+        provider.file = null
+        assertTrue(store().keepDefaultCopy())
+        assertTrue(defaultCopy.isFile)
+    }
+
+    @Test
+    fun `a new default replaces the copy, and one that can't be read leaves none`() = runBlocking {
+        setSystemAlarm(uri)
+        provider.file = picked("old")
+        assertTrue(store().keepDefaultCopy())
+        val other = Uri.parse("content://docs/other")
+        setSystemAlarm(other)
+        assertEquals(listOf(SoundSource.System(other), bundled), store().sources(SoundRef.SystemDefault), "stale")
+        provider.file = picked("new")
+        assertTrue(store().keepDefaultCopy())
+        assertEquals("new", defaultCopy.readText())
+        setSystemAlarm(uri)
+        provider.file = null
+        assertFalse(store().keepDefaultCopy())
+        assertTrue(storedFiles().isEmpty())
+        assertEquals(listOf(SoundSource.System(uri), bundled), store().sources(SoundRef.SystemDefault))
+    }
+
+    @Test
+    fun `a default that can't be played is not kept`() = runBlocking {
+        setSystemAlarm(uri)
+        provider.file = picked()
+        assertFalse(store(playable = false).keepDefaultCopy())
+        assertTrue(storedFiles().isEmpty())
+    }
+
+    @Test
+    fun `without a default sound there is no copy, and an old one goes`() = runBlocking {
+        setSystemAlarm(uri)
+        provider.file = picked()
+        assertTrue(store().keepDefaultCopy())
+        Settings.System.putString(context.contentResolver, Settings.System.ALARM_ALERT, null)
+        assertFalse(store().keepDefaultCopy())
+        assertTrue(storedFiles().isEmpty())
+    }
+
+    @Test
+    fun `a copy whose source can't be noted is not kept`() = runBlocking {
+        setSystemAlarm(uri)
+        provider.file = picked()
+        // A directory in place of the note makes writing it fail, as a full storage would.
+        File(sounds, "phone-default.source/in-the-way").apply { parentFile?.mkdirs() }.writeText("")
+        assertFalse(store().keepDefaultCopy())
+        assertFalse(defaultCopy.exists())
+        assertFalse(File(sounds, "phone-default.partial").exists())
+    }
+
+    @Test
+    fun `a copy of the default is not taken for a picked sound, and deleting one leaves it`() = runBlocking {
+        setSystemAlarm(uri)
+        provider.file = picked()
+        assertTrue(store().keepDefaultCopy())
+        val imported = assertIs<SoundImportResult.Imported>(store().import(uri)).sound
+        store().delete(imported)
+        store().delete(SoundRef.SystemDefault)
+        assertTrue(defaultCopy.isFile)
+    }
+
     @Test
     fun `the bundled sound is part of the build`() {
         context.resources.openRawResource(bundled.resourceId).use { assertTrue(it.read() != -1) }

@@ -4,6 +4,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -24,42 +25,38 @@ private val PODCAST = Feed(NewsType.PODCAST, "Der Tag", "Deutschlandfunk", listO
 
 class NewsMinutesTest {
     @Test
-    fun `longer goes one step up, to the next step from between two`() {
-        assertEquals(20, longerNewsMinutes(15))
-        assertEquals(10, longerNewsMinutes(7))
-        assertEquals(10, longerNewsMinutes(5))
+    fun `longer goes one minute up`() {
+        assertEquals(16, longerNewsMinutes(15))
+        assertEquals(2, longerNewsMinutes(1))
     }
 
     @Test
     fun `longer stops at the maximum, and takes a stored value outside the limits back into them`() {
-        assertEquals(60, longerNewsMinutes(55))
-        assertEquals(60, longerNewsMinutes(58))
+        assertEquals(60, longerNewsMinutes(59))
         assertEquals(60, longerNewsMinutes(60))
         assertEquals(60, longerNewsMinutes(90))
-        assertEquals(5, longerNewsMinutes(3))
+        assertEquals(1, longerNewsMinutes(-3))
     }
 
     @Test
-    fun `shorter goes one step down, to the step below from between two`() {
-        assertEquals(10, shorterNewsMinutes(15))
-        assertEquals(5, shorterNewsMinutes(7))
-        assertEquals(10, shorterNewsMinutes(11))
+    fun `shorter goes one minute down`() {
+        assertEquals(14, shorterNewsMinutes(15))
+        assertEquals(1, shorterNewsMinutes(2))
     }
 
     @Test
     fun `shorter stops at the minimum, and takes a stored value outside the limits back into them`() {
-        assertEquals(5, shorterNewsMinutes(10))
-        assertEquals(5, shorterNewsMinutes(5))
-        assertEquals(5, shorterNewsMinutes(1))
+        assertEquals(1, shorterNewsMinutes(1))
+        assertEquals(1, shorterNewsMinutes(0))
         assertEquals(60, shorterNewsMinutes(90))
     }
 
     @Test
-    fun `every step from the minimum to the maximum can be reached`() {
+    fun `every minute from 1 to 60 can be reached`() {
         val steps = generateSequence(MIN_NEWS_MINUTES) { minutes ->
             longerNewsMinutes(minutes).takeIf { it != minutes }
         }.toList()
-        assertEquals((5..60 step 5).toList(), steps)
+        assertEquals((1..60).toList(), steps)
     }
 }
 
@@ -85,10 +82,28 @@ class NewsCheckTest {
     }
 
     @Test
-    fun `a found feed is stored with its kind, the trimmed address and the duration`() {
+    fun `a found feed is stored with its kind, the trimmed address, the duration and its title`() {
         val draft = NewsDraft("  $ADDRESS ", 20)
-        assertEquals(NewsSource(NewsType.RSS, ADDRESS, 20), newsSourceToSave(draft, NewsCheck.Found(RSS)))
-        assertEquals(NewsSource(NewsType.PODCAST, ADDRESS, 20), newsSourceToSave(draft, NewsCheck.Found(PODCAST)))
+        assertEquals(NewsSource(NewsType.RSS, ADDRESS, 20, RSS.name), newsSourceToSave(draft, NewsCheck.Found(RSS)))
+        assertEquals(
+            NewsSource(NewsType.PODCAST, ADDRESS, 20, PODCAST.name),
+            newsSourceToSave(draft, NewsCheck.Found(PODCAST)),
+        )
+    }
+
+    @Test
+    fun `a found feed keeps the pause and language of the draft`() {
+        val draft = NewsDraft(ADDRESS, 20, pauseMillis = 2500, language = "de-DE")
+        val saved = newsSourceToSave(draft, NewsCheck.Found(RSS))
+        assertEquals(2500, saved.pauseMillis)
+        assertEquals("de-DE", saved.language)
+    }
+
+    @Test
+    fun `the draft of what is stored has all of it, and the draft of nothing the defaults`() {
+        val stored = NewsSource(NewsType.RSS, ADDRESS, 20, "Der Tag", 2500, "de-DE")
+        assertEquals(NewsDraft(ADDRESS, 20, stored, NewsCheck.None, 2500, "de-DE"), newsDraftOf(stored))
+        assertEquals(NewsDraft(), newsDraftOf(null))
     }
 }
 
@@ -397,7 +412,7 @@ class NewsTestPlayerTest {
         var immediate: Boolean? = null
         var stops = 0
 
-        override fun speak(text: String, onDone: (Boolean) -> Unit) {
+        override fun speak(text: String, language: String?, onDone: (Boolean) -> Unit) {
             said += text
             val answer = immediate
             if (answer != null) onDone(answer) else pending = onDone
@@ -619,5 +634,38 @@ class NewsTestPlayerTest {
         speech.immediate = false
         play(two)
         assertEquals(listOf(false), ended)
+    }
+}
+
+class NewsPauseAndLanguageTest {
+    @Test
+    fun `the pause is none, or seconds by the half`() {
+        assertEquals(listOf("None", "0.5 s", "1 s", "1.5 s"), NEWS_PAUSE_MILLIS.take(4).map(::pauseLabel))
+        assertEquals("5 s", pauseLabel(NEWS_PAUSE_MILLIS.last()))
+        assertEquals(11, NEWS_PAUSE_MILLIS.size)
+    }
+
+    @Test
+    fun `a language is named in English, and auto says what it does`() {
+        assertEquals("German (Germany)", languageLabel("de-DE"))
+        assertEquals("English", languageLabel("en"))
+        assertEquals(AUTO_LANGUAGE_LABEL, languageLabel(null))
+        assertEquals("Auto: as the feed says", AUTO_LANGUAGE_LABEL)
+    }
+
+    @Test
+    fun `the languages come after auto, by name, and a chosen one the engine lacks is still there`() {
+        val picker = languagePicker("fr-FR", listOf("de-DE", "en-GB", "de-DE"))
+        assertEquals("French (France)", picker.label)
+        assertEquals(listOf(null, "en-GB", "fr-FR", "de-DE"), picker.options.map { it.value })
+        assertEquals(listOf<String?>(null), languagePicker(null, emptyList()).options.map { it.value })
+    }
+
+    @Test
+    fun `screen 6 shows the draft's pause and language`() {
+        val model = buildNews(NewsDraft(pauseMillis = 2500, language = "de-DE"), null, NOW, ZoneOffset.UTC, listOf("de-DE"))
+        assertEquals("2.5 s", model.pause.label)
+        assertEquals("German (Germany)", model.language.label)
+        assertEquals(2, model.language.options.size)
     }
 }

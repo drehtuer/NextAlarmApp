@@ -45,6 +45,14 @@ class AppAlarmEffectsTest {
         override fun leave(instanceId: Long) {
             started += "leave:$instanceId"
         }
+
+        override fun stopAll() {
+            started += "stop all"
+        }
+
+        override fun alarmRings() {
+            started += "alarm rings"
+        }
     }
     private val preview = PreviewParts { ringer.ringing().isNotEmpty() }
     private val effects = AppAlarmEffects(ringer, notifications, AppNotifications(context), wakeUp, preview.preview)
@@ -52,11 +60,18 @@ class AppAlarmEffectsTest {
     private fun posted(id: Int) = shadowOf(manager).getNotification(id)
 
     @Test
+    fun `stopping the wake-up automation stops all of it`() {
+        effects.stopWakeUp()
+        assertEquals(listOf("stop all"), started)
+    }
+
+    @Test
     fun `an alarm joins the ringing ones, and is no longer snoozed`() {
         notifications.showSnoozed(alarm(id = 1))
         effects.perform(alarm(id = 1), AlarmAction.JoinAlarmService)
         assertEquals(listOf(1L), ringer.ringing().map { it.id })
         assertNull(posted(AlarmNotifications.snoozedId(1)))
+        assertEquals(listOf("alarm rings"), started, "the wake-up automation makes way for it")
     }
 
     @Test

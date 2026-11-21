@@ -69,6 +69,9 @@ class AlarmStateMachineTest {
             snapshot(reason = "Flight", speakReason = false, news = null),
             snapshot(reason = null, speakReason = true, news = NEWS),
             snapshot(reason = null, speakReason = true, news = null),
+            // The weather alone makes a news step as well.
+            snapshot(reason = "Flight", speakReason = true, news = null).copy(weather = WEATHER),
+            snapshot(reason = "Flight", speakReason = false, news = null).copy(weather = WEATHER),
         ).map { AlarmContext(autoSnoozed, it) }
     }
 
@@ -94,11 +97,11 @@ class AlarmStateMachineTest {
 
     private fun g3(c: AlarmContext) = when {
         c.snapshot.speakReason && c.snapshot.reason != null -> toAnnouncing
-        c.snapshot.news != null -> toNewsPlaying
+        c.snapshot.news != null || c.snapshot.weather != null -> toNewsPlaying
         else -> toDone
     }
 
-    private fun g4(c: AlarmContext) = if (c.snapshot.news != null) toNewsPlaying else toDone
+    private fun g4(c: AlarmContext) = if (c.snapshot.news != null || c.snapshot.weather != null) toNewsPlaying else toDone
 
     private fun fireFromWaiting(event: AlarmEvent) = when (event) {
         onTime, atLateNoticeLimit -> toRinging
@@ -143,7 +146,7 @@ class AlarmStateMachineTest {
         states.flatMap { state ->
             events.flatMap { event ->
                 contexts.map { context ->
-                    dynamicTest("$state + $event, auto=${context.autoSnoozed}, ${context.snapshot.reason}/${context.snapshot.speakReason}/${context.snapshot.news != null}") {
+                    dynamicTest("$state + $event, auto=${context.autoSnoozed}, ${context.snapshot.reason}/${context.snapshot.speakReason}/${context.snapshot.news != null}/${context.snapshot.weather != null}") {
                         val want = expected(state, event, context) ?: Transition(state)
                         assertEquals(want, transition(state, event, context))
                     }

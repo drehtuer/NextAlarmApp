@@ -31,6 +31,7 @@ import de.drehtuer.nextalarm.domain.PlanEntry
 import de.drehtuer.nextalarm.domain.Settings
 import de.drehtuer.nextalarm.domain.SoundPreviewStatus
 import de.drehtuer.nextalarm.domain.SoundRef
+import de.drehtuer.nextalarm.domain.WakeUpDirector
 import de.drehtuer.nextalarm.domain.WakeUpStatus
 import de.drehtuer.nextalarm.domain.snapshotFor
 import de.drehtuer.nextalarm.planning.AlarmReceiver
@@ -263,14 +264,22 @@ class AlarmPathTest {
     }
 
     @Test
-    fun `news that cannot be fetched ends the automation, here without going near a network`(): Unit = runBlocking {
-        val news = NewsSource(NewsType.RSS, "ftp://not.on.the.web/feed")
-        val alarm = created(Instant.now(), Settings.DEFAULT.copy(news = news).snapshotFor("Gym"))
-        engine.fire(alarm.id)
-        engine.sendToRinging(AlarmEvent.Dismiss)
-        awaitUntil { state(alarm.id) == AlarmState.Done }
-        awaitUntil { parts.director.status() == WakeUpStatus.IDLE }
-    }
+    fun `news that cannot be fetched is said and reported, then the automation ends, here without a network`(): Unit =
+        runBlocking {
+            val news = NewsSource(NewsType.RSS, "ftp://not.on.the.web/feed")
+            val alarm = created(Instant.now(), Settings.DEFAULT.copy(news = news).snapshotFor("Gym"))
+            engine.fire(alarm.id)
+            engine.sendToRinging(AlarmEvent.Dismiss)
+            wakeUpServiceUp()
+            awaitUntil { ShadowTextToSpeech.getLastTextToSpeechInstance() != null }
+            ttsEngine().onInitListener.onInit(TextToSpeech.SUCCESS)
+            assertEquals(WakeUpDirector.NEWS_UNAVAILABLE_TEXT, ttsEngine().lastSpokenText)
+            val manager = real.getSystemService(NotificationManager::class.java)
+            assertNotNull(shadowOf(manager).getNotification(AlarmNotifications.FEED_UNAVAILABLE_ID))
+            ttsEngine().utteranceProgressListener.onDone("1")
+            awaitUntil { state(alarm.id) == AlarmState.Done }
+            awaitUntil { parts.director.status() == WakeUpStatus.IDLE }
+        }
 
     @Test
     fun `Stop in the media controls ends the automation`(): Unit = runBlocking {
@@ -374,6 +383,7 @@ private class AlarmPathParts(private val context: Context, private val data: Dat
     val wakeUpChanges = AlarmModule.wakeUpChanges()
     val director = AlarmModule.wakeUpDirector(
         context, wakeUpForeground, wakeUpGate, wakeUpFocus, wakeUpChanges, AlarmModule.newsFetcher(scope, data), engineCalls,
+        notifications, AlarmModule.weatherFetcher(context, scope, data),
     )
     val preview = AlarmModule.soundPreview(context, data, AlarmModule.soundWorker(scope), Lazy { ringer })
     private val effects = AlarmModule.effects(context, ringer, notifications, AlarmModule.wakeUp(director), preview)

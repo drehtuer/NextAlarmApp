@@ -164,6 +164,19 @@ class AlarmSettingsTest {
     }
 
     @Test
+    fun `a feed with a stored title is named by it, and a blank one by its host`() {
+        val titled = NewsSource(NewsType.PODCAST, "https://example.org/feed.xml", title = "Der Tag")
+        assertEquals("Podcast · Der Tag", newsLabel(titled))
+        assertEquals("Podcast · example.org", newsLabel(titled.copy(title = " ")))
+    }
+
+    @Test
+    fun `the weather row is off, or where the forecast is for`() {
+        assertEquals("Off", model().weather)
+        assertEquals("Berlin", model(Settings.DEFAULT.copy(weather = WEATHER)).weather)
+    }
+
+    @Test
     fun `an address without a host shows as it is`() {
         assertEquals("RSS · not a url", newsLabel(NewsSource(NewsType.RSS, "not a url")))
         assertEquals("RSS · feed.xml", newsLabel(NewsSource(NewsType.RSS, "feed.xml")))
@@ -207,5 +220,16 @@ class AlarmSettingsTest {
     fun `the button is described for what it does`() {
         assertEquals("Play the alarm sound", PLAY_SOUND_DESCRIPTION)
         assertEquals("Stop the alarm sound", STOP_SOUND_DESCRIPTION)
+    }
+
+    @Test
+    fun `the default sound has a note only while no copy of it is kept, and a picked file never has one`() {
+        assertNull(buildAlarmSettings(Settings.DEFAULT, null, null, null).copyNote)
+        assertEquals(
+            DEFAULT_SOUND_COPY_NOTE,
+            buildAlarmSettings(Settings.DEFAULT, null, null, null, defaultCopied = false).copyNote,
+        )
+        val file = Settings.DEFAULT.copy(sound = SoundRef.File("morning.mp3"))
+        assertNull(buildAlarmSettings(file, null, null, null, defaultCopied = false).copyNote)
     }
 }

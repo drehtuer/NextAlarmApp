@@ -15,6 +15,7 @@ flowchart TD
     Settings --> Cal[4 Alarm calendars]
     Settings --> AlarmSet[5 Alarm settings]
     AlarmSet --> News[6 News source]
+    AlarmSet --> Weather[6b Weather]
     Settings --> Diag[7 Diagnostics & history]
     Settings --> Onb
     Home -- fail-safe banner --> Diag
@@ -47,7 +48,8 @@ and tapping it opens home.
 | 3  | Settings                  | Entry point to all configuration. Always ends with an About section: the release version and a link to the source code on GitHub. | — |
 | 4  | Alarm calendars           | List of device calendars with checkboxes; tick any number as alarm calendars, visible or hidden in a calendar app. Warns that every timed event in a ticked calendar rings. A chosen calendar that is gone is listed, so that it can be unticked. | Change sends `ReplanRequested` |
 | 5  | Alarm settings            | Applies to every alarm: sound (the phone's default alarm sound, or one of the phone's own alarm sounds chosen with Android's sound picker, or an audio file chosen with the Android file picker: MP3, WAV, OGG, M4A; unselecting a sound deletes the app's copy; a play button plays it as an alarm would, for up to 10 seconds), vibration, volume ramp duration, maximum volume (optional: without one, the system's alarm volume is left as it is), ring timeout (default 3 min), snooze length (default 10 min), speak title, news source. Shows a hint when the phone's alarm volume is very low. | Change sends `ReplanRequested` |
-| 6  | News source               | RSS feed or podcast feed URL, stored once it has been found to work; maximum duration (default 15 min); test playback; turn off news. | Change sends `ReplanRequested` |
+| 6  | News source               | RSS feed or podcast feed URL, stored with its title once it has been found to work; maximum duration (1 to 60 min, default 15); pause after the title (default 1 s); language to read an RSS feed in (default: as the feed says); test playback; turn off news. | Change sends `ReplanRequested` |
+| 6b | Weather                   | The place of the forecast, chosen by a search; use the current location (asks for the location permission); language of the forecast; show the forecast; turn off weather. | Change sends `ReplanRequested` |
 | 7  | Diagnostics & history     | Planner state, last planning run and error, list of past alarms with final state (`Done`, `Missed`, ...), test alarm, export log. | read-only; test alarm creates an instance |
 | 8  | Alarm screen              | Full-screen, over lock screen: time and the titles of all ringing alarms. Buttons: Snooze, Dismiss (both act on all ringing alarms; no challenge). | Sends `Snooze`, `Dismiss` |
 | 9  | Wake-up screen            | Shows the event title and what is playing; Stop button. Also controllable via media notification.                               | Sends `StopWakeUp` |

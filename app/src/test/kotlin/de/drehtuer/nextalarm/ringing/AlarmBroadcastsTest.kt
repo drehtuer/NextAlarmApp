@@ -372,7 +372,12 @@ class AlarmBroadcastsTest {
 class AlarmReceiversTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val data = DataComponents(context)
-    private val time = Instant.now()
+    /**
+     * Later than now: the application's own sweep at start runs alongside the test, and would fire an alarm that is due
+     * between its creation and the change to [state], and so overwrite that state. One that is still to come it only
+     * registers again.
+     */
+    private val time = Instant.now().plus(Duration.ofHours(1))
 
     private fun stored(state: AlarmState) = runBlocking {
         val created = data.alarms.create(AlarmKey.forEvent(1, time), time, Settings.DEFAULT.snapshotFor("Gym"))

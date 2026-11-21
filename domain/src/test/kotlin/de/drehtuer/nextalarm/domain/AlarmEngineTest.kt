@@ -403,6 +403,35 @@ class AlarmEngineTest {
     }
 
     @Test
+    fun `stopping the wake-up automation stops what plays, also when the alarms can't be read`() = runBlocking {
+        val effects = StoppingEffects()
+        stored(AlarmState.NewsPlaying, id = 1)
+        alarms.failOnRead = true
+        assertTrue(fails { engineWith(effects).stopWakeUp() } != null)
+        assertEquals(1, effects.stops)
+        alarms.failOnRead = false
+        assertEquals(AlarmState.NewsPlaying, alarms.find(1)?.state, "the recovery sweep ends it later")
+    }
+
+    @Test
+    fun `stopping the wake-up automation stops what plays after its alarms have ended`() = runBlocking {
+        val effects = StoppingEffects()
+        stored(AlarmState.Announcing, id = 1)
+        engineWith(effects).stopWakeUp()
+        assertEquals(AlarmState.Done, alarms.find(1)?.state)
+        assertEquals(1, effects.stops)
+    }
+
+    private class StoppingEffects : AlarmEffects {
+        var stops = 0
+        override fun perform(instance: AlarmInstance, action: AlarmAction) = Unit
+        override fun showNextAlarm(alarm: AlarmInstance?) = Unit
+        override fun stopWakeUp() {
+            stops++
+        }
+    }
+
+    @Test
     fun `a timeout that fails for one alarm still reaches the others`() = runBlocking {
         stored(AlarmState.Ringing, id = 1)
         stored(AlarmState.Ringing, id = 2)
@@ -574,8 +603,55 @@ class AlarmEngineTest {
     }
 
     @Test
-    fun `the default effects know of nothing that rings`() {
+    fun `a snoozed emergency alarm can be dismissed from its notification, whatever is stored`() = runBlocking {
+        val real = stored(AlarmState.Scheduled)
+        val effects = RingingEffects(emergencyAlarm(real.id, NOW))
+        val engine = engineWith(effects)
+        engine.sendToRinging(AlarmEvent.Snooze)
+        assertTrue(effects.rings.isEmpty())
+        engine.handle(real.id, AlarmEvent.Dismiss)
+        assertEquals(listOf(real.id), scheduler.cancelled)
+        assertEquals(real, alarms.find(real.id))
+    }
+
+    @Test
+    fun `a snoozed emergency alarm can be dismissed while the database can't be read`() = runBlocking {
+        val real = stored(AlarmState.Scheduled)
+        val effects = RingingEffects(emergencyAlarm(real.id, NOW))
+        val engine = engineWith(effects)
+        engine.sendToRinging(AlarmEvent.Snooze)
+        alarms.failOnRead = true
+        assertTrue(fails { engine.handle(real.id, AlarmEvent.Dismiss) } != null, "the next alarm can't be read")
+        assertEquals(listOf(real.id), scheduler.cancelled)
+    }
+
+    @Test
+    fun `a dismissed emergency alarm is forgotten, so a second Dismiss goes by the stored one`() = runBlocking {
+        val real = stored(AlarmState.Scheduled)
+        val engine = engineWith(RingingEffects(emergencyAlarm(real.id, NOW)))
+        engine.sendToRinging(AlarmEvent.Snooze)
+        engine.handle(real.id, AlarmEvent.Dismiss)
+        scheduler.cancelled.clear()
+        engine.handle(real.id, AlarmEvent.Dismiss)
+        assertTrue(scheduler.cancelled.isEmpty())
+    }
+
+    @Test
+    fun `at the end of an emergency alarm's snooze the stored alarm rings`() = runBlocking {
+        val real = stored(AlarmState.Scheduled)
+        val effects = RingingEffects(emergencyAlarm(real.id, NOW))
+        val engine = engineWith(effects)
+        engine.sendToRinging(AlarmEvent.Snooze)
+        engine.fire(real.id)
+        assertEquals(AlarmState.Ringing, alarms.find(real.id)?.state)
+        assertEquals(listOf(real.id), effects.rings.map { it.id })
+        assertTrue(effects.rings.none { it.key.isEmergency })
+    }
+
+    @Test
+    fun `the default effects know of nothing that rings, and have no automation to stop`() {
         assertTrue(NoAlarmEffects.ringing().isEmpty())
+        NoAlarmEffects.stopWakeUp()
     }
 
     @Test

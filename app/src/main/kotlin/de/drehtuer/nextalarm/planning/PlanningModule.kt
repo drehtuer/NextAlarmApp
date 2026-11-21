@@ -20,10 +20,12 @@ import de.drehtuer.nextalarm.domain.CallWatch
 import de.drehtuer.nextalarm.domain.NewsTestPlayer
 import de.drehtuer.nextalarm.domain.PlannerEngine
 import de.drehtuer.nextalarm.domain.SoundPreview
+import de.drehtuer.nextalarm.ringing.AndroidLastLocation
 import de.drehtuer.nextalarm.ringing.AndroidPhoneCalls
 import de.drehtuer.nextalarm.ringing.AndroidRingWakeLock
 import de.drehtuer.nextalarm.ringing.HandlerRingTimers
 import de.drehtuer.nextalarm.ringing.MediaPlayerPodcastOutput
+import de.drehtuer.nextalarm.ringing.TextToSpeechLanguages
 import de.drehtuer.nextalarm.ringing.TextToSpeechOutput
 import de.drehtuer.nextalarm.ringing.logAudioProblem
 import de.drehtuer.nextalarm.ringing.mediaAudioFocus
@@ -31,6 +33,7 @@ import de.drehtuer.nextalarm.ui.AndroidPhoneAudio
 import de.drehtuer.nextalarm.ui.AppPorts
 import de.drehtuer.nextalarm.ui.ContentResolverLogDocuments
 import de.drehtuer.nextalarm.ui.NewsPorts
+import de.drehtuer.nextalarm.ui.WeatherPorts
 import de.drehtuer.nextalarm.ui.PhonePorts
 import de.drehtuer.nextalarm.ui.alarmNotificationsAllowed
 import de.drehtuer.nextalarm.ui.canUseFullScreenIntent
@@ -136,7 +139,9 @@ object PlanningModule {
                 calls = CallWatch(AndroidPhoneCalls(context), ::logAudioProblem),
                 now = Instant::now,
             ),
+            languages = TextToSpeechLanguages(context),
         ),
+        weather = WeatherPorts(data.weather, AndroidLastLocation(context)),
         preview = preview,
         io = Dispatchers.IO,
     )

@@ -30,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import de.drehtuer.nextalarm.R
 import de.drehtuer.nextalarm.domain.AlarmSettingsModel
@@ -54,6 +55,7 @@ fun AlarmSettingsScreen(
     onPhoneSounds: () -> Unit,
     onChooseFile: () -> Unit,
     onNews: () -> Unit,
+    onWeather: () -> Unit = {},
 ) {
     Scaffold(
         topBar = { NextAlarmTopBar("Alarm settings", onBack) },
@@ -89,7 +91,8 @@ fun AlarmSettingsScreen(
             PickerRow("Snooze length", null, model.snoozeLength, actions::setSnoozeLength)
             SectionHeader("After you dismiss")
             SwitchRow("Speak the title", "Reads the event title aloud", model.speakTitle, actions::setSpeakTitle)
-            NewsRow(model.news, onNews)
+            NavigationRow("News", model.news, onNews)
+            NavigationRow("Weather", model.weather, onWeather)
         }
     }
 }
@@ -106,7 +109,7 @@ private fun SectionHeader(title: String) {
 
 /** The title and secondary line that all rows of this screen start with. */
 @Composable
-private fun RowText(title: String, secondary: String?, modifier: Modifier = Modifier) {
+internal fun RowText(title: String, secondary: String?, modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(title)
         if (secondary != null) {
@@ -115,7 +118,7 @@ private fun RowText(title: String, secondary: String?, modifier: Modifier = Modi
     }
 }
 
-private val RowModifier = Modifier.fillMaxWidth()
+internal val RowModifier = Modifier.fillMaxWidth()
 
 /**
  * Two buttons would not leave the sound's name enough room beside them, so they go below it. The icon button that plays
@@ -159,6 +162,14 @@ private fun SoundRow(
             Text("Use the phone's default sound")
         }
     }
+    model.copyNote?.let { note ->
+        Text(
+            note,
+            Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+            MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
     model.soundRejection?.let { rejection ->
         Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), Arrangement.spacedBy(8.dp)) {
             SymbolIcon(R.drawable.ic_error, null, tint = MaterialTheme.colorScheme.error)
@@ -167,14 +178,21 @@ private fun SoundRow(
     }
 }
 
+/** [margin] is the row's own padding at its sides, which a screen with a padding of its own makes smaller. */
 @Composable
-private fun <T> PickerRow(title: String, secondary: String?, picker: ValuePicker<T>, onPick: (T) -> Unit) {
+internal fun <T> PickerRow(
+    title: String,
+    secondary: String?,
+    picker: ValuePicker<T>,
+    onPick: (T) -> Unit,
+    margin: Dp = 24.dp,
+) {
     var open by rememberSaveable { mutableStateOf(false) }
     Row(
         RowModifier
             .clickable { open = true }
             .heightIn(min = 56.dp)
-            .padding(horizontal = 24.dp, vertical = 8.dp),
+            .padding(horizontal = margin, vertical = 8.dp),
         Arrangement.spacedBy(16.dp),
         Alignment.CenterVertically,
     ) {
@@ -216,32 +234,40 @@ private fun <T> PickerDialog(title: String, picker: ValuePicker<T>, onDismiss: (
     )
 }
 
+/** [margin] as for [PickerRow]. A row that is not [enabled] is dimmed and can't be changed. */
 @Composable
-private fun SwitchRow(title: String, secondary: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(
+    title: String,
+    secondary: String?,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    margin: Dp = 24.dp,
+    enabled: Boolean = true,
+) {
     Row(
         RowModifier
-            .toggleable(checked, role = Role.Switch, onValueChange = onChange)
+            .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
             .heightIn(min = 56.dp)
-            .padding(horizontal = 24.dp, vertical = 8.dp),
+            .padding(horizontal = margin, vertical = 8.dp),
         Arrangement.spacedBy(16.dp),
         Alignment.CenterVertically,
     ) {
         RowText(title, secondary, Modifier.weight(1f))
-        Switch(checked, onCheckedChange = null, colors = nextAlarmSwitchColors())
+        Switch(checked, onCheckedChange = null, enabled = enabled, colors = nextAlarmSwitchColors())
     }
 }
 
 @Composable
-private fun NewsRow(value: String, onNews: () -> Unit) {
+private fun NavigationRow(title: String, value: String, onClick: () -> Unit) {
     Row(
         RowModifier
-            .clickable(onClick = onNews)
+            .clickable(onClick = onClick)
             .heightIn(min = 56.dp)
             .padding(horizontal = 24.dp, vertical = 8.dp),
         Arrangement.spacedBy(16.dp),
         Alignment.CenterVertically,
     ) {
-        RowText("News", value, Modifier.weight(1f))
+        RowText(title, value, Modifier.weight(1f))
         SymbolIcon(R.drawable.ic_chevron, null)
     }
 }

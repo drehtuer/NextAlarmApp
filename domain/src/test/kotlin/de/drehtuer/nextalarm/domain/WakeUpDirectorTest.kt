@@ -24,7 +24,7 @@ class ForegroundGateTest {
     private val log = mutableListOf<String>()
 
     private val speech = object : SpeechOutput {
-        override fun speak(text: String, onDone: (Boolean) -> Unit) {
+        override fun speak(text: String, language: String?, onDone: (Boolean) -> Unit) {
             log += "speak:$text"
         }
 
@@ -55,12 +55,12 @@ class ForegroundGateTest {
     @Test
     fun `what has to happen before the audio comes first, when the service is up`() {
         val before = ForegroundGate(timers, beforeAudio = { log += "before" })
-        GatedSpeech(speech, before).speak("Gym") {}
+        GatedSpeech(speech, before).speak("Gym", null) {}
         assertTrue(log.isEmpty())
         before.open()
         assertEquals(listOf("before", "speak:Gym"), log)
         log.clear()
-        GatedSpeech(speech, before).speak("Run") {}
+        GatedSpeech(speech, before).speak("Run", null) {}
         assertEquals(listOf("before", "speak:Run"), log)
     }
 
@@ -81,7 +81,7 @@ class ForegroundGateTest {
 
     @Test
     fun `speech waits until the service is up`() {
-        GatedSpeech(speech, gate).speak("Gym") {}
+        GatedSpeech(speech, gate).speak("Gym", null) {}
         assertTrue(log.isEmpty())
         gate.open()
         assertEquals(listOf("speak:Gym"), log)
@@ -100,14 +100,14 @@ class ForegroundGateTest {
     @Test
     fun `with the service up nothing waits`() {
         gate.open()
-        GatedSpeech(speech, gate).speak("Gym") {}
+        GatedSpeech(speech, gate).speak("Gym", null) {}
         assertEquals(listOf("speak:Gym"), log)
         assertTrue(timers.blocks.isEmpty())
     }
 
     @Test
     fun `it goes ahead anyway if the service takes too long`() {
-        GatedSpeech(speech, gate).speak("Gym") {}
+        GatedSpeech(speech, gate).speak("Gym", null) {}
         timers.blocks.single().invoke()
         assertEquals(listOf("speak:Gym"), log)
     }
@@ -115,7 +115,7 @@ class ForegroundGateTest {
     @Test
     fun `stopping forgets what waits, for speech and podcasts alike`() {
         val gatedSpeech = GatedSpeech(speech, gate)
-        gatedSpeech.speak("Gym") {}
+        gatedSpeech.speak("Gym", null) {}
         gatedSpeech.stop()
         val gatedPodcast = GatedPodcast(podcast, gate)
         gatedPodcast.play("url", {}, {})
@@ -127,8 +127,8 @@ class ForegroundGateTest {
     @Test
     fun `only the latest waits`() {
         val gated = GatedSpeech(speech, gate)
-        gated.speak("One") {}
-        gated.speak("Two") {}
+        gated.speak("One", null) {}
+        gated.speak("Two", null) {}
         gate.open()
         assertEquals(listOf("speak:Two"), log)
     }
@@ -137,7 +137,7 @@ class ForegroundGateTest {
     fun `once the service has gone, it waits again`() {
         gate.open()
         gate.close()
-        GatedSpeech(speech, gate).speak("Gym") {}
+        GatedSpeech(speech, gate).speak("Gym", null) {}
         assertTrue(log.isEmpty())
         gate.close()
         gate.open()
@@ -148,14 +148,16 @@ class ForegroundGateTest {
 class WakeUpDirectorTest {
     private class FakeSpeech : SpeechOutput {
         val said = mutableListOf<String>()
+        val languages = mutableListOf<String?>()
         var pending: ((Boolean) -> Unit)? = null
         var stops = 0
 
         /** The answer of an engine that reports straight away. Without one, the test answers through [pending]. */
         var immediate: Boolean? = null
 
-        override fun speak(text: String, onDone: (Boolean) -> Unit) {
+        override fun speak(text: String, language: String?, onDone: (Boolean) -> Unit) {
             said += text
+            languages += language
             val answer = immediate
             if (answer != null) onDone(answer) else pending = onDone
         }
@@ -270,8 +272,25 @@ class WakeUpDirectorTest {
         { changes += it },
     )
 
-    private val rssSource = NewsSource(NewsType.RSS, "https://www.news.example/feed", maxMinutes = 15)
-    private val podcastSource = NewsSource(NewsType.PODCAST, "https://pod.example/feed", maxMinutes = 15)
+    // Without a pause, so that the news follows the titles at once. The pause has tests of its own.
+    private val rssSource = NewsSource(NewsType.RSS, "https://www.news.example/feed", maxMinutes = 15, pauseMillis = 0)
+    private val podcastSource = NewsSource(NewsType.PODCAST, "https://pod.example/feed", maxMinutes = 15, pauseMillis = 0)
+    private val pause = Duration.ofMillis(1500)
+    private val pausedSource = rssSource.copy(pauseMillis = 1500)
+    private val unavailable = mutableListOf<NewsSource>()
+    private val telling = WakeUpDirector(
+        speech,
+        podcast,
+        fetcher,
+        timers,
+        wakeLock,
+        AudioFocusHold(focus) { _, _ -> },
+        CallWatch(calls) { _, _ -> },
+        clock::now,
+        { id, event -> reports += id to event },
+        { changes += it },
+        { unavailable += it },
+    )
     private val limit = Duration.ofMinutes(15)
     private val podcastStartLimit = Duration.ofSeconds(45)
 
@@ -683,6 +702,26 @@ class WakeUpDirectorTest {
     }
 
     @Test
+    fun `stopping all of it ends it for every alarm, without telling the state machine`() {
+        director.startAnnouncement(alarm(1))
+        director.startAnnouncement(alarm(2))
+        director.stopAll()
+        assertEquals(WakeUpStatus.IDLE, director.status())
+        assertTrue(speech.stops > 0)
+        assertEquals(1, wakeLock.releases)
+        assertTrue(reports.isEmpty())
+        director.leave(1)
+        assertEquals(1, wakeLock.releases, "nothing is left to leave")
+    }
+
+    @Test
+    fun `stopping all of an automation that does not run does nothing`() {
+        director.stopAll()
+        assertEquals(0, wakeLock.releases)
+        assertTrue(changes.isEmpty())
+    }
+
+    @Test
     fun `an alarm that was not in the automation has nothing to leave`() {
         director.leave(7)
         assertEquals(0, wakeLock.releases)
@@ -798,6 +837,336 @@ class WakeUpDirectorTest {
         assertEquals(listOf(newsDone(1)), reports)
         assertNull(playing())
         assertNull(director.status().newsStopsAt)
+    }
+
+    // The weather.
+
+    private class FakeForecasts : WeatherFetcher {
+        val asked = mutableListOf<WeatherSource>()
+        var onResult: (SpokenText?) -> Unit = {}
+        var cancels = 0
+
+        override fun fetch(source: WeatherSource, onResult: (SpokenText?) -> Unit): () -> Unit {
+            asked += source
+            this.onResult = onResult
+            return { cancels++ }
+        }
+    }
+
+    private val forecasts = FakeForecasts()
+    private val sentence = SpokenText("Das Wetter in Berlin heute: Regen.", "de")
+    private val weatherWait = Duration.ofSeconds(15)
+    private val forecasting = WakeUpDirector(
+        speech,
+        podcast,
+        fetcher,
+        timers,
+        wakeLock,
+        AudioFocusHold(focus) { _, _ -> },
+        CallWatch(calls) { _, _ -> },
+        clock::now,
+        { id, event -> reports += id to event },
+        { changes += it },
+        forecasts = forecasts,
+    )
+
+    private fun withWeather(alarm: AlarmInstance) = alarm.copy(snapshot = alarm.snapshot.copy(weather = WEATHER))
+
+    @Test
+    fun `the weather is fetched with the feed, and said after it, in its own language`() {
+        forecasting.startNews(withWeather(alarm(1, news = rssSource)))
+        assertEquals(listOf(WEATHER), forecasts.asked)
+        forecasts.onResult(sentence)
+        fetcher.onResult(found(rssFeed))
+        speech.finish()
+        speech.finish()
+        assertEquals(listOf("One. First", "Two", sentence.text), speech.said)
+        assertEquals("de", speech.languages.last())
+        assertEquals(WakeUpPlaying.Weather("Berlin"), forecasting.status().playing)
+        assertTrue(reports.isEmpty())
+        speech.finish()
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `the weather alone is said without a feed, and stops by its own limit`() {
+        forecasting.startNews(withWeather(alarm(1, news = null)))
+        assertTrue(fetcher.asked.isEmpty())
+        assertEquals(WakeUpPlaying.Weather("Berlin"), forecasting.status().playing)
+        assertEquals(NOW.plus(Duration.ofMinutes(2)), forecasting.status().newsStopsAt)
+        forecasts.onResult(sentence)
+        assertEquals(listOf(sentence.text), speech.said)
+        speech.finish()
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `the weather alone waits for the pause after a title`() {
+        forecasting.startAnnouncement(withWeather(alarm(1)))
+        speech.finish()
+        forecasting.startNews(withWeather(alarm(1)))
+        forecasts.onResult(sentence)
+        assertEquals(listOf("Title 1"), speech.said)
+        timers.active(Duration.ofMillis(NewsSource.DEFAULT_PAUSE_MILLIS.toLong())).block()
+        assertEquals(listOf("Title 1", sentence.text), speech.said)
+    }
+
+    @Test
+    fun `weather that comes after the feed is waited for`() {
+        forecasting.startNews(withWeather(alarm(1, news = rssSource)))
+        fetcher.onResult(found(rssFeed.copy(entries = rssFeed.entries.take(1))))
+        speech.finish()
+        assertEquals(WakeUpPlaying.Weather("Berlin"), forecasting.status().playing)
+        forecasts.onResult(sentence)
+        assertEquals(sentence.text, speech.said.last())
+        assertTrue(timers.last(weatherWait).cancelled)
+    }
+
+    @Test
+    fun `weather that doesn't come in time is left out`() {
+        forecasting.startNews(withWeather(alarm(1, news = rssSource)))
+        fetcher.onResult(found(rssFeed.copy(entries = rssFeed.entries.take(1))))
+        speech.finish()
+        timers.active(weatherWait).block()
+        assertEquals(listOf(newsDone(1)), reports)
+        forecasts.onResult(sentence)
+        assertEquals(listOf("One. First"), speech.said)
+    }
+
+    @Test
+    fun `weather that can't be had is left out without a word`() {
+        forecasting.startNews(withWeather(alarm(1, news = rssSource)))
+        forecasts.onResult(null)
+        fetcher.onResult(found(rssFeed.copy(entries = rssFeed.entries.take(1))))
+        speech.finish()
+        assertEquals(listOf("One. First"), speech.said)
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `weather that can't be had after the feed has ended ends the step at once`() {
+        forecasting.startNews(withWeather(alarm(1, news = rssSource)))
+        fetcher.onResult(found(rssFeed.copy(entries = rssFeed.entries.take(1))))
+        speech.finish()
+        forecasts.onResult(null)
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `a call while the weather is said stops it, and the step ends`() {
+        forecasting.startNews(withWeather(alarm(1, news = null)))
+        forecasts.onResult(sentence)
+        val stops = speech.stops
+        calls.change(true)
+        assertTrue(speech.stops > stops)
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `a feed ended by a call has no weather after it`() {
+        forecasting.startNews(withWeather(alarm(1, news = rssSource)))
+        forecasts.onResult(sentence)
+        fetcher.onResult(found(rssFeed))
+        calls.change(true)
+        assertEquals(listOf("One. First"), speech.said)
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `leaving cancels the weather on its way, and what comes later does nothing`() {
+        forecasting.startNews(withWeather(alarm(1, news = rssSource)))
+        forecasting.leave(1)
+        assertEquals(1, forecasts.cancels)
+        forecasts.onResult(sentence)
+        assertTrue(speech.said.isEmpty())
+    }
+
+    @Test
+    fun `the feed's limit ends the weather too`() {
+        forecasting.startNews(withWeather(alarm(1, news = rssSource)))
+        forecasts.onResult(sentence)
+        fetcher.onResult(found(rssFeed.copy(entries = rssFeed.entries.take(1))))
+        speech.finish()
+        assertEquals(sentence.text, speech.said.last())
+        timers.active(limit).block()
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `without a weather service the weather is left out`() {
+        director.startNews(withWeather(alarm(1, news = null)))
+        timers.all.filter { !it.cancelled }.forEach { it.block() }
+        assertTrue(speech.said.isEmpty())
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    // The language.
+
+    @Test
+    fun `a title is said in the phone's language, and a feed in the language it declares`() {
+        director.startAnnouncement(alarm(1))
+        speech.finish()
+        director.startNews(alarm(1, news = rssSource))
+        fetcher.onResult(found(rssFeed.copy(language = "de-DE")))
+        assertEquals(listOf(null, "de-DE"), speech.languages)
+    }
+
+    @Test
+    fun `a chosen language wins over the feed's, and a feed without one gets the phone's`() {
+        director.startNews(alarm(1, news = rssSource.copy(language = "en-GB")))
+        fetcher.onResult(found(rssFeed.copy(language = "de-DE")))
+        speech.finish()
+        assertEquals(listOf<String?>("en-GB", "en-GB"), speech.languages)
+        director.leave(1)
+        speech.languages.clear()
+        director.startNews(alarm(2, news = rssSource))
+        fetcher.onResult(found(rssFeed))
+        assertEquals(listOf<String?>(null), speech.languages)
+    }
+
+    // The pause between the titles and the news.
+
+    @Test
+    fun `after a title the news waits for its pause, from the start of the download`() {
+        director.startAnnouncement(alarm(1))
+        speech.finish()
+        director.startNews(alarm(1, news = pausedSource))
+        fetcher.onResult(found(rssFeed))
+        assertEquals(listOf("Title 1"), speech.said)
+        assertIs<WakeUpPlaying.GettingNews>(playing())
+        timers.active(pause).block()
+        assertEquals(listOf("Title 1", "One. First"), speech.said)
+    }
+
+    @Test
+    fun `a download that takes longer than the pause adds nothing to it`() {
+        director.startAnnouncement(alarm(1))
+        speech.finish()
+        director.startNews(alarm(1, news = pausedSource))
+        clock.time = NOW.plusSeconds(2)
+        fetcher.onResult(found(rssFeed))
+        assertEquals(listOf("Title 1", "One. First"), speech.said)
+        assertTrue(timers.all.none { it.delay == pause })
+    }
+
+    @Test
+    fun `the rest of the pause is waited for after a quick download`() {
+        director.startAnnouncement(alarm(1))
+        speech.finish()
+        director.startNews(alarm(1, news = pausedSource))
+        clock.time = NOW.plusMillis(500)
+        fetcher.onResult(found(rssFeed))
+        timers.active(Duration.ofMillis(1000)).block()
+        assertEquals(listOf("Title 1", "One. First"), speech.said)
+    }
+
+    @Test
+    fun `news without a title before it has no pause`() {
+        director.startNews(alarm(1, news = pausedSource))
+        fetcher.onResult(found(rssFeed))
+        assertEquals(listOf("One. First"), speech.said)
+    }
+
+    @Test
+    fun `a call during the pause ends the news without a sound`() {
+        director.startAnnouncement(alarm(1))
+        speech.finish()
+        director.startNews(alarm(1, news = pausedSource))
+        fetcher.onResult(found(rssFeed))
+        val after = timers.active(pause)
+        calls.isActive = true
+        after.block()
+        assertEquals(listOf("Title 1"), speech.said)
+        assertEquals(listOf(announced(1), newsDone(1)), reports)
+    }
+
+    @Test
+    fun `leaving during the pause cancels it, and its end then does nothing`() {
+        director.startAnnouncement(alarm(1))
+        speech.finish()
+        director.startNews(alarm(1, news = pausedSource))
+        fetcher.onResult(found(rssFeed))
+        val after = timers.last(pause)
+        director.leave(1)
+        assertTrue(after.cancelled)
+        after.block()
+        assertEquals(listOf("Title 1"), speech.said)
+    }
+
+    @Test
+    fun `a pause after the titles is used once, by the news that comes next`() {
+        director.startAnnouncement(alarm(1))
+        speech.finish()
+        director.startNews(alarm(1, news = pausedSource))
+        fetcher.onResult(found(rssFeed))
+        timers.active(pause).block()
+        speech.finish()
+        speech.finish()
+        director.startNews(alarm(2, news = pausedSource))
+        fetcher.onResult(found(rssFeed))
+        assertEquals(listOf("Title 1", "One. First", "Two", "One. First"), speech.said)
+    }
+
+    // A feed that can't be had.
+
+    @Test
+    fun `a feed that can't be had is said and reported, and then the news ends`() {
+        telling.startNews(alarm(1, news = rssSource))
+        fetcher.onResult(FeedResult.Failed(FeedFailure.Unreachable))
+        assertEquals(listOf(rssSource), unavailable)
+        assertEquals(listOf(WakeUpDirector.NEWS_UNAVAILABLE_TEXT), speech.said)
+        assertEquals(listOf<String?>(null), speech.languages)
+        assertEquals(WakeUpPlaying.NewsUnavailable("news.example"), telling.status().playing)
+        assertTrue(reports.isEmpty())
+        speech.finish()
+        assertEquals(listOf(newsDone(1)), reports)
+    }
+
+    @Test
+    fun `an empty feed and a podcast without an episode can't be had either, and are named by their title`() {
+        telling.startNews(alarm(1, news = rssSource.copy(title = "Der Tag")))
+        fetcher.onResult(found(rssFeed.copy(entries = emptyList())))
+        assertEquals(WakeUpPlaying.NewsUnavailable("Der Tag"), telling.status().playing)
+        speech.finish(worked = false)
+        telling.startNews(alarm(2, news = podcastSource))
+        fetcher.onResult(found(podcastFeed.copy(latestEpisode = null)))
+        assertEquals(2, unavailable.size)
+        assertEquals(2, speech.said.count { it == WakeUpDirector.NEWS_UNAVAILABLE_TEXT })
+    }
+
+    @Test
+    fun `the failure is said after the pause, and a call while it is said ends it`() {
+        telling.startAnnouncement(alarm(1))
+        speech.finish()
+        telling.startNews(alarm(1, news = pausedSource))
+        fetcher.onResult(FeedResult.Failed(FeedFailure.NotAFeed))
+        assertEquals(listOf("Title 1"), speech.said)
+        timers.active(pause).block()
+        assertEquals(WakeUpDirector.NEWS_UNAVAILABLE_TEXT, speech.said.last())
+        val stops = speech.stops
+        calls.change(true)
+        assertTrue(speech.stops > stops)
+        assertEquals(listOf(announced(1), newsDone(1)), reports)
+    }
+
+    // An alarm that rings.
+
+    @Test
+    fun `an alarm that rings stops what plays and ends the automation for each alarm in it`() {
+        director.startAnnouncement(alarm(1))
+        director.startAnnouncement(alarm(2))
+        val stops = speech.stops
+        director.alarmRings()
+        assertTrue(speech.stops > stops)
+        assertEquals(listOf(stoppedByOtherAudio(1), stoppedByOtherAudio(2)), reports)
+        assertNull(playing())
+    }
+
+    @Test
+    fun `an alarm that rings while nothing plays changes nothing`() {
+        director.alarmRings()
+        assertTrue(reports.isEmpty())
+        assertTrue(changes.isEmpty())
     }
 
     @Test

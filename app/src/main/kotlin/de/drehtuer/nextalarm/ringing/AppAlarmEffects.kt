@@ -24,6 +24,8 @@ class AppAlarmEffects(
             AlarmAction.JoinAlarmService -> {
                 // A snoozed alarm that rings again is no longer snoozed.
                 notifications.cancelSnoozed(instance.id)
+                // The alarm has to be heard on its own. Its dismissal starts the automation again, with its own title.
+                wakeUp.alarmRings()
                 ringer.join(instance)
                 preview.stop()
             }
@@ -50,6 +52,8 @@ class AppAlarmEffects(
     override fun showNextAlarm(alarm: AlarmInstance?) = nextAlarm.showNextAlarm(alarm)
 
     override fun ringing(): List<AlarmInstance> = ringer.ringing()
+
+    override fun stopWakeUp() = wakeUp.stopAll()
 
     private fun leaveRinging(instanceId: Long) {
         ringer.leave(instanceId)

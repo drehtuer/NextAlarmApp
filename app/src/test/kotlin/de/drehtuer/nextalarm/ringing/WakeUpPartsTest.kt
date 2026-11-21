@@ -1,22 +1,35 @@
 package de.drehtuer.nextalarm.ringing
 
+import android.Manifest
 import android.app.Application
 import android.content.Context
+import android.location.Location
+import android.location.LocationManager
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Looper
 import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
 import androidx.test.core.app.ApplicationProvider
+import de.drehtuer.nextalarm.domain.Coordinates
 import de.drehtuer.nextalarm.domain.FeedFailure
 import de.drehtuer.nextalarm.domain.FeedResult
 import de.drehtuer.nextalarm.domain.FeedSource
+import de.drehtuer.nextalarm.domain.Forecast
+import de.drehtuer.nextalarm.domain.SpokenText
+import de.drehtuer.nextalarm.domain.WeatherPlace
+import de.drehtuer.nextalarm.domain.WeatherService
+import de.drehtuer.nextalarm.domain.WeatherSource
+import de.drehtuer.nextalarm.domain.forecastSentence
 import java.io.IOException
 import java.time.Duration
+import java.util.Locale
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -51,7 +64,7 @@ class TextToSpeechOutputTest {
     private val output = TextToSpeechOutput(context) { listener -> RecordingEngine(listener).also { engines += it } }
     private val results = mutableListOf<Boolean>()
 
-    private fun speak(text: String = "Gym") = output.speak(text) { results += it }
+    private fun speak(text: String = "Gym", language: String? = null) = output.speak(text, language) { results += it }
 
     private fun shadow(index: Int = engines.lastIndex): ShadowTextToSpeech = Shadow.extract(engines[index])
 
@@ -71,6 +84,28 @@ class TextToSpeechOutputTest {
         assertEquals(AudioAttributes.CONTENT_TYPE_SPEECH, attributes.single().contentType)
         assertNull(shadow().currentLanguage)
         assertNull(shadow().currentVoice)
+    }
+
+    @Test
+    fun `a text in a language the engine has is spoken in it, and the next one without a language gets the default back`() {
+        ShadowTextToSpeech.addLanguageAvailability(Locale.GERMANY)
+        speak("Eins", "de-DE")
+        connect()
+        assertEquals(Locale.GERMANY, shadow().currentLanguage)
+        done("1")
+        speak("Gym")
+        assertEquals(Locale.getDefault(), shadow().currentLanguage)
+        done("2")
+        speak("Run")
+        assertEquals("Run", shadow().lastSpokenText)
+    }
+
+    @Test
+    fun `a language the engine doesn't have leaves its own`() {
+        speak("Bonjour", "fr-FR")
+        connect()
+        assertEquals("Bonjour", shadow().lastSpokenText)
+        assertNull(shadow().currentLanguage)
     }
 
     @Test
@@ -153,7 +188,7 @@ class TextToSpeechOutputTest {
                 listener.onInit(TextToSpeech.ERROR)
             }
         }
-        failing.speak("Gym") { results += it }
+        failing.speak("Gym", null) { results += it }
         assertEquals(listOf(false), results)
         assertTrue((Shadow.extract(created.single()) as ShadowTextToSpeech).isShutdown)
     }
@@ -163,14 +198,14 @@ class TextToSpeechOutputTest {
         val odd = TextToSpeechOutput(context) { listener ->
             RecordingEngine(listener).also { listener.onInit(TextToSpeech.SUCCESS) }
         }
-        odd.speak("Gym") { results += it }
+        odd.speak("Gym", null) { results += it }
         assertEquals(listOf(false), results)
     }
 
     @Test
     fun `an engine that cannot be created reports failure`() {
         val failing = TextToSpeechOutput(context) { error("No engine") }
-        failing.speak("Gym") { results += it }
+        failing.speak("Gym", null) { results += it }
         assertEquals(listOf(false), results)
     }
 
@@ -219,7 +254,7 @@ class TextToSpeechOutputTest {
 
     @Test
     fun `by default it uses the system's engine`() {
-        TextToSpeechOutput(context).speak("Gym") { results += it }
+        TextToSpeechOutput(context).speak("Gym", null) { results += it }
         assertEquals(context, shadowOf(ShadowTextToSpeech.getLastTextToSpeechInstance()).context)
     }
 }
@@ -477,5 +512,114 @@ class ScopedNewsFetcherTest {
         cancel()
         gate.complete(failed)
         assertTrue(results.isEmpty())
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class TextToSpeechLanguagesTest {
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val engines = mutableListOf<TextToSpeech>()
+
+    private fun voice(locale: Locale, installed: Boolean = true) = Voice(
+        "voice-${locale.toLanguageTag()}-$installed",
+        locale,
+        Voice.QUALITY_NORMAL,
+        Voice.LATENCY_NORMAL,
+        false,
+        if (installed) emptySet() else setOf(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED),
+    )
+
+    private fun languages(status: Int? = TextToSpeech.SUCCESS, limit: Duration = Duration.ofSeconds(5)) = runBlocking {
+        TextToSpeechLanguages(context, limit) { listener ->
+            TextToSpeech(context, listener).also {
+                engines += it
+                if (status != null) listener.onInit(status)
+            }
+        }.available()
+    }
+
+    @Test
+    fun `the languages of the installed voices are offered, each once`() {
+        ShadowTextToSpeech.addVoice(voice(Locale.GERMANY))
+        ShadowTextToSpeech.addVoice(voice(Locale.UK))
+        ShadowTextToSpeech.addVoice(Voice("second", Locale.GERMANY, Voice.QUALITY_HIGH, Voice.LATENCY_NORMAL, false, emptySet()))
+        ShadowTextToSpeech.addVoice(voice(Locale.FRANCE, installed = false))
+        assertEquals(setOf("de-DE", "en-GB"), languages().toSet())
+        assertEquals(2, languages().size)
+        assertTrue(Shadow.extract<ShadowTextToSpeech>(engines.first()).isShutdown, "the engine is let go")
+    }
+
+    @Test
+    fun `an engine that is not available offers nothing`() {
+        ShadowTextToSpeech.addVoice(voice(Locale.GERMANY))
+        assertTrue(languages(TextToSpeech.ERROR).isEmpty())
+        assertTrue(Shadow.extract<ShadowTextToSpeech>(engines.single()).isShutdown)
+    }
+
+    @Test
+    fun `an engine that does not answer offers nothing`() {
+        assertTrue(languages(status = null, limit = Duration.ofMillis(10)).isEmpty())
+    }
+
+    @Test
+    fun `an engine that can't start offers nothing`() {
+        val failing = TextToSpeechLanguages(context) { error("No engine") }
+        assertTrue(runBlocking { failing.available() }.isEmpty())
+    }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@Config(application = Application::class)
+class WeatherPartsTest {
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val manager = context.getSystemService(LocationManager::class.java)
+
+    private fun location(provider: String, latitude: Double, at: Long) = Location(provider).apply {
+        this.latitude = latitude
+        longitude = 13.4
+        elapsedRealtimeNanos = at
+    }
+
+    private fun provide(provider: String, latitude: Double, at: Long) {
+        shadowOf(manager).setProviderEnabled(provider, true)
+        shadowOf(manager).simulateLocation(location(provider, latitude, at))
+    }
+
+    @Test
+    fun `the last location is the newest any provider knows, with the permission`() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION)
+        provide(LocationManager.NETWORK_PROVIDER, 52.5, 2)
+        provide(LocationManager.PASSIVE_PROVIDER, 48.1, 1)
+        assertEquals(Coordinates(52.5, 13.4), AndroidLastLocation(context).coarse())
+    }
+
+    @Test
+    fun `without the permission there is no location`() {
+        provide(LocationManager.NETWORK_PROVIDER, 52.5, 2)
+        assertNull(AndroidLastLocation(context).coarse())
+    }
+
+    @Test
+    fun `a phone that knows nowhere has no location`() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION)
+        assertNull(AndroidLastLocation(context).coarse())
+    }
+
+    private class OneForecast(private val forecast: Forecast?) : WeatherService {
+        override suspend fun forecast(at: Coordinates) = forecast
+        override suspend fun search(name: String): List<WeatherPlace>? = null
+    }
+
+    @Test
+    fun `the weather fetcher says the forecast in the phone's language, and can be cancelled`() {
+        val results = mutableListOf<SpokenText?>()
+        val forecast = Forecast(63, 4.0, 9.0, 80)
+        val fetcher = ScopedWeatherFetcher(alarmScope(Dispatchers.Unconfined), OneForecast(forecast), { null }) { Locale.GERMANY }
+        fetcher.fetch(WeatherSource("Berlin", 52.52, 13.41)) { results += it }
+        assertEquals(listOf<SpokenText?>(SpokenText(forecastSentence("Berlin", forecast, "de"), "de")), results)
+        val failing = ScopedWeatherFetcher(alarmScope(Dispatchers.Unconfined), OneForecast(null), { null })
+        failing.fetch(WeatherSource("Berlin", 52.52, 13.41)) { results += it }()
+        assertNull(results.last())
     }
 }

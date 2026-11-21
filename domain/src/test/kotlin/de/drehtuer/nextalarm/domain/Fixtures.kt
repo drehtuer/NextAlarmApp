@@ -18,3 +18,5 @@ fun settings(speakReason: Boolean = true, news: NewsSource? = null, vibrate: Boo
 
 fun snapshot(reason: String? = "Flight", speakReason: Boolean = true, news: NewsSource? = null, vibrate: Boolean = true) =
     settings(speakReason, news, vibrate).snapshotFor(reason)
+
+val WEATHER = WeatherSource("Berlin", 52.52, 13.41)

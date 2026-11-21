@@ -12,6 +12,8 @@ import de.drehtuer.nextalarm.data.SoundFiles
 import de.drehtuer.nextalarm.data.SoundImportResult
 import de.drehtuer.nextalarm.domain.AlarmAction
 import de.drehtuer.nextalarm.domain.AlarmVolume
+import de.drehtuer.nextalarm.domain.DEFAULT_SOUND_COPY_NOTE
+import de.drehtuer.nextalarm.domain.WeatherSource
 import de.drehtuer.nextalarm.domain.FeedFailure
 import de.drehtuer.nextalarm.domain.FeedResult
 import de.drehtuer.nextalarm.domain.NewsSource
@@ -153,6 +155,7 @@ class AppViewModelTest {
     private var fullScreen = true
     private var notificationsOn = true
     private val news = NewsParts { NOW }
+    private val weatherService = FakeWeatherService()
     private var alarmRinging = false
     private val preview = PreviewParts { alarmRinging }
     private val settings = GatedSettings(data.settings)
@@ -168,6 +171,7 @@ class AppViewModelTest {
             planningChanges = changes,
             phone = PhonePorts(audio, sounds, logs, { notificationsOn }) { fullScreen },
             news = news.ports,
+            weather = WeatherPorts(weatherService, { null }),
             preview = preview.preview,
             io = Dispatchers.Unconfined,
             now = { NOW },
@@ -474,6 +478,20 @@ class AppViewModelTest {
     }
 
     @Test
+    fun `coming to the front starts a planning run once set up`() = runBlocking {
+        viewModel.startWatching()
+        awaitState { it.loaded }
+        viewModel.stopWatching()
+        assertTrue(effects.started.isEmpty())
+
+        chooseDavx()
+        viewModel.startWatching()
+        awaitCondition { effects.started == listOf(1L, 2L) }
+        viewModel.stopWatching()
+        assertEquals(PlannerState.Planning, data.planner.load().state)
+    }
+
+    @Test
     fun `after watching stops, changes are not picked up`() = runBlocking {
         viewModel.startWatching()
         awaitState { it.loaded }
@@ -548,6 +566,16 @@ class AppViewModelTest {
         val model = load().alarmSettings
         assertEquals("Phone default (Bright Morning)", model.soundName)
         assertEquals("Your phone's alarm volume is low (1 of 7).", model.lowVolume?.title)
+    }
+
+    @Test
+    fun `the alarm settings keep a copy of the default sound, and say when there is none`() {
+        assertNull(load().alarmSettings.copyNote)
+        assertTrue(sounds.copies > 0)
+        sounds.defaultCopied = false
+        viewModel.startWatching()
+        awaitState { it.alarmSettings.copyNote == DEFAULT_SOUND_COPY_NOTE }
+        viewModel.stopWatching()
     }
 
     @Test
@@ -705,7 +733,7 @@ class AppViewModelTest {
         detectNews(FEED_ADDRESS)
         val state = awaitState { it.alarmSettings.news == "RSS · tagesschau.de" }
         assertEquals("RSS feed found.", state.news.helper)
-        assertEquals(NewsSource(NewsType.RSS, FEED_ADDRESS, 15), data.settings.load().news)
+        assertEquals(NewsSource(NewsType.RSS, FEED_ADDRESS, 15, RSS_FEED.name), data.settings.load().news)
         assertEquals(runs + 1, effects.started.size)
     }
 
@@ -726,8 +754,41 @@ class AppViewModelTest {
     fun `the stepper changes what is stored and asks for a new plan`() {
         detectNews(FEED_ADDRESS)
         awaitState { it.alarmSettings.news != "Off" }
-        assertChanges({ viewModel.lengthenNews() }) { it.news?.maxMinutes == 20 }
+        assertChanges({ viewModel.lengthenNews() }) { it.news?.maxMinutes == 16 }
         assertChanges({ viewModel.shortenNews() }) { it.news?.maxMinutes == 15 }
+    }
+
+    @Test
+    fun `a chosen weather place is stored, asks for a new plan and shows in the row of screen 5`() = runBlocking {
+        engine.setupCompleted()
+        val runs = effects.started.size
+        viewModel.openWeather()
+        viewModel.setWeatherQuery("Ber")
+        // The search waits for the typing to pause, on the main looper, whose clock only moves when the test says so.
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        awaitState { it.weather.places.isNotEmpty() }
+        viewModel.chooseWeatherPlace(0)
+        val state = awaitState { it.alarmSettings.weather == "Berlin" }
+        assertEquals("Forecast for Berlin", state.weather.chosen)
+        assertEquals(WeatherSource("Berlin", 52.52, 13.41), data.settings.load().weather)
+        awaitCondition { effects.started.size > runs }
+        viewModel.setWeatherUseCurrentLocation(true)
+        viewModel.setWeatherLanguage("de")
+        awaitState { it.alarmSettings.weather == "Current location, else Berlin" }
+        viewModel.previewWeather()
+        awaitState { it.weather.previewLine?.startsWith("Das Wetter") == true }
+        viewModel.turnOffWeather()
+        awaitState { it.alarmSettings.weather == "Off" }
+        assertNull(data.settings.load().weather)
+        viewModel.closeWeather()
+    }
+
+    @Test
+    fun `the pause and the language change what is stored and ask for a new plan`() {
+        detectNews(FEED_ADDRESS)
+        awaitState { it.alarmSettings.news != "Off" }
+        assertChanges({ viewModel.setNewsPause(2500) }) { it.news?.pauseMillis == 2500 }
+        assertChanges({ viewModel.setNewsLanguage("de-DE") }) { it.news?.language == "de-DE" }
     }
 
     @Test
@@ -986,6 +1047,8 @@ private class FakeSounds(private val settings: SettingsRepository) : SoundFiles 
     val importedPhoneSounds = mutableListOf<Uri>()
     val deleted = mutableListOf<SoundRef>()
     val storedAtDelete = mutableListOf<SoundRef>()
+    var defaultCopied = true
+    var copies = 0
 
     override suspend fun import(uri: Uri): SoundImportResult {
         imported += uri
@@ -1000,6 +1063,11 @@ private class FakeSounds(private val settings: SettingsRepository) : SoundFiles 
     override fun delete(sound: SoundRef) {
         deleted += sound
         storedAtDelete += runBlocking { settings.load().sound }
+    }
+
+    override suspend fun keepDefaultCopy(): Boolean {
+        copies++
+        return defaultCopied
     }
 }
 

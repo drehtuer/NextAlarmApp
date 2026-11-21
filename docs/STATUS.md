@@ -2,9 +2,9 @@
 
 The progress of each step in [TODO.md](TODO.md). Update this file in the same change that starts or finishes a step.
 
-**Last updated:** 2026-11-20
+**Last updated:** 2026-11-21
 
-**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are merged in #20. The documentation is published as a GitHub Pages site with every release. On 2026-11-20 most of phase 9 was run on the phone with the owner; every check passed, and the run found that "Sync now" never reached DAVx⁵, which is fixed. Still open: aCalendar and ICSx⁵ (9.2), everyday use (9.5) and the tile in a real System UI (10.1). Hue is waiting for Q-H5.
+**Summary:** Phases 0 to 8, the silent device tests and the quick settings tile are merged. Several alarm calendars, a settable alarm volume, audio focus, call handling and http only for podcasts are merged in #20. The documentation is published as a GitHub Pages site with every release. On 2026-11-20 most of phase 9 was run on the phone with the owner; every check passed, and the run found that "Sync now" never reached DAVx⁵, which is fixed. Still open: aCalendar (9.2), everyday use (9.5) and the tile in a real System UI (10.1). On 2026-11-21 the open reliability and wake-up questions were answered, and the weather added (10.8 to 10.10), which still have to be run on the phone. Hue is waiting for Q-H5.
 
 | Status        | Meaning                                                       |
 |---------------|---------------------------------------------------------------|
@@ -77,7 +77,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 |------|-----------------------------------------|---------------|-------|
 | 3.1  | Room database                           | `Done`        | Merged in #7. |
 | 3.2  | `SettingsRepository`, `AlarmRepository` | `Done`        | Merged in #7. |
-| 3.3  | `CalendarRepository`                    | `Done`        | Merged in #7. Run on a real DAVx⁵ calendar (device checks); aCalendar and ICSx⁵ are still to do in 9.2. |
+| 3.3  | `CalendarRepository`                    | `Done`        | Merged in #7. Run on a real DAVx⁵ calendar (device checks); aCalendar is still to do in 9.2. |
 | 3.4  | `AlarmScheduler`                        | `Done`        | Merged in #7. |
 | 3.5  | Alarm sound storage                     | `Done`        | Merged in #7. |
 
@@ -136,7 +136,7 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | Step | Topic              | Status        | Notes |
 |------|--------------------|---------------|-------|
 | 9.1  | Instrumented tests | `Done`        | Merged in #15. Silent suite passes on the phone, also on a fresh install. Direct boot was checked by hand with a reboot (9.3). `AccountAccessDeviceTest` checks the account chooser, with someone at the phone. |
-| 9.2  | Calendar sources   | `In progress` | DAVx⁵ and the `Instances` range checked on 2026-11-20. aCalendar and ICSx⁵ are still to do; neither is set up on the phone yet. |
+| 9.2  | Calendar sources   | `In progress` | DAVx⁵ and the `Instances` range checked on 2026-11-20. aCalendar is still to do; it is installed on the phone now. ICSx⁵ was dropped, as there is no use for it. |
 | 9.3  | Reliability        | `Done`        | Checked on 2026-11-20 (device checks). Deep Doze could not be forced; the "missed" case is left to the unit tests. |
 | 9.4  | Sound and wake-up  | `Done`        | Checked on 2026-11-20 (device checks). Improvements found are Q-W5 to Q-W9 and Q-R5 in [open questions](open_questions.md). |
 | 9.5  | Everyday use       | `Not started` |       |
@@ -152,3 +152,6 @@ The progress of each step in [TODO.md](TODO.md). Update this file in the same ch
 | 10.5 | Hue: lead time       | `Not started` |                        |
 | 10.6 | Hue: silent alarm    | `Not started` |                        |
 | 10.7 | Sync now on home     | `Done`        | Checked on the phone on 2026-11-20, after fixing that Android dropped every request (device checks). |
+| 10.8 | Reliability answers  | `In progress` | Q-R1 to Q-R5, answered on 2026-11-21. Unit tests pass; not yet run on the phone. |
+| 10.9 | Wake-up answers      | `In progress` | Q-W2 to Q-W8, answered on 2026-11-21. Unit tests pass; not yet run on the phone. |
+| 10.10 | Weather             | `In progress` | Q-W9, answered on 2026-11-21. Unit tests pass; not yet run on the phone. |

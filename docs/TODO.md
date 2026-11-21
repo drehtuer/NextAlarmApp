@@ -128,7 +128,7 @@ Run on the Pixel 10a with [wireless debugging](development.md#running-on-the-pix
 | Step | Work |
 |------|------|
 | 9.1  | Instrumented tests for ringing, full-screen intent and direct boot. |
-| 9.2  | Calendar sources: a local aCalendar calendar, a CalDAV calendar via DAVx⁵, a subscribed calendar via ICSx⁵. Also check whether `Instances` returns events that started before the query range. |
+| 9.2  | Calendar sources: a local aCalendar calendar, a CalDAV calendar via DAVx⁵. Also check whether `Instances` returns events that started before the query range. |
 | 9.3  | Reliability: reboot before the alarm without unlocking (also check which sound plays), phone off at the alarm time, Doze, revoked calendar permission. |
 | 9.4  | Sound and wake-up: Do Not Disturb, the alarm rings with the phone locked, no network, TTS unavailable before the first unlock, a real RSS feed and podcast on Android's own XML parser and media player, Stop in the lock screen's media controls. |
 | 9.5  | Everyday use over several real mornings. |
@@ -144,3 +144,6 @@ Run on the Pixel 10a with [wireless debugging](development.md#running-on-the-pix
 | 10.5 | Hue: configurable lead time for the sunrise effect. | [Philips Hue](architecture.md#future-philips-hue-not-in-the-mvp) |
 | 10.6 | Hue: silent alarm that turns the light off. | [Philips Hue](architecture.md#future-philips-hue-not-in-the-mvp) |
 | 10.7 | "Sync now" on home: asks the alarm calendars' accounts to sync, and re-plans. | [Re-planning triggers](architecture.md#re-planning-triggers), [design](design.md#2-home) |
+| 10.8 | Answers to the reliability questions: each plan command on its own, a run when the app comes to the front, a copy of the default sound, Dismiss of a snoozed emergency alarm, Stop without the database. | [When the database fails](architecture.md#when-the-database-fails), [Ringing](architecture.md#ringing) |
+| 10.9 | Answers to the wake-up questions: the feed's title, a pause and a language for the news, a spoken failure, 1-minute steps, a ringing alarm ends the automation. | [Wake-up automation](architecture.md#wake-up-automation-and-the-lock-screen), [design](design.md#6-news) |
+| 10.10 | Weather forecast after the news, from Open-Meteo, for a chosen place or the current location. | [Weather](architecture.md#weather), [design](design.md#6b-weather) |

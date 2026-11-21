@@ -17,7 +17,6 @@ private val WEEKDAY = DateTimeFormatter.ofPattern("EEEE", Locale.ENGLISH)
 private val WEEKDAY_AND_TIME = DateTimeFormatter.ofPattern("EEEE HH:mm", Locale.ENGLISH)
 
 private const val DAVX_ACCOUNT_TYPE = "bitfire.at.davdroid"
-private const val ICSX_ACCOUNT_TYPE = "at.bitfire.icsdroid"
 
 data class HomeHero(
     val label: String,
@@ -274,7 +273,6 @@ fun nextAlarmTile(alarms: List<AlarmInstance>, now: Instant, zone: ZoneId): Next
 /** The name of the app that syncs this calendar, if it is one this app knows. */
 private fun calendarSource(calendar: DeviceCalendar): String? = when (calendar.accountType) {
     DAVX_ACCOUNT_TYPE -> "DAVx⁵"
-    ICSX_ACCOUNT_TYPE -> "ICSx⁵"
     else -> null
 }
 

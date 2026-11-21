@@ -51,7 +51,7 @@ class FakeSpeech : SpeechOutput {
     var pending: ((Boolean) -> Unit)? = null
     var immediate: Boolean? = null
 
-    override fun speak(text: String, onDone: (Boolean) -> Unit) {
+    override fun speak(text: String, language: String?, onDone: (Boolean) -> Unit) {
         said += text
         val answer = immediate
         if (answer != null) onDone(answer) else pending = onDone
@@ -113,6 +113,7 @@ class NewsParts(now: () -> Instant) {
     val podcast = FakePodcast()
     val timers = FakeNewsTimers()
     val wakeLock = FakeNewsWakeLock()
+    var languages = listOf("de-DE", "en-GB")
     val ports = NewsPorts(
         feeds,
         NewsTestPlayer(
@@ -124,5 +125,6 @@ class NewsParts(now: () -> Instant) {
             CallWatch(NoCalls) { _, _ -> },
             now,
         ),
+        { languages },
     )
 }

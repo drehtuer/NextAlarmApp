@@ -327,6 +327,21 @@ class PlannerEngineTest {
     }
 
     @Test
+    fun `a command that fails does not hold up the others, and the run still fails`() = runBlocking {
+        val gone = alarms.create(AlarmKey.forEvent(2, future), future, snapshot())
+        alarms.failOnUpdate = { it == gone.id }
+        calendars.events = listOf(event)
+        planning()
+        engine.runPlanning(1)
+        val created = alarms.all().single { it.id != gone.id }
+        assertEquals(AlarmKey.forEvent(1, future), created.key)
+        assertEquals(future, scheduler.scheduled[created.id])
+        assertEquals(AlarmState.Scheduled, alarms.find(gone.id)?.state)
+        assertEquals(PlannerState.FailSafe, planner.record.state)
+        assertEquals(PlanningFailure.APPLY_FAILED, planner.record.lastRun?.failure)
+    }
+
+    @Test
     fun `a stale success changes nothing and creates no alarms`() = runBlocking {
         planning(generation = 2)
         calendars.events = listOf(event)

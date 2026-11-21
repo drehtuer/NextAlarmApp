@@ -9,9 +9,14 @@ import java.util.Locale
 
 // What screen 6 says and allows. The wording is specified in docs/design.md.
 
-const val MIN_NEWS_MINUTES = 5
+const val MIN_NEWS_MINUTES = 1
 const val MAX_NEWS_MINUTES = 60
-private const val NEWS_MINUTES_STEP = 5
+private const val NEWS_MINUTES_STEP = 1
+
+/** The pauses on offer: none, then half a second at a time up to 5 seconds. */
+val NEWS_PAUSE_MILLIS: List<Int> = (0..5000 step 500).toList()
+private const val MILLIS_PER_SECOND = 1000
+private const val TENTH_MILLIS = 100
 
 private const val SECONDS_PER_MINUTE = 60
 private const val HALF_A_MINUTE_SECONDS = 30
@@ -59,14 +64,32 @@ data class NewsDraft(
     val minutes: Int = NewsSource.DEFAULT_NEWS_MINUTES,
     val saved: NewsSource? = null,
     val check: NewsCheck = NewsCheck.None,
+    val pauseMillis: Int = NewsSource.DEFAULT_PAUSE_MILLIS,
+    /** Empty for the feed's own language. */
+    val language: String? = null,
+)
+
+/** The draft of what is stored, which is empty if nothing is. */
+fun newsDraftOf(saved: NewsSource?): NewsDraft = NewsDraft(
+    address = saved?.url.orEmpty(),
+    minutes = saved?.maxMinutes ?: NewsSource.DEFAULT_NEWS_MINUTES,
+    saved = saved,
+    pauseMillis = saved?.pauseMillis ?: NewsSource.DEFAULT_PAUSE_MILLIS,
+    language = saved?.language,
 )
 
 /**
  * What gets stored for an address. It takes a [NewsCheck.Found], because nothing else may be stored: a broken address
  * never replaces what the alarms use.
  */
-fun newsSourceToSave(draft: NewsDraft, found: NewsCheck.Found): NewsSource =
-    NewsSource(found.feed.kind, draft.address.trim(), draft.minutes)
+fun newsSourceToSave(draft: NewsDraft, found: NewsCheck.Found): NewsSource = NewsSource(
+    type = found.feed.kind,
+    url = draft.address.trim(),
+    maxMinutes = draft.minutes,
+    title = found.feed.name,
+    pauseMillis = draft.pauseMillis,
+    language = draft.language,
+)
 
 /** How far a test has got. */
 sealed interface NewsTestProgress {
@@ -106,7 +129,31 @@ data class NewsModel(
     val testLine: NewsTestLine?,
     val failure: BannerText?,
     val canTurnOff: Boolean,
+    val pause: ValuePicker<Int> = picker(NewsSource.DEFAULT_PAUSE_MILLIS, NEWS_PAUSE_MILLIS, ::pauseLabel),
+    val language: ValuePicker<String?> = languagePicker(null, emptyList()),
 )
+
+/** "None", "0.5 s", "1 s". */
+fun pauseLabel(millis: Int): String = when {
+    millis == 0 -> "None"
+    millis % MILLIS_PER_SECOND == 0 -> "${millis / MILLIS_PER_SECOND} s"
+    else -> "${millis / MILLIS_PER_SECOND}.${millis % MILLIS_PER_SECOND / TENTH_MILLIS} s"
+}
+
+const val AUTO_LANGUAGE_LABEL = "Auto: as the feed says"
+
+/** A language by its English name, as the rest of the app is in English: "German (Germany)". */
+fun languageLabel(tag: String?): String =
+    if (tag == null) AUTO_LANGUAGE_LABEL else Locale.forLanguageTag(tag).getDisplayName(Locale.ENGLISH).ifEmpty { tag }
+
+/**
+ * Auto first, then the languages the speech engine has, by name. A chosen language the engine no longer has is still
+ * offered, so that the picker shows what is set.
+ */
+fun languagePicker(chosen: String?, available: List<String>): ValuePicker<String?> {
+    val tags = (available + listOfNotNull(chosen)).distinct().sortedBy { languageLabel(it) }
+    return ValuePicker(languageLabel(chosen), (listOf<String?>(null) + tags).map { PickerOption(it, languageLabel(it)) })
+}
 
 fun newsKindLine(kind: NewsType): String = when (kind) {
     NewsType.RSS -> "RSS feed · read aloud"
@@ -243,8 +290,14 @@ fun newsTestLine(progress: NewsTestProgress, now: Instant): NewsTestLine = when 
     }
 }
 
-/** Screen 6 at [now], with a test at [test] if one runs. */
-fun buildNews(draft: NewsDraft, test: NewsTestProgress?, now: Instant, zone: ZoneId): NewsModel {
+/** Screen 6 at [now], with a test at [test] if one runs. [languages] are the language tags the speech engine has. */
+fun buildNews(
+    draft: NewsDraft,
+    test: NewsTestProgress?,
+    now: Instant,
+    zone: ZoneId,
+    languages: List<String> = emptyList(),
+): NewsModel {
     val feed = when (val check = draft.check) {
         is NewsCheck.Found -> check.feed
         is NewsCheck.Unplayable -> check.feed
@@ -264,6 +317,8 @@ fun buildNews(draft: NewsDraft, test: NewsTestProgress?, now: Instant, zone: Zon
         testLine = test?.let { newsTestLine(it, now) },
         failure = newsFailureBanner(draft),
         canTurnOff = draft.saved != null || draft.address.isNotEmpty(),
+        pause = picker(draft.pauseMillis, NEWS_PAUSE_MILLIS, ::pauseLabel),
+        language = languagePicker(draft.language, languages),
     )
 }
 
@@ -349,8 +404,8 @@ class NewsTestPlayer(
     )
 
     private inner class HeardSpeech(private val output: SpeechOutput) : SpeechOutput by output {
-        override fun speak(text: String, onDone: (Boolean) -> Unit) {
-            output.speak(text) { worked ->
+        override fun speak(text: String, language: String?, onDone: (Boolean) -> Unit) {
+            output.speak(text, language) { worked ->
                 if (worked) heard = true
                 onDone(worked)
             }

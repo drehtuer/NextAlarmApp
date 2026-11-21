@@ -50,7 +50,13 @@ data class AlarmSettingsModel(
     val previewing: Boolean,
     /** The line below the sound's buttons: how the sound plays, or why it didn't. */
     val previewLine: String?,
+    /** Only for the phone's default sound, when no copy of it could be kept for the time before the first unlock. */
+    val copyNote: String? = null,
+    val weather: String = weatherLabel(null),
 )
+
+const val DEFAULT_SOUND_COPY_NOTE = "NextAlarm couldn't keep a copy of this sound. Right after a restart, until the " +
+    "phone is first unlocked, NextAlarm's own alarm sound may ring instead."
 
 private const val LOW_ALARM_VOLUME_STEPS = 2
 private const val PERCENT = 100
@@ -151,14 +157,17 @@ internal fun minutesLabel(minutes: Int) = "$minutes min"
 private fun volumeLabel(volume: Float?): String =
     if (volume != null) "${(volume * PERCENT).roundToInt()}%" else "Not set"
 
-private fun <T> picker(current: T, values: List<T>, label: (T) -> String) =
+internal fun <T> picker(current: T, values: List<T>, label: (T) -> String) =
     ValuePicker(label(current), values.map { PickerOption(it, label(it)) })
 
-/** The value of the "News" row. What a feed is called is only known once it is read, so this names its address. */
-fun newsLabel(news: NewsSource?): String = when (news?.type) {
-    null -> "Off"
-    NewsType.RSS -> "RSS · ${feedHost(news.url)}"
-    NewsType.PODCAST -> "Podcast · ${feedHost(news.url)}"
+/** The value of the "News" row: the feed's title, or its host for a source stored before titles were. */
+fun newsLabel(news: NewsSource?): String {
+    val name = news?.title?.ifBlank { null } ?: news?.let { feedHost(it.url) }
+    return when (news?.type) {
+        null -> "Off"
+        NewsType.RSS -> "RSS · $name"
+        NewsType.PODCAST -> "Podcast · $name"
+    }
 }
 
 private fun feedHost(url: String): String {
@@ -176,6 +185,8 @@ fun buildAlarmSettings(
     volume: AlarmVolume?,
     soundRejection: String?,
     preview: SoundPreviewStatus = SoundPreviewStatus.IDLE,
+    /** Whether there is a copy of the phone's default sound. See [AlarmSettingsModel.copyNote]. */
+    defaultCopied: Boolean = true,
 ): AlarmSettingsModel = AlarmSettingsModel(
     lowVolume = volume?.let(::lowVolumeBanner),
     soundName = soundName(settings.sound, defaultSoundName),
@@ -190,4 +201,6 @@ fun buildAlarmSettings(
     news = newsLabel(settings.news),
     previewing = preview == SoundPreviewStatus.PLAYING,
     previewLine = soundPreviewLine(preview),
+    copyNote = DEFAULT_SOUND_COPY_NOTE.takeIf { settings.sound == SoundRef.SystemDefault && !defaultCopied },
+    weather = weatherLabel(settings.weather),
 )

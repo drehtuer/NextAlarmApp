@@ -45,6 +45,8 @@ data class Feed(
     val author: String?,
     val entries: List<FeedEntry>,
     val latestEpisode: PodcastEpisode?,
+    /** The language the feed says it is in, as a language tag ("de-DE"). Empty if it says none. */
+    val language: String? = null,
 )
 
 /** Why an address gave no feed. */

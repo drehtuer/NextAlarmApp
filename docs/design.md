@@ -243,7 +243,7 @@ Below the rows come a divider and a section headed "About". It is always present
 - **Lead:** "Every timed event in the ticked calendars rings at its start time. Don't tick a calendar you use for anything
   else: every meeting in it would ring too. A calendar hidden in a calendar app still rings. No other calendar is read."
 - **Calendars:** grouped by account, with the account name as a `primary` header ("DAVx⁵ · me@cloud.example",
-  "ICSx⁵ · Holidays", "On this phone"). Each row is a checkbox, the calendar's own colour as a 12 dp square, and its
+  "On this phone"). Each row is a checkbox, the calendar's own colour as a 12 dp square, and its
   name. Any number can be ticked. A calendar without a colour leaves the square's place empty, so that the names line up.
   A ticked row has a `surfaceContainer` background.
 - **Chosen calendars that are gone:** after the other groups, under the header "No longer on this phone", one ticked row
@@ -273,6 +273,9 @@ Below the rows come a divider and a section headed "About". It is always present
     phone's alarm volume, without the ramp or the maximum volume. Stops after 10 s." If it can't start, the line says
     why instead: "The sound can't play during a call." or "The sound can't play while an alarm rings." The button then
     still plays, and the line goes when the sound is played again or the screen is left.
+  - While the phone's default sound is set and no copy of it could be kept, a line in `onSurfaceVariant`
+    (`bodyMedium`) below the two buttons says: "NextAlarm couldn't keep a copy of this sound. Right after a restart,
+    until the phone is first unlocked, NextAlarm's own alarm sound may ring instead."
   - When a file or a phone sound is rejected, a line in `error` with an error icon appears below the sound row. Phone
     sounds use the same messages, with the sound's name in place of the file name:
     - Unsupported type: "“Notes.pdf” isn't a sound file. Choose an MP3, WAV, OGG or M4A file."
@@ -287,6 +290,7 @@ Below the rows come a divider and a section headed "About". It is always present
 - **Section "After you dismiss":**
   - "Speak the title" / "Reads the event title aloud", with a switch.
   - "News" / "Off", "RSS · tagesschau.de" or "Podcast · example.org", with a chevron that opens screen 6.
+  - "Weather" / "Off", "Berlin" or "Current location, else Berlin", with a chevron that opens screen 6b.
 
 Values open the standard Material 3 pickers.
 
@@ -320,7 +324,9 @@ Details decided while building this screen:
   alarm, or while it is rebuilt after a rotation), and when an alarm starts to ring.
 - A phone sound is named by its title in the media store ("Oxygen"), or else the way a file is. It is kept like a
   picked file, and from then on shown like one: the row doesn't say that it came with the phone.
-- The "News" row names the feed's host name, without "www.", for both kinds. A feed's own title ("Der Tag") isn't stored.
+- The "News" row names the feed by its own title ("RSS · Der Tag"), which is stored when the feed is found. A feed
+  stored before titles were is named by its host name, without "www.", until screen 6 is opened, which finds and stores
+  its title.
 - If the phone doesn't say what its default sound is called, the row says "Phone default".
 
 ### 6 News
@@ -334,6 +340,11 @@ Details decided while building this screen:
   - The feed name.
   - A detail line: "12 headlines today" or "Deutschlandfunk · today, 18 min".
 - **Duration:** "Maximum duration" / "Playback stops after this", with a − / + stepper showing "15 min".
+- **Pause:** "Pause after the title" / "Silence before the feed starts", with the value on the right: "None", "0.5 s",
+  "1 s" (the default), and so on up to "5 s". It opens a list to pick from, like the pickers of screen 5.
+- **Language:** "Language" / "For RSS feeds read aloud", with the value on the right: "Auto: as the feed says" (the
+  default), or a language by its English name, "German (Germany)". The list has auto first, then the languages of the
+  phone's speech engine, by name.
 - **Buttons:**
   - "Test playback": filled, with a play icon. It is disabled while the address is empty.
   - While the test plays, the button reads "Stop test", with a progress bar and "Playing “Der Tag” · 0:42 of 15:00".
@@ -367,9 +378,9 @@ Details decided while building this screen:
   stored, as the failure can be the phone's. The banner reads, followed by the end above:
   - RSS: "The feed was found, but the phone couldn't read it aloud. Check its text-to-speech settings, then try again."
   - Podcast: "The podcast was found, but its latest episode wouldn't play. Check the connection, then try again."
-- **The stepper** goes from 5 to 60 min in steps of 5, the default of 15 being one of them. A stored value between two
-  steps goes to the next step. It is disabled while a test runs, which keeps the limit it started with. A change counts
-  for the stored feed at once. Without one, it is kept for the feed that is found next.
+- **The stepper** goes from 1 to 60 min in steps of 1. A stored value outside that is taken back into it. It is disabled while a test runs, which keeps the limit it started with. A change counts
+  for the stored feed at once. Without one, it is kept for the feed that is found next. The pause and the language work
+  the same way.
 - **The detail line:** "12 headlines today" counts the entries of today, or all of them ("12 headlines") if there are none
   of today or the feed has no dates. A podcast shows what its feed gives of "Deutschlandfunk · today, 18 min", with
   "yesterday" or "4 November" as the day, and no line if it gives nothing.
@@ -382,6 +393,28 @@ Details decided while building this screen:
 - Emptying the field does not turn the news off: only the button does. Coming back to the screen shows what is stored.
 - The test stops at "Stop test", on leaving the screen, when the screen is hidden (also by a ringing alarm), when the
   address changes, and at the maximum duration.
+
+### 6b Weather
+
+- **Top bar:** "Weather".
+- **Lead:** "After the news, NextAlarm can say today's weather forecast. It comes from Open-Meteo."
+- **Chosen place:** "Forecast for Berlin" in `titleMedium`, once one is chosen.
+- **Search field:** an outlined text field labelled "Place" ("Another place" once one is chosen). The helper text is
+  "Type the name of a town or city.", "Searching…" while the search runs, "Choose one of these." with the places found
+  listed below it ("Berlin, Land Berlin, Germany"), "No place of this name was found.", or, with the field in `error`,
+  "The search didn't work. Check the phone's connection." A search starts 0.8 seconds after the typing has paused, from
+  2 letters on. Tapping a place stores it at once and clears the search.
+- **"Use the current location"** / "Where the phone was last, else the place above", with a switch. It is disabled until
+  a place is chosen. Turning it on asks for the location permission first; a refusal leaves it off.
+- **"Language"** / "Of the forecast", with the value on the right: "Auto: the phone's language" (the default), "English"
+  or "German". It opens a list like the pickers of screen 5.
+- **"Show the forecast":** an outlined button, disabled until a place is chosen. Below it, in `onSurfaceVariant`
+  (`bodyMedium`): "Getting the forecast…", then the sentence the next alarm would say, or "The forecast can't be had
+  right now. Check the phone's connection." A new choice removes the line.
+- **"Turn off weather":** a text button, disabled while the weather is off. It forgets the place.
+- The "Weather" row of screen 5 says "Off", the place ("Berlin"), or "Current location, else Berlin".
+- On screen 9 and in the media notification, the weather shows as "The weather" with the place, while it is got after
+  the feed and while it is said.
 
 ### 7 Diagnostics & history
 
@@ -498,7 +531,10 @@ Details decided while building this screen:
 - Speech has no known length, so its time is what has passed ("0:03"), with no end time and a moving progress bar.
 - While the feed is on its way the card has no times, a moving bar, the kind line "Getting the news" and the address's
   host as the main line. For an episode the length comes from the player, or from the feed until the player knows; if
-  neither knows, the second time is "up to 15:00". Between two steps, for a moment, there is no card.
+  neither knows, the second time is "up to 15:00". Between two steps, for a moment, there is no card. While the pause
+  after the title runs, the card is that of the feed on its way.
+- When the feed can't be had, the card has no times, the kind line "The feed isn't available" and the feed's title as
+  the main line, while "The feed isn't available." is said.
 - An event without a title shows as on screen 8. The main line has at most two lines, and only the titles scroll.
 - A podcast feed gives "Der Tag" as its name and "Deutschlandfunk" as its publisher (`itunes:author`). Without a publisher
   the kind line uses the name.
@@ -517,6 +553,9 @@ accent colour (`setColor`).
 | Wake-up media, RSS | "Playing: tagesschau.de" | "Reading the news · stops by 06:16 at the latest" | "Stop" |
 | Wake-up media, speech | "Speaking the title" (or "Speaking the titles") | The title being spoken | "Stop" |
 | Wake-up media, feed on its way | "Getting the news" | "tagesschau.de · stops by 06:16 at the latest" | "Stop" |
+| Wake-up media, feed unavailable | "The feed isn't available" | The feed's title ("Der Tag") | "Stop" |
+| Wake-up media, weather | "The weather" | The place ("Berlin") | "Stop" |
+| Feed unavailable (one at a time) | "The feed isn't available" | "“Der Tag” couldn't be loaded after the alarm. Check the phone's connection, or test the feed in NextAlarm's settings." | "Open history" |
 | Fail-safe warning | "New alarms aren't being added" | "NextAlarm can't read your calendar. Alarms already planned will still ring." | "Open diagnostics" |
 | Fail-safe warning, calendar gone | "New alarms aren't being added" | "An alarm calendar is no longer on this phone. Alarms already planned will still ring. Untick it under Alarm calendars." | "Open diagnostics" |
 | Fail-safe warning, none chosen | "New alarms aren't being added" | "No alarm calendar is chosen. Alarms already planned will still ring. Choose one in the settings." | "Open diagnostics" |
